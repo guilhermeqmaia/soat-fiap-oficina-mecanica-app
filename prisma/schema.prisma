@@ -16,3 +16,17 @@ enum StatusOrdemDeServico {
   ENTREGUE
   CANCELADA
 }
+
+model Cliente {
+  id        String   @id @default(uuid())
+  nome      String
+  cpfCnpj   String   @unique @map("cpf_cnpj")
+  email     String?  @unique
+  telefone  String
+  endereco  String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+ 
+  @@map("cliente")
+}
