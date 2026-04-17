@@ -23,6 +23,7 @@ Table cliente {
   email varchar [unique]
   telefone varchar
   endereco varchar
+  ativo boolean [default: true]
   created_at timestamp [default: `now()`]
   updated_at timestamp
 }
