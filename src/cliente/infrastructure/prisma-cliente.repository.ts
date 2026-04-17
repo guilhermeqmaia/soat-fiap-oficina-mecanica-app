@@ -6,6 +6,16 @@ import {
   FindAllParams,
   PaginatedResult,
 } from "../domain/cliente.repository";
+import { normalizeCpfCnpj } from "../domain/value-objects/cpf-cnpj.utils";
+
+type ClienteRecord = {
+  id: string;
+  nome: string;
+  cpfCnpj: string;
+  telefone: string;
+  email: string | null;
+  ativo: boolean;
+};
 
 @Injectable()
 export class PrismaClienteRepository implements ClienteRepository {
@@ -14,7 +24,7 @@ export class PrismaClienteRepository implements ClienteRepository {
   async existsByCpfCnpj(cpfCnpj: string, excludeId?: string): Promise<boolean> {
     const record = await this.prisma.cliente.findFirst({
       where: {
-        cpfCnpj,
+        cpfCnpj: normalizeCpfCnpj(cpfCnpj),
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
     });
@@ -28,6 +38,7 @@ export class PrismaClienteRepository implements ClienteRepository {
         cpfCnpj: cliente.cpfCnpj.value,
         telefone: cliente.telefone,
         email: cliente.email ?? null,
+        ativo: cliente.ativo,
       },
     });
     return this.toDomain(record);
@@ -39,12 +50,25 @@ export class PrismaClienteRepository implements ClienteRepository {
     return this.toDomain(record);
   }
 
+  async findByCpfCnpj(cpfCnpj: string): Promise<Cliente | null> {
+    const record = await this.prisma.cliente.findUnique({
+      where: { cpfCnpj: normalizeCpfCnpj(cpfCnpj) },
+    });
+    if (!record) return null;
+    return this.toDomain(record);
+  }
+
   async findAll(params: FindAllParams): Promise<PaginatedResult<Cliente>> {
-    const { page, limit, nome } = params;
+    const { page, limit, nome, incluirInativos = false } = params;
     const skip = (page - 1) * limit;
-    const where = nome
-      ? { nome: { contains: nome, mode: "insensitive" as const } }
-      : {};
+
+    const where: Record<string, unknown> = {};
+    if (nome) {
+      where.nome = { contains: nome, mode: "insensitive" as const };
+    }
+    if (!incluirInativos) {
+      where.ativo = true;
+    }
 
     const [records, total] = await Promise.all([
       this.prisma.cliente.findMany({
@@ -71,6 +95,7 @@ export class PrismaClienteRepository implements ClienteRepository {
         nome: cliente.nome,
         telefone: cliente.telefone,
         email: cliente.email ?? null,
+        ativo: cliente.ativo,
       },
     });
     return this.toDomain(record);
@@ -80,19 +105,14 @@ export class PrismaClienteRepository implements ClienteRepository {
     await this.prisma.cliente.delete({ where: { id } });
   }
 
-  private toDomain(record: {
-    id: string;
-    nome: string;
-    cpfCnpj: string;
-    telefone: string;
-    email: string | null;
-  }): Cliente {
+  private toDomain(record: ClienteRecord): Cliente {
     return Cliente.reconstitute({
       id: record.id,
       nome: record.nome,
       cpfCnpj: record.cpfCnpj,
       telefone: record.telefone,
       email: record.email,
+      ativo: record.ativo,
     });
   }
 }
