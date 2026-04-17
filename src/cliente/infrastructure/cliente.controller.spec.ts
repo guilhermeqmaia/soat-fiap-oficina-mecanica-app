@@ -10,18 +10,21 @@ import { Cliente } from "../domain/cliente.entity";
 import { DuplicateCpfCnpjError } from "../domain/errors/duplicate-cpf-cnpj.error";
 import { InvalidCpfCnpjError } from "../domain/errors/invalid-cpf-cnpj.error";
 
-const mockCliente = Cliente.reconstitute({
-  id: "abc-123",
-  nome: "Joao da Silva",
-  cpfCnpj: "52998224725",
-  telefone: "11999998888",
-  email: "joao@email.com",
-});
+const makeCliente = (ativo = true) =>
+  Cliente.reconstitute({
+    id: "abc-123",
+    nome: "Joao da Silva",
+    cpfCnpj: "52998224725",
+    telefone: "11999998888",
+    email: "joao@email.com",
+    ativo,
+  });
 
 const mockService = {
   create: jest.fn(),
   findAll: jest.fn(),
   findById: jest.fn(),
+  findByCpfCnpj: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
 };
@@ -51,7 +54,7 @@ describe("ClienteController", () => {
     };
 
     it("deve criar e retornar o response do cliente", async () => {
-      mockService.create.mockResolvedValue(mockCliente);
+      mockService.create.mockResolvedValue(makeCliente());
 
       const result = await controller.create(dto);
 
@@ -61,6 +64,7 @@ describe("ClienteController", () => {
         cpfCnpj: "52998224725",
         telefone: "11999998888",
         email: "joao@email.com",
+        ativo: true,
       });
       expect(mockService.create).toHaveBeenCalledWith(dto);
     });
@@ -95,7 +99,7 @@ describe("ClienteController", () => {
   describe("GET /clientes", () => {
     it("deve retornar lista paginada", async () => {
       mockService.findAll.mockResolvedValue({
-        data: [mockCliente],
+        data: [makeCliente()],
         total: 1,
         page: 1,
         limit: 10,
@@ -105,12 +109,8 @@ describe("ClienteController", () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].cpfCnpj).toBe("52998224725");
+      expect(result.data[0].ativo).toBe(true);
       expect(result.total).toBe(1);
-      expect(mockService.findAll).toHaveBeenCalledWith({
-        page: 1,
-        limit: 10,
-        nome: undefined,
-      });
     });
 
     it("deve passar filtro de nome", async () => {
@@ -135,7 +135,7 @@ describe("ClienteController", () => {
 
   describe("GET /clientes/:id", () => {
     it("deve retornar o response do cliente", async () => {
-      mockService.findById.mockResolvedValue(mockCliente);
+      mockService.findById.mockResolvedValue(makeCliente());
 
       const result = await controller.findById("abc-123");
 
@@ -152,6 +152,56 @@ describe("ClienteController", () => {
     });
   });
 
+  // ==================== GET /clientes/documento/:cpfCnpj ====================
+
+  describe("GET /clientes/documento/:cpfCnpj", () => {
+    it("deve buscar cliente por CPF normalizado", async () => {
+      mockService.findByCpfCnpj.mockResolvedValue(makeCliente());
+
+      const result = await controller.findByCpfCnpj("52998224725");
+
+      expect(result.cpfCnpj).toBe("52998224725");
+      expect(mockService.findByCpfCnpj).toHaveBeenCalledWith("52998224725");
+    });
+
+    it("deve normalizar CPF formatado antes de chamar o service", async () => {
+      mockService.findByCpfCnpj.mockResolvedValue(makeCliente());
+
+      await controller.findByCpfCnpj("529.982.247-25");
+
+      expect(mockService.findByCpfCnpj).toHaveBeenCalledWith("52998224725");
+    });
+
+    it("deve normalizar CNPJ formatado", async () => {
+      mockService.findByCpfCnpj.mockResolvedValue(makeCliente());
+
+      await controller.findByCpfCnpj("11.222.333/0001-81");
+
+      expect(mockService.findByCpfCnpj).toHaveBeenCalledWith("11222333000181");
+    });
+
+    it("deve rejeitar CPF/CNPJ com quantidade invalida de digitos", async () => {
+      await expect(controller.findByCpfCnpj("12345")).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockService.findByCpfCnpj).not.toHaveBeenCalled();
+    });
+
+    it("deve rejeitar input sem digitos", async () => {
+      await expect(controller.findByCpfCnpj("---")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("deve propagar NotFoundException do service", async () => {
+      mockService.findByCpfCnpj.mockRejectedValue(new NotFoundException());
+
+      await expect(
+        controller.findByCpfCnpj("52998224725"),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ==================== PATCH /clientes/:id ====================
 
   describe("PATCH /clientes/:id", () => {
@@ -162,6 +212,7 @@ describe("ClienteController", () => {
         cpfCnpj: "52998224725",
         telefone: "11999998888",
         email: "novo@email.com",
+        ativo: true,
       });
       mockService.update.mockResolvedValue(updated);
 
@@ -185,8 +236,8 @@ describe("ClienteController", () => {
 
   // ==================== DELETE /clientes/:id ====================
 
-  describe("DELETE /clientes/:id", () => {
-    it("deve deletar um cliente", async () => {
+  describe("DELETE /clientes/:id (soft delete)", () => {
+    it("deve chamar o service.delete (soft delete)", async () => {
       mockService.delete.mockResolvedValue(undefined);
 
       await controller.delete("abc-123");

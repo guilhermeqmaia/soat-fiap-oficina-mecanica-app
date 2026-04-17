@@ -21,6 +21,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiBadRequestResponse,
   ApiUnauthorizedResponse,
@@ -31,8 +32,11 @@ import { UpdateClienteDto } from "./dto/update-cliente.dto";
 import { QueryClienteDto } from "./dto/query-cliente.dto";
 import { DuplicateCpfCnpjError } from "../domain/errors/duplicate-cpf-cnpj.error";
 import { InvalidCpfCnpjError } from "../domain/errors/invalid-cpf-cnpj.error";
+import { normalizeCpfCnpj } from "../domain/value-objects/cpf-cnpj.utils";
 import { Roles } from "../../auth/infrastructure/decorators/roles.decorator";
 import { Role } from "../../auth/domain/role.enum";
+
+const CPF_CNPJ_DIGIT_PATTERN = /^\d{11}$|^\d{14}$/;
 
 @ApiTags("Clientes")
 @ApiBearerAuth()
@@ -84,6 +88,29 @@ export class ClienteController {
     };
   }
 
+  @Get("documento/:cpfCnpj")
+  @Roles(Role.ADMIN, Role.ATENDENTE, Role.MECANICO)
+  @ApiOperation({ summary: "Buscar cliente por CPF ou CNPJ" })
+  @ApiParam({
+    name: "cpfCnpj",
+    description:
+      "CPF ou CNPJ do cliente. Aceita com ou sem formatacao. " +
+      "Para CNPJ com barra '/', envie apenas digitos ou URL-encode a barra (%2F).",
+    example: "52998224725",
+  })
+  @ApiOkResponse({ description: "Cliente encontrado" })
+  @ApiNotFoundResponse({ description: "Cliente nao encontrado" })
+  @ApiBadRequestResponse({ description: "CPF/CNPJ com formato invalido" })
+  async findByCpfCnpj(@Param("cpfCnpj") cpfCnpj: string) {
+    const cleaned = normalizeCpfCnpj(cpfCnpj);
+    if (!CPF_CNPJ_DIGIT_PATTERN.test(cleaned)) {
+      throw new BadRequestException(
+        "CPF/CNPJ deve conter 11 (CPF) ou 14 (CNPJ) digitos",
+      );
+    }
+    return this.toResponse(await this.service.findByCpfCnpj(cleaned));
+  }
+
   @Get(":id")
   @Roles(Role.ADMIN, Role.ATENDENTE, Role.MECANICO)
   @ApiOperation({ summary: "Buscar cliente por ID" })
@@ -108,7 +135,9 @@ export class ClienteController {
   @Delete(":id")
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Remover um cliente" })
+  @ApiOperation({
+    summary: "Remover um cliente (soft delete — marca ativo=false)",
+  })
   @ApiOkResponse({ description: "Cliente removido com sucesso" })
   @ApiNotFoundResponse({ description: "Cliente nao encontrado" })
   async delete(@Param("id", ParseUUIDPipe) id: string) {
@@ -121,6 +150,7 @@ export class ClienteController {
     cpfCnpj: { value: string };
     telefone: string;
     email?: string | null;
+    ativo: boolean;
   }) {
     return {
       id: cliente.id,
@@ -128,6 +158,7 @@ export class ClienteController {
       cpfCnpj: cliente.cpfCnpj.value,
       telefone: cliente.telefone,
       email: cliente.email,
+      ativo: cliente.ativo,
     };
   }
 }
