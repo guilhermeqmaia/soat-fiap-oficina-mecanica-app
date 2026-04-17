@@ -11,6 +11,7 @@ import {
   PaginatedResult,
 } from "../domain/cliente.repository";
 import { DuplicateCpfCnpjError } from "../domain/errors/duplicate-cpf-cnpj.error";
+import { normalizeCpfCnpj } from "../domain/value-objects/cpf-cnpj.utils";
 
 @Injectable()
 export class ClienteService {
@@ -20,8 +21,9 @@ export class ClienteService {
   ) {}
 
   async create(props: CreateClienteProps): Promise<Cliente> {
-    const cpfCnpjClean = props.cpfCnpj.replace(/\D/g, "");
-    const exists = await this.repository.existsByCpfCnpj(cpfCnpjClean);
+    const exists = await this.repository.existsByCpfCnpj(
+      normalizeCpfCnpj(props.cpfCnpj),
+    );
     if (exists) {
       throw new DuplicateCpfCnpjError(props.cpfCnpj);
     }
@@ -42,6 +44,18 @@ export class ClienteService {
     return cliente;
   }
 
+  async findByCpfCnpj(cpfCnpj: string): Promise<Cliente> {
+    const cliente = await this.repository.findByCpfCnpj(
+      normalizeCpfCnpj(cpfCnpj),
+    );
+    if (!cliente) {
+      throw new NotFoundException(
+        `Cliente com CPF/CNPJ '${cpfCnpj}' nao encontrado`,
+      );
+    }
+    return cliente;
+  }
+
   async update(id: string, props: UpdateClienteProps): Promise<Cliente> {
     const cliente = await this.repository.findById(id);
     if (!cliente) {
@@ -52,11 +66,20 @@ export class ClienteService {
     return this.repository.update(cliente);
   }
 
+  /**
+   * Soft delete: marks the cliente as inactive but keeps the record.
+   *
+   * TODO (integration with OrdemDeServico): when the OS module is available,
+   * this method must reject the deactivation if the cliente has any open
+   * (non-finalizada, non-entregue, non-cancelada) service order.
+   */
   async delete(id: string): Promise<void> {
     const cliente = await this.repository.findById(id);
     if (!cliente) {
       throw new NotFoundException(`Cliente com id '${id}' nao encontrado`);
     }
-    await this.repository.delete(id);
+
+    cliente.deactivate();
+    await this.repository.update(cliente);
   }
 }

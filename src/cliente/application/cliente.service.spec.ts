@@ -12,10 +12,28 @@ const mockRepository: jest.Mocked<ClienteRepository> = {
   existsByCpfCnpj: jest.fn(),
   create: jest.fn(),
   findById: jest.fn(),
+  findByCpfCnpj: jest.fn(),
   findAll: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
 };
+
+const makeCliente = (overrides: Partial<{
+  id: string;
+  nome: string;
+  cpfCnpj: string;
+  telefone: string;
+  email: string | null;
+  ativo: boolean;
+}> = {}) =>
+  Cliente.reconstitute({
+    id: overrides.id ?? "1",
+    nome: overrides.nome ?? "Joao",
+    cpfCnpj: overrides.cpfCnpj ?? "52998224725",
+    telefone: overrides.telefone ?? "11999998888",
+    email: overrides.email ?? null,
+    ativo: overrides.ativo ?? true,
+  });
 
 describe("ClienteService", () => {
   let service: ClienteService;
@@ -52,6 +70,7 @@ describe("ClienteService", () => {
           cpfCnpj: c.cpfCnpj.value,
           telefone: c.telefone,
           email: c.email ?? null,
+          ativo: c.ativo,
         }),
       );
 
@@ -59,6 +78,7 @@ describe("ClienteService", () => {
 
       expect(result.id).toBe("generated-id");
       expect(result.nome).toBe("Joao da Silva");
+      expect(result.ativo).toBe(true);
       expect(mockRepository.existsByCpfCnpj).toHaveBeenCalledWith(
         "52998224725",
       );
@@ -83,6 +103,7 @@ describe("ClienteService", () => {
           cpfCnpj: c.cpfCnpj.value,
           telefone: c.telefone,
           email: c.email ?? null,
+          ativo: c.ativo,
         }),
       );
 
@@ -98,16 +119,8 @@ describe("ClienteService", () => {
 
   describe("findAll", () => {
     it("deve retornar resultados paginados", async () => {
-      const cliente = Cliente.reconstitute({
-        id: "1",
-        nome: "Joao",
-        cpfCnpj: "52998224725",
-        telefone: "11999998888",
-        email: null,
-      });
-
       mockRepository.findAll.mockResolvedValue({
-        data: [cliente],
+        data: [makeCliente()],
         total: 1,
         page: 1,
         limit: 10,
@@ -145,16 +158,7 @@ describe("ClienteService", () => {
 
   describe("findById", () => {
     it("deve retornar um Cliente", async () => {
-      const cliente = Cliente.reconstitute({
-        id: "1",
-        nome: "Joao",
-        cpfCnpj: "52998224725",
-        telefone: "11999998888",
-        email: null,
-      });
-
-      mockRepository.findById.mockResolvedValue(cliente);
-
+      mockRepository.findById.mockResolvedValue(makeCliente({ nome: "Joao" }));
       const result = await service.findById("1");
       expect(result.nome).toBe("Joao");
     });
@@ -166,19 +170,49 @@ describe("ClienteService", () => {
     });
   });
 
+  // ==================== findByCpfCnpj ====================
+
+  describe("findByCpfCnpj", () => {
+    it("deve retornar um Cliente pelo CPF", async () => {
+      mockRepository.findByCpfCnpj.mockResolvedValue(makeCliente());
+
+      const result = await service.findByCpfCnpj("52998224725");
+      expect(result.nome).toBe("Joao");
+      expect(mockRepository.findByCpfCnpj).toHaveBeenCalledWith("52998224725");
+    });
+
+    it("deve normalizar o CPF formatado antes de buscar", async () => {
+      mockRepository.findByCpfCnpj.mockResolvedValue(makeCliente());
+
+      await service.findByCpfCnpj("529.982.247-25");
+
+      expect(mockRepository.findByCpfCnpj).toHaveBeenCalledWith("52998224725");
+    });
+
+    it("deve normalizar CNPJ formatado", async () => {
+      mockRepository.findByCpfCnpj.mockResolvedValue(makeCliente());
+
+      await service.findByCpfCnpj("11.222.333/0001-81");
+
+      expect(mockRepository.findByCpfCnpj).toHaveBeenCalledWith(
+        "11222333000181",
+      );
+    });
+
+    it("deve lancar NotFoundException quando nao encontrado", async () => {
+      mockRepository.findByCpfCnpj.mockResolvedValue(null);
+
+      await expect(service.findByCpfCnpj("52998224725")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
   // ==================== update ====================
 
   describe("update", () => {
-    const existing = Cliente.reconstitute({
-      id: "1",
-      nome: "Joao",
-      cpfCnpj: "52998224725",
-      telefone: "11999998888",
-      email: null,
-    });
-
     it("deve atualizar um Cliente", async () => {
-      mockRepository.findById.mockResolvedValue(existing);
+      mockRepository.findById.mockResolvedValue(makeCliente());
       mockRepository.update.mockImplementation(async (c) => c);
 
       const result = await service.update("1", {
@@ -199,24 +233,20 @@ describe("ClienteService", () => {
     });
   });
 
-  // ==================== delete ====================
+  // ==================== delete (soft) ====================
 
-  describe("delete", () => {
-    it("deve deletar um Cliente", async () => {
-      mockRepository.findById.mockResolvedValue(
-        Cliente.reconstitute({
-          id: "1",
-          nome: "Joao",
-          cpfCnpj: "52998224725",
-          telefone: "11999998888",
-          email: null,
-        }),
-      );
-      mockRepository.delete.mockResolvedValue(undefined);
+  describe("delete (soft delete)", () => {
+    it("deve desativar um Cliente e persistir via update", async () => {
+      const cliente = makeCliente();
+      mockRepository.findById.mockResolvedValue(cliente);
+      mockRepository.update.mockImplementation(async (c) => c);
 
       await service.delete("1");
 
-      expect(mockRepository.delete).toHaveBeenCalledWith("1");
+      expect(cliente.ativo).toBe(false);
+      expect(mockRepository.update).toHaveBeenCalledWith(cliente);
+      // Hard delete must NOT be used
+      expect(mockRepository.delete).not.toHaveBeenCalled();
     });
 
     it("deve lancar NotFoundException quando cliente nao encontrado", async () => {
