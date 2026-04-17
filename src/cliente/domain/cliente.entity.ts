@@ -15,6 +15,7 @@ export interface ReconstituteClienteProps {
   cpfCnpj: string;
   telefone: string;
   email?: string | null;
+  ativo: boolean;
 }
 
 export interface UpdateClienteProps {
@@ -29,6 +30,7 @@ export class Cliente {
   private _cpfCnpj: CpfCnpj;
   private _telefone: string;
   private _email?: string | null;
+  private _ativo: boolean;
 
   private constructor(
     props: {
@@ -36,6 +38,7 @@ export class Cliente {
       cpfCnpj: CpfCnpj;
       telefone: string;
       email?: string | null;
+      ativo: boolean;
     },
     id?: string,
   ) {
@@ -44,6 +47,7 @@ export class Cliente {
     this._cpfCnpj = props.cpfCnpj;
     this._telefone = props.telefone;
     this._email = props.email;
+    this._ativo = props.ativo;
   }
 
   static create(props: CreateClienteProps): Cliente {
@@ -55,6 +59,7 @@ export class Cliente {
       cpfCnpj: new CpfCnpj(props.cpfCnpj),
       telefone: props.telefone,
       email: props.email,
+      ativo: true,
     });
   }
 
@@ -65,6 +70,7 @@ export class Cliente {
         cpfCnpj: new CpfCnpj(props.cpfCnpj),
         telefone: props.telefone,
         email: props.email,
+        ativo: props.ativo,
       },
       props.id,
     );
@@ -84,6 +90,14 @@ export class Cliente {
     }
   }
 
+  deactivate(): void {
+    this._ativo = false;
+  }
+
+  activate(): void {
+    this._ativo = true;
+  }
+
   // Getters
   get nome(): string {
     return this._nome;
@@ -96,6 +110,9 @@ export class Cliente {
   }
   get email(): string | null | undefined {
     return this._email;
+  }
+  get ativo(): boolean {
+    return this._ativo;
   }
 
   // Validacoes

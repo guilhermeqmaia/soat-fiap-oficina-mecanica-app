@@ -72,6 +72,7 @@ describe("Cliente (Entity)", () => {
         cpfCnpj: "52998224725",
         telefone: "21988887777",
         email: null,
+        ativo: true,
       });
 
       expect(cliente.id).toBe("abc-123");
@@ -79,6 +80,42 @@ describe("Cliente (Entity)", () => {
       expect(cliente.cpfCnpj.value).toBe("52998224725");
       expect(cliente.telefone).toBe("21988887777");
       expect(cliente.email).toBeNull();
+      expect(cliente.ativo).toBe(true);
+    });
+
+    it("deve reconstituir um Cliente inativo", () => {
+      const cliente = Cliente.reconstitute({
+        id: "abc-123",
+        nome: "Maria Souza",
+        cpfCnpj: "52998224725",
+        telefone: "21988887777",
+        email: null,
+        ativo: false,
+      });
+
+      expect(cliente.ativo).toBe(false);
+    });
+  });
+
+  // ==================== ativo / soft delete ====================
+
+  describe("ativo (soft delete)", () => {
+    it("deve criar um Cliente ativo por padrao", () => {
+      const cliente = Cliente.create(validProps);
+      expect(cliente.ativo).toBe(true);
+    });
+
+    it("deve desativar um Cliente", () => {
+      const cliente = Cliente.create(validProps);
+      cliente.deactivate();
+      expect(cliente.ativo).toBe(false);
+    });
+
+    it("deve reativar um Cliente", () => {
+      const cliente = Cliente.create(validProps);
+      cliente.deactivate();
+      cliente.activate();
+      expect(cliente.ativo).toBe(true);
     });
   });
 

@@ -1,10 +1,11 @@
 import { InvalidCpfCnpjError } from "../errors/invalid-cpf-cnpj.error";
+import { normalizeCpfCnpj } from "./cpf-cnpj.utils";
 
 export class CpfCnpj {
   readonly value: string;
 
   constructor(value: string) {
-    const cleaned = value.replace(/\D/g, "");
+    const cleaned = normalizeCpfCnpj(value);
 
     if (!CpfCnpj.isValid(cleaned)) {
       throw new InvalidCpfCnpjError(value);
