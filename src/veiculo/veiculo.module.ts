@@ -16,6 +16,6 @@ import { ClienteModule } from "../cliente/cliente.module";
       useClass: PrismaVeiculoRepository,
     },
   ],
-  exports: [VeiculoService],
+  exports: [VeiculoService, VEICULO_REPOSITORY],
 })
 export class VeiculoModule {}

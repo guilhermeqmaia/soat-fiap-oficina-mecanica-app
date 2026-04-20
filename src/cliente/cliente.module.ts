@@ -13,6 +13,6 @@ import { CLIENTE_REPOSITORY } from "./domain/cliente.repository";
       useClass: PrismaClienteRepository,
     },
   ],
-  exports: [ClienteService],
+  exports: [ClienteService, CLIENTE_REPOSITORY],
 })
 export class ClienteModule {}

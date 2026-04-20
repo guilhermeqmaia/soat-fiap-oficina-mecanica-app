@@ -17,6 +17,8 @@ model Usuario {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  ordensDeServico OrdemDeServico[]
+
   @@map("usuario")
 }
 
@@ -53,6 +55,8 @@ model Produto {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
+  itensOrdemDeServico  ItemOrdemDeServicoProduto[]
+
   @@map("produto")
 }
 
@@ -66,6 +70,7 @@ model Cliente {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   veiculos  Veiculo[]
+  ordensDeServico OrdemDeServico[]
 
   @@map("cliente")
 }
@@ -82,8 +87,45 @@ model Veiculo {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   cliente   Cliente  @relation(fields: [clienteId], references: [id])
+  ordensDeServico OrdemDeServico[]
 
   @@map("veiculo")
+}
+
+model OrdemDeServico {
+  id                  String   @id @default(uuid())
+  numero              String   @unique
+  clienteId           String   @map("cliente_id")
+  veiculoId           String   @map("veiculo_id")
+  usuarioId           String?  @map("usuario_id")
+  descricaoInicial    String   @map("descricao_inicial")
+  diagnostico         String?
+  status              StatusOrdemDeServico @default(RECEBIDA)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  cliente   Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  veiculo   Veiculo  @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  itensProduto ItemOrdemDeServicoProduto[]
+
+  @@map("ordem_de_servico")
+}
+
+model ItemOrdemDeServicoProduto {
+  id               String   @id @default(uuid())
+  ordemDeServicoId String   @map("ordem_de_servico_id")
+  produtoId        String   @map("produto_id")
+  quantidade       Int
+  valorUnitario    Decimal  @map("valor_unitario")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  ordemDeServico OrdemDeServico @relation(fields: [ordemDeServicoId], references: [id], onDelete: Cascade)
+  produto        Produto        @relation(fields: [produtoId], references: [id])
+
+  @@unique([ordemDeServicoId, produtoId])
+  @@map("item_ordem_de_servico_produto")
 }
 
 enum StatusOrdemDeServico {
