@@ -1,6 +1,7 @@
 import { StatusOS, StatusOSVO } from './value-objects/status-os.vo';
 import { InvalidDescricaoError } from './errors/invalid-descricao.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
+import { OsNaoEmDiagnosticoError } from './errors/os-nao-em-diagnostico.error';
 
 export interface CreateOrdemDeServicoProps {
   clienteId: string;
@@ -16,6 +17,7 @@ export interface ReconstituteOrdemDeServicoProps {
   usuarioId: string | null;
   descricaoInicial: string;
   diagnostico: string | null;
+  diagnosticoAt?: Date | null;
   status: StatusOS;
   createdAt: Date;
   updatedAt: Date;
@@ -29,6 +31,7 @@ export class OrdemDeServico {
   private _usuarioId: string | null;
   private _descricaoInicial: string;
   private _diagnostico: string | null;
+  private _diagnosticoAt: Date | null;
   private _status: StatusOSVO;
   private _createdAt?: Date;
   private _updatedAt?: Date;
@@ -41,6 +44,7 @@ export class OrdemDeServico {
       usuarioId: string | null;
       descricaoInicial: string;
       diagnostico: string | null;
+      diagnosticoAt: Date | null;
       status: StatusOSVO;
       createdAt?: Date;
       updatedAt?: Date;
@@ -54,6 +58,7 @@ export class OrdemDeServico {
     this._usuarioId = props.usuarioId;
     this._descricaoInicial = props.descricaoInicial;
     this._diagnostico = props.diagnostico;
+    this._diagnosticoAt = props.diagnosticoAt;
     this._status = props.status;
     this._createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
@@ -71,6 +76,7 @@ export class OrdemDeServico {
       usuarioId: null,
       descricaoInicial: props.descricaoInicial,
       diagnostico: null,
+      diagnosticoAt: null,
       status: StatusOSVO.create(StatusOS.RECEBIDA),
     });
   }
@@ -84,6 +90,7 @@ export class OrdemDeServico {
         usuarioId: props.usuarioId,
         descricaoInicial: props.descricaoInicial,
         diagnostico: props.diagnostico,
+        diagnosticoAt: props.diagnosticoAt ?? null,
         status: StatusOSVO.create(props.status),
         createdAt: props.createdAt,
         updatedAt: props.updatedAt,
@@ -121,6 +128,24 @@ export class OrdemDeServico {
     }
     this._usuarioId = usuarioId;
     this._status = StatusOSVO.create(StatusOS.EM_DIAGNOSTICO);
+  }
+
+  adicionarDiagnostico(diagnostico: string): void {
+    if (!diagnostico || diagnostico.trim().length < 5) {
+      throw new InvalidDescricaoError(
+        'Diagnostico deve ter no minimo 5 caracteres',
+      );
+    }
+    if (diagnostico.length > 1000) {
+      throw new InvalidDescricaoError(
+        'Diagnostico nao pode exceder 1000 caracteres',
+      );
+    }
+    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
+      throw new OsNaoEmDiagnosticoError(this._status.toString());
+    }
+    this._diagnostico = diagnostico;
+    this._diagnosticoAt = new Date();
   }
 
   completarDiagnostico(diagnostico: string): void {
@@ -210,6 +235,10 @@ export class OrdemDeServico {
 
   get diagnostico(): string | null {
     return this._diagnostico;
+  }
+
+  get diagnosticoAt(): Date | null {
+    return this._diagnosticoAt;
   }
 
   get status(): StatusOS {

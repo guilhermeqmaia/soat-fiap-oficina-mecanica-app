@@ -319,6 +319,37 @@ describe('OrdemDeServicoService', () => {
     });
   });
 
+  describe('adicionarDiagnostico', () => {
+    it('should add diagnosis without changing status', async () => {
+      const osEntity = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+      osEntity.atribuirMecanico('usuario-789');
+
+      repository.findById.mockResolvedValue(osEntity);
+      repository.update.mockResolvedValue(osEntity);
+
+      const result = await service.adicionarDiagnostico(
+        'os-123',
+        'Pastilhas de freio desgastadas',
+      );
+
+      expect(result).toBeDefined();
+      expect(repository.findById).toHaveBeenCalledWith('os-123');
+      expect(repository.update).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if OS does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.adicionarDiagnostico('inexistent-os', 'Diagnostico valido'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('completarDiagnostico', () => {
     it('should complete diagnosis', async () => {
       const osEntity = OrdemDeServico.create({

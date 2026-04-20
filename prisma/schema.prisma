@@ -98,6 +98,7 @@ model OrdemDeServico {
   usuarioId           String?  @map("usuario_id")
   descricaoInicial    String   @map("descricao_inicial")
   diagnostico         String?
+  diagnosticoAt       DateTime? @map("diagnostico_at")
   status              StatusOrdemDeServico @default(RECEBIDA)
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")

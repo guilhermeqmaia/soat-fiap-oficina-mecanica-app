@@ -14,7 +14,7 @@ build/
 /src/generated/prisma
 
 # Test coverage
-/coverage
+coverage
 
 # Logs
 *.log

@@ -2,6 +2,15 @@ import { OrdemDeServico } from './ordem-de-servico.entity';
 import { StatusOS } from './value-objects/status-os.vo';
 import { InvalidDescricaoError } from './errors/invalid-descricao.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
+import { OsNaoEmDiagnosticoError } from './errors/os-nao-em-diagnostico.error';
+
+describe('InvalidDescricaoError default message', () => {
+  it('should use default message when none is provided', () => {
+    const error = new InvalidDescricaoError();
+    expect(error.message).toBe('Descricao invalida');
+    expect(error.name).toBe('InvalidDescricaoError');
+  });
+});
 
 describe('OrdemDeServico Entity', () => {
   describe('create', () => {
@@ -111,6 +120,89 @@ describe('OrdemDeServico Entity', () => {
 
       expect(() => os.atribuirMecanico('usuario-789')).toThrow(
         InvalidStatusTransitionError,
+      );
+    });
+  });
+
+  describe('adicionarDiagnostico', () => {
+    it('should add diagnosis and record diagnosticoAt without changing status', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+      os.atribuirMecanico('usuario-789');
+
+      const before = new Date();
+      os.adicionarDiagnostico('Pastilhas de freio desgastadas');
+      const after = new Date();
+
+      expect(os.diagnostico).toBe('Pastilhas de freio desgastadas');
+      expect(os.diagnosticoAt).not.toBeNull();
+      expect(os.diagnosticoAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(os.diagnosticoAt!.getTime()).toBeLessThanOrEqual(after.getTime());
+      expect(os.status).toBe(StatusOS.EM_DIAGNOSTICO);
+    });
+
+    it('should allow updating diagnosis while in EM_DIAGNOSTICO', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+      os.atribuirMecanico('usuario-789');
+
+      os.adicionarDiagnostico('Primeiro diagnostico texto');
+      os.adicionarDiagnostico('Diagnostico atualizado mais detalhado');
+
+      expect(os.diagnostico).toBe('Diagnostico atualizado mais detalhado');
+      expect(os.status).toBe(StatusOS.EM_DIAGNOSTICO);
+    });
+
+    it('should throw OsNaoEmDiagnosticoError when status is not EM_DIAGNOSTICO', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+
+      expect(() => os.adicionarDiagnostico('Diagnostico valido aqui')).toThrow(
+        OsNaoEmDiagnosticoError,
+      );
+    });
+
+    it('should throw InvalidDescricaoError if diagnostico is too short', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+      os.atribuirMecanico('usuario-789');
+
+      expect(() => os.adicionarDiagnostico('abc')).toThrow(InvalidDescricaoError);
+    });
+
+    it('should throw InvalidDescricaoError if diagnostico is empty', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+      os.atribuirMecanico('usuario-789');
+
+      expect(() => os.adicionarDiagnostico('')).toThrow(InvalidDescricaoError);
+    });
+
+    it('should throw InvalidDescricaoError if diagnostico exceeds max length', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+      os.atribuirMecanico('usuario-789');
+
+      expect(() => os.adicionarDiagnostico('a'.repeat(1001))).toThrow(
+        InvalidDescricaoError,
       );
     });
   });
@@ -310,6 +402,27 @@ describe('OrdemDeServico Entity', () => {
       expect(os.status).toBe(StatusOS.RECEBIDA);
       expect(os.usuarioId).toBeNull();
       expect(os.diagnostico).toBeNull();
+      expect(os.diagnosticoAt).toBeNull();
+    });
+
+    it('should expose createdAt and updatedAt via getters', () => {
+      const now = new Date();
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: null,
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: null,
+        diagnosticoAt: null,
+        status: StatusOS.RECEBIDA,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      expect(os.createdAt).toBe(now);
+      expect(os.updatedAt).toBe(now);
     });
   });
 });

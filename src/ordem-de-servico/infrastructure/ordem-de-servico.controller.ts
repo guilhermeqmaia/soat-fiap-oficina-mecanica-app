@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   NotFoundException,
@@ -27,6 +28,7 @@ import {
 } from '@nestjs/swagger';
 import { OrdemDeServicoService } from '../application/ordem-de-servico.service';
 import { CreateOrdemDeServicoDto } from './dto/create-ordem-de-servico.dto';
+import { AdicionarDiagnosticoDto } from './dto/adicionar-diagnostico.dto';
 import { CompletarDiagnosticoDto } from './dto/completar-diagnostico.dto';
 import { QueryOrdemDeServicoDto } from './dto/query-ordem-de-servico.dto';
 import { ClienteNotFoundError } from '../domain/errors/cliente-not-found.error';
@@ -34,6 +36,7 @@ import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
 import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mismatch.error';
 import { InvalidStatusTransitionError } from '../domain/errors/invalid-status-transition.error';
 import { InvalidDescricaoError } from '../domain/errors/invalid-descricao.error';
+import { OsNaoEmDiagnosticoError } from '../domain/errors/os-nao-em-diagnostico.error';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
 import { Role } from '../../auth/domain/role.enum';
 
@@ -106,6 +109,33 @@ export class OrdemDeServicoController {
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   async findById(@Param('id', ParseUUIDPipe) id: string) {
     return this.toResponse(await this.service.findById(id));
+  }
+
+  @Patch(':id/diagnostico')
+  @Roles(Role.MECANICO, Role.ADMIN)
+  @ApiOperation({ summary: 'Adicionar ou atualizar diagnostico da OS' })
+  @ApiOkResponse({ description: 'Diagnostico registrado com sucesso' })
+  @ApiNotFoundResponse({ description: 'OS nao encontrada' })
+  @ApiBadRequestResponse({
+    description: 'OS nao esta em diagnostico ou diagnostico invalido',
+  })
+  async adicionarDiagnostico(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdicionarDiagnosticoDto,
+  ) {
+    try {
+      return this.toResponse(
+        await this.service.adicionarDiagnostico(id, dto.diagnostico),
+      );
+    } catch (error) {
+      if (error instanceof OsNaoEmDiagnosticoError) {
+        throw new BadRequestException(error.message);
+      }
+      if (error instanceof InvalidDescricaoError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Post(':id/atribuir-mecanico')
@@ -264,6 +294,7 @@ export class OrdemDeServicoController {
       usuarioId: os.usuarioId,
       descricaoInicial: os.descricaoInicial,
       diagnostico: os.diagnostico,
+      diagnosticoAt: os.diagnosticoAt,
       status: os.status,
       createdAt: os.createdAt,
       updatedAt: os.updatedAt,

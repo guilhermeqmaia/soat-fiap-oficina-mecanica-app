@@ -23,6 +23,7 @@ export class PrismaOrdemDeServicoRepository
         usuarioId: os.usuarioId,
         descricaoInicial: os.descricaoInicial,
         diagnostico: os.diagnostico,
+        diagnosticoAt: os.diagnosticoAt,
         status: os.status,
       },
     });
@@ -76,6 +77,7 @@ export class PrismaOrdemDeServicoRepository
       data: {
         descricaoInicial: os.descricaoInicial,
         diagnostico: os.diagnostico,
+        diagnosticoAt: os.diagnosticoAt,
         status: os.status,
         usuarioId: os.usuarioId,
       },
@@ -105,6 +107,7 @@ export class PrismaOrdemDeServicoRepository
       usuarioId: data.usuarioId,
       descricaoInicial: data.descricaoInicial,
       diagnostico: data.diagnostico,
+      diagnosticoAt: data.diagnosticoAt ?? null,
       status: data.status as StatusOS,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,

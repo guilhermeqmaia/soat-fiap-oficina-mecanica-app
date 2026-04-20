@@ -76,6 +76,15 @@ export class OrdemDeServicoService {
     return this.repository.update(ordemDeServico);
   }
 
+  async adicionarDiagnostico(
+    id: string,
+    diagnostico: string,
+  ): Promise<OrdemDeServico> {
+    const ordemDeServico = await this.findById(id);
+    ordemDeServico.adicionarDiagnostico(diagnostico);
+    return this.repository.update(ordemDeServico);
+  }
+
   async completarDiagnostico(
     id: string,
     diagnostico: string,
