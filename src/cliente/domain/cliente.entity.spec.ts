@@ -1,6 +1,6 @@
 import { InvalidCpfCnpjError } from "./errors/invalid-cpf-cnpj.error";
-import { NomeRequiredError } from "./errors/nome-required.error";
-import { TelefoneRequiredError } from "./errors/telefone-required.error";
+import { NameRequiredError } from "./errors/name-required.error";
+import { PhoneRequiredError } from "./errors/phone-required.error";
 import { Cliente } from "./cliente.entity";
 
 describe("Cliente (Entity)", () => {
@@ -37,21 +37,21 @@ describe("Cliente (Entity)", () => {
       expect(cliente.cpfCnpj.isCnpj).toBe(true);
     });
 
-    it("deve lancar NomeRequiredError quando nome e vazio", () => {
+    it("deve lancar NameRequiredError quando nome e vazio", () => {
       expect(() => Cliente.create({ ...validProps, nome: "" })).toThrow(
-        NomeRequiredError,
+        NameRequiredError,
       );
     });
 
-    it("deve lancar NomeRequiredError quando nome e apenas espacos", () => {
+    it("deve lancar NameRequiredError quando nome e apenas espacos", () => {
       expect(() => Cliente.create({ ...validProps, nome: "   " })).toThrow(
-        NomeRequiredError,
+        NameRequiredError,
       );
     });
 
-    it("deve lancar TelefoneRequiredError quando telefone e vazio", () => {
+    it("deve lancar PhoneRequiredError quando telefone e vazio", () => {
       expect(() => Cliente.create({ ...validProps, telefone: "" })).toThrow(
-        TelefoneRequiredError,
+        PhoneRequiredError,
       );
     });
 
@@ -103,15 +103,15 @@ describe("Cliente (Entity)", () => {
       expect(cliente.email).toBe("novo@email.com");
     });
 
-    it("deve lancar NomeRequiredError ao atualizar com nome vazio", () => {
+    it("deve lancar NameRequiredError ao atualizar com nome vazio", () => {
       const cliente = Cliente.create(validProps);
-      expect(() => cliente.update({ nome: "" })).toThrow(NomeRequiredError);
+      expect(() => cliente.update({ nome: "" })).toThrow(NameRequiredError);
     });
 
-    it("deve lancar TelefoneRequiredError ao atualizar com telefone vazio", () => {
+    it("deve lancar PhoneRequiredError ao atualizar com telefone vazio", () => {
       const cliente = Cliente.create(validProps);
       expect(() => cliente.update({ telefone: "" })).toThrow(
-        TelefoneRequiredError,
+        PhoneRequiredError,
       );
     });
   });

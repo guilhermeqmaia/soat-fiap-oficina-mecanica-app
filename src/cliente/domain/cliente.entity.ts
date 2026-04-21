@@ -1,6 +1,6 @@
 import { CpfCnpj } from "./value-objects/cpf-cnpj.vo";
-import { NomeRequiredError } from "./errors/nome-required.error";
-import { TelefoneRequiredError } from "./errors/telefone-required.error";
+import { NameRequiredError } from "./errors/name-required.error";
+import { PhoneRequiredError } from "./errors/phone-required.error";
 
 export interface CreateClienteProps {
   nome: string;
@@ -101,13 +101,13 @@ export class Cliente {
   // Validacoes
   private static validateNome(nome: string): void {
     if (!nome || nome.trim().length === 0) {
-      throw new NomeRequiredError();
+      throw new NameRequiredError();
     }
   }
 
   private static validateTelefone(telefone: string): void {
     if (!telefone || telefone.trim().length === 0) {
-      throw new TelefoneRequiredError();
+      throw new PhoneRequiredError();
     }
   }
 }
