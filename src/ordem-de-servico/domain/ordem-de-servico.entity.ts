@@ -1,6 +1,9 @@
 import { StatusOS, StatusOSVO } from './value-objects/status-os.vo';
-import { InvalidDescricaoError } from './errors/invalid-descricao.error';
+import { ItemServicoOS } from './value-objects/item-servico-os.vo';
+import { InvalidDescriptionError } from './errors/invalid-description.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
+import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
+import { ServicoNotAddedError } from './errors/servico-not-added.error';
 
 export interface CreateOrdemDeServicoProps {
   clienteId: string;
@@ -19,6 +22,7 @@ export interface ReconstituteOrdemDeServicoProps {
   status: StatusOS;
   createdAt: Date;
   updatedAt: Date;
+  itensServico?: ItemServicoOS[];
 }
 
 export class OrdemDeServico {
@@ -30,6 +34,7 @@ export class OrdemDeServico {
   private _descricaoInicial: string;
   private _diagnostico: string | null;
   private _status: StatusOSVO;
+  private _itensServico: ItemServicoOS[];
   private _createdAt?: Date;
   private _updatedAt?: Date;
 
@@ -42,6 +47,7 @@ export class OrdemDeServico {
       descricaoInicial: string;
       diagnostico: string | null;
       status: StatusOSVO;
+      itensServico?: ItemServicoOS[];
       createdAt?: Date;
       updatedAt?: Date;
     },
@@ -55,6 +61,7 @@ export class OrdemDeServico {
     this._descricaoInicial = props.descricaoInicial;
     this._diagnostico = props.diagnostico;
     this._status = props.status;
+    this._itensServico = props.itensServico ?? [];
     this._createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
   }
@@ -85,6 +92,7 @@ export class OrdemDeServico {
         descricaoInicial: props.descricaoInicial,
         diagnostico: props.diagnostico,
         status: StatusOSVO.create(props.status),
+        itensServico: props.itensServico,
         createdAt: props.createdAt,
         updatedAt: props.updatedAt,
       },
@@ -94,12 +102,12 @@ export class OrdemDeServico {
 
   private static validateDescricaoInicial(descricao: string): void {
     if (!descricao || descricao.trim().length < 5) {
-      throw new InvalidDescricaoError(
+      throw new InvalidDescriptionError(
         'Descricao inicial deve ter no minimo 5 caracteres',
       );
     }
     if (descricao.length > 500) {
-      throw new InvalidDescricaoError(
+      throw new InvalidDescriptionError(
         'Descricao inicial nao pode exceder 500 caracteres',
       );
     }
@@ -127,12 +135,12 @@ export class OrdemDeServico {
 
   completarDiagnostico(diagnostico: string): void {
     if (!diagnostico || diagnostico.trim().length < 5) {
-      throw new InvalidDescricaoError(
+      throw new InvalidDescriptionError(
         'Diagnostico deve ter no minimo 5 caracteres',
       );
     }
     if (diagnostico.length > 1000) {
-      throw new InvalidDescricaoError(
+      throw new InvalidDescriptionError(
         'Diagnostico nao pode exceder 1000 caracteres',
       );
     }
@@ -144,6 +152,34 @@ export class OrdemDeServico {
     }
     this._diagnostico = diagnostico;
     this._status = StatusOSVO.create(StatusOS.AGUARDANDO_APROVACAO);
+  }
+
+  adicionarServico(item: ItemServicoOS): void {
+    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
+      throw new InvalidStatusTransitionError(
+        this._status.toString(),
+        'adicionar servico',
+      );
+    }
+    if (this._itensServico.some((i) => i.servicoId === item.servicoId)) {
+      throw new ServicoAlreadyAddedError(item.servicoId);
+    }
+    this._itensServico = [...this._itensServico, item];
+  }
+
+  removerServico(servicoId: string): void {
+    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
+      throw new InvalidStatusTransitionError(
+        this._status.toString(),
+        'remover servico',
+      );
+    }
+    if (!this._itensServico.some((i) => i.servicoId === servicoId)) {
+      throw new ServicoNotAddedError(servicoId);
+    }
+    this._itensServico = this._itensServico.filter(
+      (i) => i.servicoId !== servicoId,
+    );
   }
 
   aprovar(): void {
@@ -216,6 +252,14 @@ export class OrdemDeServico {
 
   get status(): StatusOS {
     return this._status.valor;
+  }
+
+  get itensServico(): ReadonlyArray<ItemServicoOS> {
+    return this._itensServico;
+  }
+
+  valorTotalServicos(): number {
+    return this._itensServico.reduce((sum, i) => sum + i.subtotal(), 0);
   }
 
   get createdAt(): Date | undefined {

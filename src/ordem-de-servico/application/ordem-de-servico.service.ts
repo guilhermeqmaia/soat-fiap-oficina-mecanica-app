@@ -12,9 +12,12 @@ import {
 import { ClienteNotFoundError } from '../domain/errors/cliente-not-found.error';
 import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
 import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mismatch.error';
-import { OsNaoPertenceAoClienteError } from '../domain/errors/os-nao-pertence-ao-cliente.error';
+import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
+import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
+import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { ClienteRepository, CLIENTE_REPOSITORY } from '../../cliente/domain/cliente.repository';
 import { VeiculoRepository, VEICULO_REPOSITORY } from '../../veiculo/domain/veiculo.repository';
+import { ServicoRepository, SERVICO_REPOSITORY } from '../../servico/domain/servico.repository';
 
 @Injectable()
 export class OrdemDeServicoService {
@@ -25,6 +28,8 @@ export class OrdemDeServicoService {
     private readonly clienteRepository: ClienteRepository,
     @Inject(VEICULO_REPOSITORY)
     private readonly veiculoRepository: VeiculoRepository,
+    @Inject(SERVICO_REPOSITORY)
+    private readonly servicoRepository: ServicoRepository,
   ) {}
 
   async create(props: CreateOrdemDeServicoProps): Promise<OrdemDeServico> {
@@ -111,7 +116,7 @@ export class OrdemDeServicoService {
       !cliente.email ||
       cliente.email.toLowerCase() !== emailCliente.toLowerCase()
     ) {
-      throw new OsNaoPertenceAoClienteError(ordemId);
+      throw new OsNotOwnedByClienteError(ordemId);
     }
   }
 
@@ -130,5 +135,30 @@ export class OrdemDeServicoService {
   async delete(id: string): Promise<void> {
     const ordemDeServico = await this.findById(id);
     await this.repository.delete(ordemDeServico.id);
+  }
+
+  async adicionarServico(
+    id: string,
+    servicoId: string,
+    quantidade: number,
+  ): Promise<OrdemDeServico> {
+    const ordemDeServico = await this.findById(id);
+    const servico = await this.servicoRepository.findById(servicoId);
+    if (!servico) {
+      throw new ServicoNotFoundInCatalogError(servicoId);
+    }
+    const item = new ItemServicoOS(
+      servicoId,
+      quantidade,
+      servico.precoBase.value,
+    );
+    ordemDeServico.adicionarServico(item);
+    return this.repository.update(ordemDeServico);
+  }
+
+  async removerServico(id: string, servicoId: string): Promise<OrdemDeServico> {
+    const ordemDeServico = await this.findById(id);
+    ordemDeServico.removerServico(servicoId);
+    return this.repository.update(ordemDeServico);
   }
 }

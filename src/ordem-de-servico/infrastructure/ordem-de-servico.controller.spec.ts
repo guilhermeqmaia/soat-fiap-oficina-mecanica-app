@@ -13,8 +13,8 @@ import { ClienteNotFoundError } from '../domain/errors/cliente-not-found.error';
 import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
 import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mismatch.error';
 import { InvalidStatusTransitionError } from '../domain/errors/invalid-status-transition.error';
-import { InvalidDescricaoError } from '../domain/errors/invalid-descricao.error';
-import { OsNaoPertenceAoClienteError } from '../domain/errors/os-nao-pertence-ao-cliente.error';
+import { InvalidDescriptionError } from '../domain/errors/invalid-description.error';
+import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
 import { Role } from '../../auth/domain/role.enum';
 import { Usuario } from '../../auth/domain/usuario.entity';
 
@@ -95,8 +95,8 @@ describe('OrdemDeServicoController', () => {
       await expect(controller.create(dto)).rejects.toThrow(ConflictException);
     });
 
-    it('should throw BadRequestException for InvalidDescricaoError', async () => {
-      mockService.create.mockRejectedValue(new InvalidDescricaoError('curta'));
+    it('should throw BadRequestException for InvalidDescriptionError', async () => {
+      mockService.create.mockRejectedValue(new InvalidDescriptionError('curta'));
       await expect(controller.create(dto)).rejects.toThrow(BadRequestException);
     });
 
@@ -218,9 +218,9 @@ describe('OrdemDeServicoController', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw BadRequestException for InvalidDescricaoError in diagnostico', async () => {
+    it('should throw BadRequestException for InvalidDescriptionError in diagnostico', async () => {
       mockService.completarDiagnostico.mockRejectedValue(
-        new InvalidDescricaoError('muito curto'),
+        new InvalidDescriptionError('muito curto'),
       );
       await expect(
         controller.completarDiagnostico('os-123', { diagnostico: 'ab' }),
@@ -278,9 +278,9 @@ describe('OrdemDeServicoController', () => {
       );
     });
 
-    it('should throw ForbiddenException for OsNaoPertenceAoClienteError', async () => {
+    it('should throw ForbiddenException for OsNotOwnedByClienteError', async () => {
       mockService.assertOsPertenceAoCliente.mockRejectedValue(
-        new OsNaoPertenceAoClienteError('os-123'),
+        new OsNotOwnedByClienteError('os-123'),
       );
 
       const clienteUser = Usuario.reconstitute({
@@ -378,9 +378,9 @@ describe('OrdemDeServicoController', () => {
       );
     });
 
-    it('should throw ForbiddenException for OsNaoPertenceAoClienteError in rejeitar', async () => {
+    it('should throw ForbiddenException for OsNotOwnedByClienteError in rejeitar', async () => {
       mockService.assertOsPertenceAoCliente.mockRejectedValue(
-        new OsNaoPertenceAoClienteError('os-123'),
+        new OsNotOwnedByClienteError('os-123'),
       );
 
       const clienteUser = Usuario.reconstitute({

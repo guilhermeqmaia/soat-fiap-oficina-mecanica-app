@@ -40,6 +40,8 @@ model Servico {
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
+  itensOrdemDeServico ItemOrdemDeServicoServico[]
+
   @@map("servico")
 }
 
@@ -106,7 +108,24 @@ model OrdemDeServico {
   veiculo   Veiculo  @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
   usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
 
+  itensServico ItemOrdemDeServicoServico[]
+
   @@map("ordem_de_servico")
+}
+
+model ItemOrdemDeServicoServico {
+  id               String   @id @default(uuid())
+  ordemDeServicoId String   @map("ordem_de_servico_id")
+  servicoId        String   @map("servico_id")
+  quantidade       Int
+  precoUnitario    Decimal  @map("preco_unitario")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  ordemDeServico OrdemDeServico @relation(fields: [ordemDeServicoId], references: [id], onDelete: Cascade)
+  servico        Servico        @relation(fields: [servicoId], references: [id])
+
+  @@unique([ordemDeServicoId, servicoId])
+  @@map("item_ordem_de_servico_servico")
 }
 
 enum StatusOrdemDeServico {

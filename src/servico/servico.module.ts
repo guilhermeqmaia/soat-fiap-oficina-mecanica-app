@@ -13,6 +13,6 @@ import { SERVICO_REPOSITORY } from './domain/servico.repository';
       useClass: PrismaServicoRepository,
     },
   ],
-  exports: [ServicoService],
+  exports: [ServicoService, SERVICO_REPOSITORY],
 })
 export class ServicoModule {}

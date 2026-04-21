@@ -26,6 +26,11 @@ const mockPrisma = {
     update: jest.fn(),
     delete: jest.fn(),
   },
+  itemOrdemDeServicoServico: {
+    deleteMany: jest.fn(),
+    createMany: jest.fn(),
+  },
+  $transaction: jest.fn(),
 };
 
 describe('PrismaOrdemDeServicoRepository', () => {
@@ -155,7 +160,19 @@ describe('PrismaOrdemDeServicoRepository', () => {
 
   describe('update', () => {
     it('should update and return OrdemDeServico', async () => {
-      mockPrisma.ordemDeServico.update.mockResolvedValue(dbRecord);
+      mockPrisma.$transaction.mockImplementation(async (cb: any) => {
+        const tx = {
+          ordemDeServico: {
+            update: jest.fn().mockResolvedValue(dbRecord),
+            findUnique: jest.fn().mockResolvedValue(dbRecord),
+          },
+          itemOrdemDeServicoServico: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+            createMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
+        };
+        return cb(tx);
+      });
 
       const os = OrdemDeServico.reconstitute({
         id: 'os-123',
@@ -173,7 +190,7 @@ describe('PrismaOrdemDeServicoRepository', () => {
       const result = await repository.update(os);
 
       expect(result).toBeInstanceOf(OrdemDeServico);
-      expect(mockPrisma.ordemDeServico.update).toHaveBeenCalled();
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
     });
   });
 

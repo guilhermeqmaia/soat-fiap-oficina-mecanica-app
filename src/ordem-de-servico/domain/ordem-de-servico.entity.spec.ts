@@ -1,7 +1,25 @@
 import { OrdemDeServico } from './ordem-de-servico.entity';
 import { StatusOS } from './value-objects/status-os.vo';
-import { InvalidDescricaoError } from './errors/invalid-descricao.error';
+import { ItemServicoOS } from './value-objects/item-servico-os.vo';
+import { InvalidDescriptionError } from './errors/invalid-description.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
+import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
+import { ServicoNotAddedError } from './errors/servico-not-added.error';
+import { InvalidQuantityError } from './errors/invalid-quantity.error';
+
+const reconstituteEmDiagnostico = () =>
+  OrdemDeServico.reconstitute({
+    id: 'os-123',
+    numero: 'OS-2026-00001',
+    clienteId: 'cliente-123',
+    veiculoId: 'veiculo-456',
+    usuarioId: 'usuario-789',
+    descricaoInicial: 'Cliente relata problemas no freio',
+    diagnostico: null,
+    status: StatusOS.EM_DIAGNOSTICO,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 
 describe('OrdemDeServico Entity', () => {
   describe('create', () => {
@@ -24,34 +42,34 @@ describe('OrdemDeServico Entity', () => {
       expect(os.numero).toMatch(/^OS-\d{4}-\d{10}-\d{4}$/);
     });
 
-    it('should throw InvalidDescricaoError if descricaoInicial is too short', () => {
+    it('should throw InvalidDescriptionError if descricaoInicial is too short', () => {
       const props = {
         clienteId: 'cliente-123',
         veiculoId: 'veiculo-456',
         descricaoInicial: 'abc',
       };
 
-      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescricaoError);
+      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescriptionError);
     });
 
-    it('should throw InvalidDescricaoError if descricaoInicial exceeds max length', () => {
+    it('should throw InvalidDescriptionError if descricaoInicial exceeds max length', () => {
       const props = {
         clienteId: 'cliente-123',
         veiculoId: 'veiculo-456',
         descricaoInicial: 'a'.repeat(501),
       };
 
-      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescricaoError);
+      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescriptionError);
     });
 
-    it('should throw InvalidDescricaoError if descricaoInicial is empty', () => {
+    it('should throw InvalidDescriptionError if descricaoInicial is empty', () => {
       const props = {
         clienteId: 'cliente-123',
         veiculoId: 'veiculo-456',
         descricaoInicial: '',
       };
 
-      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescricaoError);
+      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescriptionError);
     });
   });
 
@@ -139,7 +157,7 @@ describe('OrdemDeServico Entity', () => {
 
       os.atribuirMecanico('usuario-789');
 
-      expect(() => os.completarDiagnostico('abc')).toThrow(InvalidDescricaoError);
+      expect(() => os.completarDiagnostico('abc')).toThrow(InvalidDescriptionError);
     });
 
     it('should throw error if diagnostico exceeds max length', () => {
@@ -152,7 +170,7 @@ describe('OrdemDeServico Entity', () => {
       os.atribuirMecanico('usuario-789');
 
       expect(() => os.completarDiagnostico('a'.repeat(1001))).toThrow(
-        InvalidDescricaoError,
+        InvalidDescriptionError,
       );
     });
 
@@ -331,6 +349,99 @@ describe('OrdemDeServico Entity', () => {
 
       expect(os.createdAt).toBe(createdAt);
       expect(os.updatedAt).toBe(updatedAt);
+    });
+  });
+
+  describe('adicionarServico', () => {
+    it('should add service to OS and compute subtotal', () => {
+      const os = reconstituteEmDiagnostico();
+      const item = new ItemServicoOS('servico-1', 2, 50);
+
+      os.adicionarServico(item);
+
+      expect(os.itensServico).toHaveLength(1);
+      expect(os.itensServico[0].subtotal()).toBe(100);
+      expect(os.valorTotalServicos()).toBe(100);
+    });
+
+    it('should accumulate valor total across multiple services', () => {
+      const os = reconstituteEmDiagnostico();
+      os.adicionarServico(new ItemServicoOS('servico-1', 2, 50));
+      os.adicionarServico(new ItemServicoOS('servico-2', 1, 30));
+
+      expect(os.itensServico).toHaveLength(2);
+      expect(os.valorTotalServicos()).toBe(130);
+    });
+
+    it('should reject duplicate servicoId', () => {
+      const os = reconstituteEmDiagnostico();
+      os.adicionarServico(new ItemServicoOS('servico-1', 1, 10));
+
+      expect(() =>
+        os.adicionarServico(new ItemServicoOS('servico-1', 5, 10)),
+      ).toThrow(ServicoAlreadyAddedError);
+    });
+
+    it('should reject when OS is not EM_DIAGNOSTICO', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+
+      expect(() =>
+        os.adicionarServico(new ItemServicoOS('servico-1', 1, 10)),
+      ).toThrow(InvalidStatusTransitionError);
+    });
+
+    it('should reject quantidade zero or negative in the VO', () => {
+      expect(() => new ItemServicoOS('servico-1', 0, 10)).toThrow(
+        InvalidQuantityError,
+      );
+      expect(() => new ItemServicoOS('servico-1', -1, 10)).toThrow(
+        InvalidQuantityError,
+      );
+    });
+  });
+
+  describe('removerServico', () => {
+    it('should remove service and recompute total', () => {
+      const os = reconstituteEmDiagnostico();
+      os.adicionarServico(new ItemServicoOS('servico-1', 2, 50));
+      os.adicionarServico(new ItemServicoOS('servico-2', 1, 30));
+
+      os.removerServico('servico-1');
+
+      expect(os.itensServico).toHaveLength(1);
+      expect(os.itensServico[0].servicoId).toBe('servico-2');
+      expect(os.valorTotalServicos()).toBe(30);
+    });
+
+    it('should throw when service is not in OS', () => {
+      const os = reconstituteEmDiagnostico();
+
+      expect(() => os.removerServico('inexistente')).toThrow(
+        ServicoNotAddedError,
+      );
+    });
+
+    it('should reject when OS is not EM_DIAGNOSTICO', () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: 'pastilhas',
+        status: StatusOS.AGUARDANDO_APROVACAO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      expect(() => os.removerServico('servico-1')).toThrow(
+        InvalidStatusTransitionError,
+      );
     });
   });
 });

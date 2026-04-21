@@ -7,6 +7,9 @@ import {
 } from '../domain/ordem-de-servico.repository';
 import { OrdemDeServico } from '../domain/ordem-de-servico.entity';
 import { StatusOS } from '../domain/value-objects/status-os.vo';
+import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
+
+const INCLUDE_ITENS = { itensServico: true } as const;
 
 @Injectable()
 export class PrismaOrdemDeServicoRepository
@@ -25,6 +28,7 @@ export class PrismaOrdemDeServicoRepository
         diagnostico: os.diagnostico,
         status: os.status,
       },
+      include: INCLUDE_ITENS,
     });
     return this.toDomain(data);
   }
@@ -32,6 +36,7 @@ export class PrismaOrdemDeServicoRepository
   async findById(id: string): Promise<OrdemDeServico | null> {
     const data = await this.prisma.ordemDeServico.findUnique({
       where: { id },
+      include: INCLUDE_ITENS,
     });
     return data ? this.toDomain(data) : null;
   }
@@ -52,6 +57,7 @@ export class PrismaOrdemDeServicoRepository
         skip,
         take: params.limit ?? 10,
         orderBy: { createdAt: 'desc' },
+        include: INCLUDE_ITENS,
       }),
       this.prisma.ordemDeServico.count({ where }),
     ]);
@@ -67,19 +73,39 @@ export class PrismaOrdemDeServicoRepository
   async findByNumero(numero: string): Promise<OrdemDeServico | null> {
     const data = await this.prisma.ordemDeServico.findUnique({
       where: { numero },
+      include: INCLUDE_ITENS,
     });
     return data ? this.toDomain(data) : null;
   }
 
   async update(os: OrdemDeServico): Promise<OrdemDeServico> {
-    const data = await this.prisma.ordemDeServico.update({
-      where: { id: os.id },
-      data: {
-        descricaoInicial: os.descricaoInicial,
-        diagnostico: os.diagnostico,
-        status: os.status,
-        usuarioId: os.usuarioId,
-      },
+    const data = await this.prisma.$transaction(async (tx) => {
+      await tx.ordemDeServico.update({
+        where: { id: os.id },
+        data: {
+          descricaoInicial: os.descricaoInicial,
+          diagnostico: os.diagnostico,
+          status: os.status,
+          usuarioId: os.usuarioId,
+        },
+      });
+      await tx.itemOrdemDeServicoServico.deleteMany({
+        where: { ordemDeServicoId: os.id },
+      });
+      if (os.itensServico.length > 0) {
+        await tx.itemOrdemDeServicoServico.createMany({
+          data: os.itensServico.map((item) => ({
+            ordemDeServicoId: os.id as string,
+            servicoId: item.servicoId,
+            quantidade: item.quantidade,
+            precoUnitario: item.precoUnitario,
+          })),
+        });
+      }
+      return tx.ordemDeServico.findUnique({
+        where: { id: os.id },
+        include: INCLUDE_ITENS,
+      });
     });
     return this.toDomain(data);
   }
@@ -98,6 +124,10 @@ export class PrismaOrdemDeServicoRepository
   }
 
   private toDomain(data: any): OrdemDeServico {
+    const itensServico: ItemServicoOS[] = (data.itensServico ?? []).map(
+      (i: any) =>
+        new ItemServicoOS(i.servicoId, i.quantidade, Number(i.precoUnitario)),
+    );
     return OrdemDeServico.reconstitute({
       id: data.id,
       numero: data.numero,
@@ -109,6 +139,7 @@ export class PrismaOrdemDeServicoRepository
       status: data.status as StatusOS,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
+      itensServico,
     });
   }
 }

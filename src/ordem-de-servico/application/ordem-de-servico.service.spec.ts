@@ -8,9 +8,12 @@ import {
 import { ClienteNotFoundError } from '../domain/errors/cliente-not-found.error';
 import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
 import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mismatch.error';
-import { OsNaoPertenceAoClienteError } from '../domain/errors/os-nao-pertence-ao-cliente.error';
+import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
+import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
+import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
 import { CLIENTE_REPOSITORY, ClienteRepository } from '../../cliente/domain/cliente.repository';
 import { VEICULO_REPOSITORY, VeiculoRepository } from '../../veiculo/domain/veiculo.repository';
+import { SERVICO_REPOSITORY, ServicoRepository } from '../../servico/domain/servico.repository';
 import { OrdemDeServico } from '../domain/ordem-de-servico.entity';
 import { StatusOS } from '../domain/value-objects/status-os.vo';
 
@@ -19,6 +22,7 @@ describe('OrdemDeServicoService', () => {
   let repository: jest.Mocked<OrdemDeServicoRepository>;
   let clienteRepository: jest.Mocked<ClienteRepository>;
   let veiculoRepository: jest.Mocked<VeiculoRepository>;
+  let servicoRepository: jest.Mocked<ServicoRepository>;
 
   beforeEach(async () => {
     const mockOrdemRepository = {
@@ -50,6 +54,15 @@ describe('OrdemDeServicoService', () => {
       findByClienteId: jest.fn(),
     };
 
+    const mockServicoRepository = {
+      create: jest.fn(),
+      findById: jest.fn(),
+      findAll: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      existsByNome: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdemDeServicoService,
@@ -65,6 +78,10 @@ describe('OrdemDeServicoService', () => {
           provide: VEICULO_REPOSITORY,
           useValue: mockVeiculoRepository,
         },
+        {
+          provide: SERVICO_REPOSITORY,
+          useValue: mockServicoRepository,
+        },
       ],
     }).compile();
 
@@ -77,6 +94,9 @@ describe('OrdemDeServicoService', () => {
     );
     veiculoRepository = module.get<jest.Mocked<VeiculoRepository>>(
       VEICULO_REPOSITORY,
+    );
+    servicoRepository = module.get<jest.Mocked<ServicoRepository>>(
+      SERVICO_REPOSITORY,
     );
   });
 
@@ -499,7 +519,7 @@ describe('OrdemDeServicoService', () => {
       ).resolves.toBeUndefined();
     });
 
-    it('should throw OsNaoPertenceAoClienteError when cliente is null', async () => {
+    it('should throw OsNotOwnedByClienteError when cliente is null', async () => {
       const os = makeOs();
 
       repository.findById.mockResolvedValue(os);
@@ -507,10 +527,10 @@ describe('OrdemDeServicoService', () => {
 
       await expect(
         service.assertOsPertenceAoCliente('os-123', 'joao@email.com'),
-      ).rejects.toThrow(OsNaoPertenceAoClienteError);
+      ).rejects.toThrow(OsNotOwnedByClienteError);
     });
 
-    it('should throw OsNaoPertenceAoClienteError when cliente has no email', async () => {
+    it('should throw OsNotOwnedByClienteError when cliente has no email', async () => {
       const os = makeOs();
       const cliente: any = { id: 'cliente-123', email: null };
 
@@ -519,10 +539,10 @@ describe('OrdemDeServicoService', () => {
 
       await expect(
         service.assertOsPertenceAoCliente('os-123', 'joao@email.com'),
-      ).rejects.toThrow(OsNaoPertenceAoClienteError);
+      ).rejects.toThrow(OsNotOwnedByClienteError);
     });
 
-    it('should throw OsNaoPertenceAoClienteError when email does not match', async () => {
+    it('should throw OsNotOwnedByClienteError when email does not match', async () => {
       const os = makeOs();
       const cliente: any = { id: 'cliente-123', email: 'outro@email.com' };
 
@@ -531,7 +551,94 @@ describe('OrdemDeServicoService', () => {
 
       await expect(
         service.assertOsPertenceAoCliente('os-123', 'joao@email.com'),
-      ).rejects.toThrow(OsNaoPertenceAoClienteError);
+      ).rejects.toThrow(OsNotOwnedByClienteError);
+    });
+  });
+
+  describe('adicionarServico', () => {
+    const makeOsEmDiagnostico = () =>
+      OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: null,
+        status: StatusOS.EM_DIAGNOSTICO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+    it('should add service using snapshot of current precoBase', async () => {
+      const os = makeOsEmDiagnostico();
+      const servico: any = { id: 'servico-1', precoBase: { value: 75 } };
+
+      repository.findById.mockResolvedValue(os);
+      servicoRepository.findById.mockResolvedValue(servico);
+      repository.update.mockResolvedValue(os);
+
+      await service.adicionarServico('os-123', 'servico-1', 2);
+
+      expect(servicoRepository.findById).toHaveBeenCalledWith('servico-1');
+      expect(os.itensServico).toHaveLength(1);
+      expect(os.itensServico[0].precoUnitario).toBe(75);
+      expect(os.valorTotalServicos()).toBe(150);
+      expect(repository.update).toHaveBeenCalledWith(os);
+    });
+
+    it('should throw when servico is not in catalog', async () => {
+      const os = makeOsEmDiagnostico();
+
+      repository.findById.mockResolvedValue(os);
+      servicoRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.adicionarServico('os-123', 'servico-x', 1),
+      ).rejects.toThrow(ServicoNotFoundInCatalogError);
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('should propagate ServicoAlreadyAddedError from aggregate', async () => {
+      const os = makeOsEmDiagnostico();
+      const servico: any = { id: 'servico-1', precoBase: { value: 10 } };
+
+      repository.findById.mockResolvedValue(os);
+      servicoRepository.findById.mockResolvedValue(servico);
+      repository.update.mockResolvedValue(os);
+
+      await service.adicionarServico('os-123', 'servico-1', 1);
+      await expect(
+        service.adicionarServico('os-123', 'servico-1', 1),
+      ).rejects.toThrow(ServicoAlreadyAddedError);
+    });
+  });
+
+  describe('removerServico', () => {
+    it('should remove service and persist', async () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: null,
+        status: StatusOS.EM_DIAGNOSTICO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const servico: any = { id: 'servico-1', precoBase: { value: 10 } };
+
+      repository.findById.mockResolvedValue(os);
+      servicoRepository.findById.mockResolvedValue(servico);
+      repository.update.mockResolvedValue(os);
+      await service.adicionarServico('os-123', 'servico-1', 1);
+
+      await service.removerServico('os-123', 'servico-1');
+
+      expect(os.itensServico).toHaveLength(0);
+      expect(repository.update).toHaveBeenCalledTimes(2);
     });
   });
 });
