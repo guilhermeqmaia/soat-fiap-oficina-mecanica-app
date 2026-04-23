@@ -65,6 +65,8 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
           scanners: vuln,secret,misconfig
+          # node_modules contem Dockerfiles de deps (bcrypt, cpu-features) que nao rodamos
+          skip-dirs: node_modules,dist,coverage
 
   # ---------------------------------------------------------------------------
   # 3. SonarQube scan (server ephemeral como service container, artifact JSON)
