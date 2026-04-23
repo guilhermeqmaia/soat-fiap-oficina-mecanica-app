@@ -9,6 +9,10 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
+# Executa como usuario nao-root (OWASP A05 - Security Misconfiguration)
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3000
 
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
