@@ -133,15 +133,40 @@ jobs:
       - name: Change default admin password and generate token
         id: sonar_token
         run: |
+          set -e
+
           # Primeiro login: muda senha padrao admin/admin
-          curl -s -u admin:admin -X POST \
-            "http://localhost:9000/api/users/change_password?login=admin&previousPassword=admin&password=admin12345"
+          PWD_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u admin:admin -X POST \
+            "http://localhost:9000/api/users/change_password?login=admin&previousPassword=admin&password=admin12345")
+          echo "Change password HTTP status: $PWD_STATUS"
+          if [[ "$PWD_STATUS" != "204" && "$PWD_STATUS" != "200" ]]; then
+            echo "Falha ao alterar senha do admin (HTTP $PWD_STATUS)" >&2
+            exit 1
+          fi
 
           # Gera token para o scanner
-          TOKEN=$(curl -s -u admin:admin12345 -X POST \
-            "http://localhost:9000/api/user_tokens/generate?name=ci-$(date +%s)" \
-            | grep -oE '"token":"[^"]+"' | cut -d'"' -f4)
+          TOKEN_JSON=$(curl -s -u admin:admin12345 -X POST \
+            "http://localhost:9000/api/user_tokens/generate?name=ci-$(date +%s)")
+          echo "Token response length: ${#TOKEN_JSON}"
+
+          TOKEN=$(echo "$TOKEN_JSON" | jq -r '.token // empty')
+          if [[ -z "$TOKEN" ]]; then
+            echo "Falha ao gerar token. Resposta: $TOKEN_JSON" >&2
+            exit 1
+          fi
+          echo "Token gerado com sucesso (length=${#TOKEN})"
+
+          # Confirma que o token funciona antes de passar adiante
+          AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "$TOKEN:" \
+            "http://localhost:9000/api/authentication/validate")
+          echo "Token validation HTTP status: $AUTH_STATUS"
+          if [[ "$AUTH_STATUS" != "200" ]]; then
+            echo "Token nao valida (HTTP $AUTH_STATUS)" >&2
+            exit 1
+          fi
+
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::$TOKEN"
 
       - name: Run SonarScanner CLI
         uses: sonarsource/sonarqube-scan-action@v4
