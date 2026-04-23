@@ -163,4 +163,39 @@ describe('PrismaVeiculoRepository', () => {
       expect(result).toHaveLength(0);
     });
   });
+
+  describe('update', () => {
+    it('should update and return Veiculo', async () => {
+      const updated = { ...dbRecord, marca: 'Honda' };
+      mockPrisma.veiculo.update.mockResolvedValue(updated);
+
+      const veiculo = Veiculo.reconstitute({
+        id: 'abc-123',
+        placa: 'ABC1D23',
+        marca: 'Honda',
+        modelo: 'Civic',
+        ano: 2024,
+        clienteId: 'cliente-uuid-123',
+        ativo: true,
+      });
+
+      const result = await repository.update(veiculo);
+
+      expect(result).toBeInstanceOf(Veiculo);
+      expect(result.marca).toBe('Honda');
+      expect(mockPrisma.veiculo.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('delete', () => {
+    it('should delete Veiculo by id', async () => {
+      mockPrisma.veiculo.delete.mockResolvedValue(dbRecord);
+
+      await repository.delete('abc-123');
+
+      expect(mockPrisma.veiculo.delete).toHaveBeenCalledWith({
+        where: { id: 'abc-123' },
+      });
+    });
+  });
 });

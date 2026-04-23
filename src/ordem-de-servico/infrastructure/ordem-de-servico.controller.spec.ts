@@ -15,6 +15,11 @@ import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mi
 import { InvalidStatusTransitionError } from '../domain/errors/invalid-status-transition.error';
 import { InvalidDescriptionError } from '../domain/errors/invalid-description.error';
 import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
+import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
+import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
+import { ServicoNotAddedError } from '../domain/errors/servico-not-added.error';
+import { InvalidQuantityError } from '../domain/errors/invalid-quantity.error';
+import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { Role } from '../../auth/domain/role.enum';
 import { Usuario } from '../../auth/domain/usuario.entity';
 
@@ -31,6 +36,20 @@ const mockOs = OrdemDeServico.reconstitute({
   updatedAt: new Date('2026-01-01'),
 });
 
+const mockOsWithServicos = OrdemDeServico.reconstitute({
+  id: 'os-123',
+  numero: 'OS-2026-00001',
+  clienteId: 'cliente-123',
+  veiculoId: 'veiculo-456',
+  usuarioId: 'user-789',
+  descricaoInicial: 'Cliente relata problemas no freio',
+  diagnostico: null,
+  status: StatusOS.EM_DIAGNOSTICO,
+  createdAt: new Date('2026-01-01'),
+  updatedAt: new Date('2026-01-01'),
+  itensServico: [new ItemServicoOS('servico-abc', 2, 100)],
+});
+
 const mockService = {
   create: jest.fn(),
   findAll: jest.fn(),
@@ -42,6 +61,8 @@ const mockService = {
   rejeitarOrcamento: jest.fn(),
   finalizarExecucao: jest.fn(),
   entregar: jest.fn(),
+  adicionarServico: jest.fn(),
+  removerServico: jest.fn(),
   delete: jest.fn(),
 };
 
@@ -482,6 +503,91 @@ describe('OrdemDeServicoController', () => {
     it('should rethrow unknown errors in entregar', async () => {
       mockService.entregar.mockRejectedValue(new Error('unexpected'));
       await expect(controller.entregar('os-123')).rejects.toThrow('unexpected');
+    });
+  });
+
+  // ==================== POST /ordens-servico/:id/servicos ====================
+
+  describe('adicionarServico', () => {
+    const dto = { servicoId: 'servico-abc', quantidade: 2 };
+
+    it('should add servico to OS and return response with itensServico', async () => {
+      mockService.adicionarServico.mockResolvedValue(mockOsWithServicos);
+
+      const result = await controller.adicionarServico('os-123', dto);
+
+      expect(result).toBeDefined();
+      expect(result.itensServico).toHaveLength(1);
+      expect(result.itensServico[0].subtotal).toBe(200);
+      expect(mockService.adicionarServico).toHaveBeenCalledWith('os-123', 'servico-abc', 2);
+    });
+
+    it('should throw NotFoundException for ServicoNotFoundInCatalogError', async () => {
+      mockService.adicionarServico.mockRejectedValue(
+        new ServicoNotFoundInCatalogError('servico-abc'),
+      );
+      await expect(controller.adicionarServico('os-123', dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ConflictException for ServicoAlreadyAddedError', async () => {
+      mockService.adicionarServico.mockRejectedValue(
+        new ServicoAlreadyAddedError('servico-abc'),
+      );
+      await expect(controller.adicionarServico('os-123', dto)).rejects.toThrow(ConflictException);
+    });
+
+    it('should throw BadRequestException for InvalidStatusTransitionError in adicionarServico', async () => {
+      mockService.adicionarServico.mockRejectedValue(
+        new InvalidStatusTransitionError(StatusOS.RECEBIDA, StatusOS.EM_EXECUCAO),
+      );
+      await expect(controller.adicionarServico('os-123', dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException for InvalidQuantityError', async () => {
+      mockService.adicionarServico.mockRejectedValue(new InvalidQuantityError(0));
+      await expect(controller.adicionarServico('os-123', dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should rethrow unknown errors in adicionarServico', async () => {
+      mockService.adicionarServico.mockRejectedValue(new Error('unexpected'));
+      await expect(controller.adicionarServico('os-123', dto)).rejects.toThrow('unexpected');
+    });
+  });
+
+  // ==================== DELETE /ordens-servico/:id/servicos/:servicoId ====================
+
+  describe('removerServico', () => {
+    it('should remove servico from OS successfully', async () => {
+      mockService.removerServico.mockResolvedValue(undefined);
+
+      await controller.removerServico('os-123', 'servico-abc');
+
+      expect(mockService.removerServico).toHaveBeenCalledWith('os-123', 'servico-abc');
+    });
+
+    it('should throw NotFoundException for ServicoNotAddedError', async () => {
+      mockService.removerServico.mockRejectedValue(
+        new ServicoNotAddedError('servico-abc'),
+      );
+      await expect(
+        controller.removerServico('os-123', 'servico-abc'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException for InvalidStatusTransitionError in removerServico', async () => {
+      mockService.removerServico.mockRejectedValue(
+        new InvalidStatusTransitionError(StatusOS.RECEBIDA, StatusOS.EM_EXECUCAO),
+      );
+      await expect(
+        controller.removerServico('os-123', 'servico-abc'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should rethrow unknown errors in removerServico', async () => {
+      mockService.removerServico.mockRejectedValue(new Error('unexpected'));
+      await expect(
+        controller.removerServico('os-123', 'servico-abc'),
+      ).rejects.toThrow('unexpected');
     });
   });
 

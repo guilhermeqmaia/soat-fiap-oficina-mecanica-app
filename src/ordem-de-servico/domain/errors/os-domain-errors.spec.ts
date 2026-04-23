@@ -1,5 +1,6 @@
 import { OsNotOwnedByClienteError } from './os-not-owned-by-cliente.error';
 import { InvalidDescriptionError } from './invalid-description.error';
+import { InvalidPriceError } from './invalid-price.error';
 
 describe('OS Domain Errors', () => {
   describe('OsNotOwnedByClienteError', () => {
@@ -21,6 +22,15 @@ describe('OS Domain Errors', () => {
     it('should use default message when no argument provided', () => {
       const error = new InvalidDescriptionError();
       expect(error.message).toBe('Descricao invalida');
+    });
+  });
+
+  describe('InvalidPriceError', () => {
+    it('should create error with correct message and name', () => {
+      const error = new InvalidPriceError(-5);
+      expect(error.message).toContain('-5');
+      expect(error.name).toBe('InvalidPriceError');
+      expect(error).toBeInstanceOf(Error);
     });
   });
 });

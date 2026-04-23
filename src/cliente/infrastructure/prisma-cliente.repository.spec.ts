@@ -134,4 +134,59 @@ describe('PrismaClienteRepository', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('create', () => {
+    it('should persist and return Cliente', async () => {
+      mockPrisma.cliente.create.mockResolvedValue(dbRecord);
+
+      const { Cliente } = await import('../domain/cliente.entity');
+      const cliente = Cliente.reconstitute({
+        id: 'abc-123',
+        nome: 'João da Silva',
+        cpfCnpj: '52998224725',
+        telefone: '11999999999',
+        email: 'joao@example.com',
+      });
+
+      const result = await repository.create(cliente);
+
+      expect(result).not.toBeNull();
+      expect(result.nome).toBe('João da Silva');
+      expect(mockPrisma.cliente.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('update', () => {
+    it('should update and return Cliente', async () => {
+      const updated = { ...dbRecord, telefone: '11888888888' };
+      mockPrisma.cliente.update.mockResolvedValue(updated);
+
+      const { Cliente } = await import('../domain/cliente.entity');
+      const cliente = Cliente.reconstitute({
+        id: 'abc-123',
+        nome: 'João da Silva',
+        cpfCnpj: '52998224725',
+        telefone: '11888888888',
+        email: 'joao@example.com',
+      });
+
+      const result = await repository.update(cliente);
+
+      expect(result).not.toBeNull();
+      expect(result.telefone).toBe('11888888888');
+      expect(mockPrisma.cliente.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('delete', () => {
+    it('should delete Cliente by id', async () => {
+      mockPrisma.cliente.delete.mockResolvedValue(dbRecord);
+
+      await repository.delete('abc-123');
+
+      expect(mockPrisma.cliente.delete).toHaveBeenCalledWith({
+        where: { id: 'abc-123' },
+      });
+    });
+  });
 });

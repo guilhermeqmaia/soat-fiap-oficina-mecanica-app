@@ -17,6 +17,13 @@ const dbRecord = {
   updatedAt: new Date('2026-01-01'),
 };
 
+const dbRecordWithItens = {
+  ...dbRecord,
+  itensServico: [
+    { servicoId: 'serv-abc', quantidade: 2, precoUnitario: 150 },
+  ],
+};
+
 const mockPrisma = {
   ordemDeServico: {
     create: jest.fn(),
@@ -83,6 +90,16 @@ describe('PrismaOrdemDeServicoRepository', () => {
       const result = await repository.findById('nonexistent');
 
       expect(result).toBeNull();
+    });
+
+    it('should map itensServico when present', async () => {
+      mockPrisma.ordemDeServico.findUnique.mockResolvedValue(dbRecordWithItens);
+
+      const result = await repository.findById('os-123');
+
+      expect(result).toBeInstanceOf(OrdemDeServico);
+      expect(result!.itensServico).toHaveLength(1);
+      expect(result!.itensServico[0].servicoId).toBe('serv-abc');
     });
   });
 
@@ -191,6 +208,47 @@ describe('PrismaOrdemDeServicoRepository', () => {
 
       expect(result).toBeInstanceOf(OrdemDeServico);
       expect(mockPrisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should call createMany when OS has itensServico', async () => {
+      let createManyCalled = false;
+
+      mockPrisma.$transaction.mockImplementation(async (cb: any) => {
+        const tx = {
+          ordemDeServico: {
+            update: jest.fn().mockResolvedValue(dbRecordWithItens),
+            findUnique: jest.fn().mockResolvedValue(dbRecordWithItens),
+          },
+          itemOrdemDeServicoServico: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+            createMany: jest.fn().mockImplementation(() => {
+              createManyCalled = true;
+              return Promise.resolve({ count: 1 });
+            }),
+          },
+        };
+        return cb(tx);
+      });
+
+      const { ItemServicoOS } = await import('../domain/value-objects/item-servico-os.vo');
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'user-789',
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: null,
+        status: StatusOS.EM_DIAGNOSTICO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        itensServico: [new ItemServicoOS('serv-abc', 2, 150)],
+      });
+
+      const result = await repository.update(os);
+
+      expect(result).toBeInstanceOf(OrdemDeServico);
+      expect(createManyCalled).toBe(true);
     });
   });
 

@@ -1,15 +1,26 @@
 import type { Config } from 'jest';
 
 const config: Config = {
-  moduleFileExtensions: ['js', 'json', 'ts'],
-  rootDir: 'src',
-  testRegex: '.*\\.spec\\.ts$',
-  transform: {
-    '^.+\\.ts$': 'ts-jest',
-  },
-  collectCoverageFrom: ['**/*.ts', '!**/generated/**', '!main.ts'],
-  coverageDirectory: '../coverage',
-  testEnvironment: 'node',
+  projects: [
+    {
+      displayName: 'unit',
+      moduleFileExtensions: ['js', 'json', 'ts'],
+      rootDir: 'src',
+      testRegex: '^(?!.*\\.(integration|e2e)\\.spec\\.ts$).*\\.spec\\.ts$',
+      transform: { '^.+\\.ts$': 'ts-jest' },
+      collectCoverage: false,
+      testEnvironment: 'node',
+    },
+    {
+      displayName: 'integration',
+      moduleFileExtensions: ['js', 'json', 'ts'],
+      rootDir: 'src',
+      testRegex: '.*\\.(integration|e2e)\\.spec\\.ts$',
+      transform: { '^.+\\.ts$': 'ts-jest' },
+      collectCoverage: false,
+      testEnvironment: 'node',
+    },
+  ],
 };
 
 export default config;
