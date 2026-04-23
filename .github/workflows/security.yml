@@ -1,0 +1,180 @@
+name: Security & Quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Testes unitarios + cobertura (gate 80%)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests + Coverage (gate 80%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Sonar precisa do historico completo pra blame
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Run unit tests with coverage
+        run: npm run test:unit:cov
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/unit/lcov.info
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 2. Security scans (OWASP Top 10 via Semgrep + npm audit + Trivy)
+  #    Falha em high/critical
+  # ---------------------------------------------------------------------------
+  security:
+    name: Security scans (Semgrep OWASP + npm audit + Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Semgrep com ruleset OWASP Top 10 (publico, sem login)
+      - name: Semgrep OWASP Top 10
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/owasp-top-ten
+
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
+
+      - name: Trivy filesystem scan (deps + secrets + misconfig)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          scanners: vuln,secret,misconfig
+
+  # ---------------------------------------------------------------------------
+  # 3. SonarQube scan (server ephemeral como service container, artifact JSON)
+  #    Nao bloqueia o PR (sem dashboard persistente); serve como prova de pipeline
+  # ---------------------------------------------------------------------------
+  sonar:
+    name: SonarQube analysis
+    runs-on: ubuntu-latest
+    needs: test  # reaproveita lcov
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: sonar
+          POSTGRES_PASSWORD: sonar
+          POSTGRES_DB: sonar
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd="pg_isready -U sonar"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      sonarqube:
+        image: sonarqube:community
+        env:
+          SONAR_JDBC_URL: jdbc:postgresql://postgres:5432/sonar
+          SONAR_JDBC_USERNAME: sonar
+          SONAR_JDBC_PASSWORD: sonar
+        ports: ['9000:9000']
+        options: >-
+          --health-cmd="wget -q -O - http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=30
+          --health-start-period=60s
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/unit
+
+      - name: Wait for SonarQube ready
+        run: |
+          for i in {1..60}; do
+            status=$(curl -s http://localhost:9000/api/system/status | grep -oE '"status":"[A-Z]+"' || true)
+            echo "SonarQube status: $status"
+            if [[ "$status" == '"status":"UP"' ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+      - name: Change default admin password and generate token
+        id: sonar_token
+        run: |
+          # Primeiro login: muda senha padrao admin/admin
+          curl -s -u admin:admin -X POST \
+            "http://localhost:9000/api/users/change_password?login=admin&previousPassword=admin&password=admin12345"
+
+          # Gera token para o scanner
+          TOKEN=$(curl -s -u admin:admin12345 -X POST \
+            "http://localhost:9000/api/user_tokens/generate?name=ci-$(date +%s)" \
+            | grep -oE '"token":"[^"]+"' | cut -d'"' -f4)
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run SonarScanner CLI
+        uses: sonarsource/sonarqube-scan-action@v4
+        env:
+          SONAR_HOST_URL: http://localhost:9000
+          SONAR_TOKEN: ${{ steps.sonar_token.outputs.token }}
+
+      - name: Export Sonar issues report (OWASP tagged)
+        if: always()
+        run: |
+          mkdir -p sonar-report
+          curl -s -u admin:admin12345 \
+            "http://localhost:9000/api/issues/search?projects=tech-challenge&tags=owasp-top10&ps=500" \
+            > sonar-report/owasp-issues.json || true
+          curl -s -u admin:admin12345 \
+            "http://localhost:9000/api/measures/component?component=tech-challenge&metricKeys=bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density" \
+            > sonar-report/measures.json || true
+
+      - name: Upload Sonar report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-report
+          path: sonar-report/
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 4. Dependency review (so em PR): bloqueia PR que introduz dep vulneravel
+  # ---------------------------------------------------------------------------
+  dependency-review:
+    name: Dependency review (PR only)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
