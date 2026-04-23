@@ -57,7 +57,7 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Trivy filesystem scan (deps + secrets + misconfig)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -168,15 +168,8 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # 4. Dependency review (so em PR): bloqueia PR que introduz dep vulneravel
+  # 4. Dependency review — desativado:
+  #    dependency-review-action exige GitHub Advanced Security, que e pago em
+  #    repo privado. A cobertura que ela daria (bloquear dep vulneravel em PR)
+  #    ja esta garantida pelo job `security` via `npm audit --audit-level=high`.
   # ---------------------------------------------------------------------------
-  dependency-review:
-    name: Dependency review (PR only)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
