@@ -16,7 +16,7 @@ services:
       retries: 10
 
   sonarqube:
-    image: sonarqube:community
+    image: sonarqube:10.6.0-community
     container_name: sonarqube
     restart: unless-stopped
     depends_on:
