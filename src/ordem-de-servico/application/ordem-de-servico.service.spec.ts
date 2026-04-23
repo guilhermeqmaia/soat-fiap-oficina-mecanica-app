@@ -11,6 +11,9 @@ import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mi
 import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
 import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
 import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
+import { OrdemDeServicoNotFoundError } from '../domain/errors/ordem-de-servico-not-found.error';
+import { ClienteNotOwnedByUsuarioError } from '../domain/errors/cliente-not-owned-by-usuario.error';
+import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { CLIENTE_REPOSITORY, ClienteRepository } from '../../cliente/domain/cliente.repository';
 import { VEICULO_REPOSITORY, VeiculoRepository } from '../../veiculo/domain/veiculo.repository';
 import { SERVICO_REPOSITORY, ServicoRepository } from '../../servico/domain/servico.repository';
@@ -38,6 +41,7 @@ describe('OrdemDeServicoService', () => {
     const mockClienteRepository = {
       create: jest.fn(),
       findById: jest.fn(),
+      findByCpfCnpj: jest.fn(),
       findAll: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -639,6 +643,135 @@ describe('OrdemDeServicoService', () => {
 
       expect(os.itensServico).toHaveLength(0);
       expect(repository.update).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('findStatusByNumero (US-16)', () => {
+    const makeOsWithItens = () =>
+      OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-1234567890-0001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'mecanico-1',
+        descricaoInicial: 'barulho no motor',
+        diagnostico: 'pastilhas desgastadas',
+        status: StatusOS.EM_EXECUCAO,
+        createdAt: new Date('2026-04-20T10:00:00Z'),
+        updatedAt: new Date('2026-04-20T12:00:00Z'),
+        itensServico: [
+          new ItemServicoOS('servico-1', 2, 150),
+          new ItemServicoOS('servico-2', 1, 80),
+        ],
+      });
+
+    it('should return enriched status view with servico names', async () => {
+      const os = makeOsWithItens();
+      repository.findByNumero.mockResolvedValue(os);
+      servicoRepository.findById.mockImplementation(async (id: string) => {
+        if (id === 'servico-1') return { nome: 'Troca de oleo' } as any;
+        if (id === 'servico-2') return { nome: 'Alinhamento' } as any;
+        return null;
+      });
+
+      const view = await service.findStatusByNumero('OS-2026-1234567890-0001');
+
+      expect(view.numero).toBe('OS-2026-1234567890-0001');
+      expect(view.status).toBe(StatusOS.EM_EXECUCAO);
+      expect(view.servicos).toHaveLength(2);
+      expect(view.servicos[0]).toEqual({
+        servicoId: 'servico-1',
+        nome: 'Troca de oleo',
+        quantidade: 2,
+        precoUnitario: 150,
+        subtotal: 300,
+      });
+      expect(view.valorTotalServicos).toBe(380);
+      expect(view.valorTotal).toBe(380);
+      expect(view.produtos).toEqual([]);
+    });
+
+    it('should use fallback name when servico removed from catalog', async () => {
+      const os = makeOsWithItens();
+      repository.findByNumero.mockResolvedValue(os);
+      servicoRepository.findById.mockResolvedValue(null);
+
+      const view = await service.findStatusByNumero('OS-2026-1234567890-0001');
+
+      expect(view.servicos[0].nome).toBe('Servico removido do catalogo');
+    });
+
+    it('should throw OrdemDeServicoNotFoundError when numero nao existe', async () => {
+      repository.findByNumero.mockResolvedValue(null);
+
+      await expect(service.findStatusByNumero('OS-INEXISTENTE')).rejects.toThrow(
+        OrdemDeServicoNotFoundError,
+      );
+    });
+  });
+
+  describe('findByCpfCnpj (US-16)', () => {
+    const makeOs = () =>
+      OrdemDeServico.reconstitute({
+        id: 'os-1',
+        numero: 'OS-2026-0000000001-0001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-1',
+        usuarioId: null,
+        descricaoInicial: 'teste',
+        diagnostico: null,
+        status: StatusOS.RECEBIDA,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+    it('should return paginated history for authenticated cliente', async () => {
+      const cliente: any = { id: 'cliente-123', email: 'joao@email.com' };
+      clienteRepository.findByCpfCnpj.mockResolvedValue(cliente);
+      repository.findAll.mockResolvedValue({
+        data: [makeOs()],
+        total: 1,
+        page: 1,
+        limit: 10,
+      });
+
+      const result = await service.findByCpfCnpj(
+        '39053344705',
+        'joao@email.com',
+      );
+
+      expect(clienteRepository.findByCpfCnpj).toHaveBeenCalledWith('39053344705');
+      expect(repository.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ clienteId: 'cliente-123' }),
+      );
+      expect(result.total).toBe(1);
+      expect(result.data[0].numero).toBe('OS-2026-0000000001-0001');
+    });
+
+    it('should throw ClienteNotFoundError when CPF not in DB', async () => {
+      clienteRepository.findByCpfCnpj.mockResolvedValue(null);
+
+      await expect(
+        service.findByCpfCnpj('11144477735', 'qualquer@x.com'),
+      ).rejects.toThrow(ClienteNotFoundError);
+    });
+
+    it('should throw ClienteNotOwnedByUsuarioError when email does not match', async () => {
+      const cliente: any = { id: 'cliente-123', email: 'outro@email.com' };
+      clienteRepository.findByCpfCnpj.mockResolvedValue(cliente);
+
+      await expect(
+        service.findByCpfCnpj('39053344705', 'intruso@x.com'),
+      ).rejects.toThrow(ClienteNotOwnedByUsuarioError);
+    });
+
+    it('should throw ClienteNotOwnedByUsuarioError when cliente has no email', async () => {
+      const cliente: any = { id: 'cliente-123', email: null };
+      clienteRepository.findByCpfCnpj.mockResolvedValue(cliente);
+
+      await expect(
+        service.findByCpfCnpj('39053344705', 'joao@email.com'),
+      ).rejects.toThrow(ClienteNotOwnedByUsuarioError);
     });
   });
 });

@@ -19,6 +19,7 @@ export interface ClienteRepository {
   existsByCpfCnpj(cpfCnpj: string, excludeId?: string): Promise<boolean>;
   create(cliente: Cliente): Promise<Cliente>;
   findById(id: string): Promise<Cliente | null>;
+  findByCpfCnpj(cpfCnpj: string): Promise<Cliente | null>;
   findAll(params: FindAllParams): Promise<PaginatedResult<Cliente>>;
   update(cliente: Cliente): Promise<Cliente>;
   delete(id: string): Promise<void>;

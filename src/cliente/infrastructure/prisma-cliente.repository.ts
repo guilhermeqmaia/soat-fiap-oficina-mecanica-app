@@ -39,6 +39,12 @@ export class PrismaClienteRepository implements ClienteRepository {
     return this.toDomain(record);
   }
 
+  async findByCpfCnpj(cpfCnpj: string): Promise<Cliente | null> {
+    const record = await this.prisma.cliente.findUnique({ where: { cpfCnpj } });
+    if (!record) return null;
+    return this.toDomain(record);
+  }
+
   async findAll(params: FindAllParams): Promise<PaginatedResult<Cliente>> {
     const { page, limit, nome, cpf, cnpj } = params;
     const skip = (page - 1) * limit;

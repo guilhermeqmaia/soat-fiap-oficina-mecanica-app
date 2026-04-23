@@ -42,6 +42,8 @@ import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-foun
 import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
 import { ServicoNotAddedError } from '../domain/errors/servico-not-added.error';
 import { InvalidQuantityError } from '../domain/errors/invalid-quantity.error';
+import { OrdemDeServicoNotFoundError } from '../domain/errors/ordem-de-servico-not-found.error';
+import { Public } from '../../auth/infrastructure/decorators/public.decorator';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
 import { Role } from '../../auth/domain/role.enum';
@@ -108,6 +110,25 @@ export class OrdemDeServicoController {
       page: result.page,
       limit: result.limit,
     };
+  }
+
+  @Get('numero/:numero/status')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Acompanhar OS pelo numero (publico, sem autenticacao) — US-16',
+  })
+  @ApiOkResponse({ description: 'Status e itens da OS' })
+  @ApiNotFoundResponse({ description: 'OS nao encontrada para o numero informado' })
+  async findStatusByNumero(@Param('numero') numero: string) {
+    try {
+      return await this.service.findStatusByNumero(numero);
+    } catch (error) {
+      if (error instanceof OrdemDeServicoNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Get(':id')

@@ -12,6 +12,7 @@ const mockRepository: jest.Mocked<ClienteRepository> = {
   existsByCpfCnpj: jest.fn(),
   create: jest.fn(),
   findById: jest.fn(),
+  findByCpfCnpj: jest.fn(),
   findAll: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),

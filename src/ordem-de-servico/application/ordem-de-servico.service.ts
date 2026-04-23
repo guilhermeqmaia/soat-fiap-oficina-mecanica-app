@@ -14,6 +14,8 @@ import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
 import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mismatch.error';
 import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
 import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
+import { OrdemDeServicoNotFoundError } from '../domain/errors/ordem-de-servico-not-found.error';
+import { ClienteNotOwnedByUsuarioError } from '../domain/errors/cliente-not-owned-by-usuario.error';
 import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { ClienteRepository, CLIENTE_REPOSITORY } from '../../cliente/domain/cliente.repository';
 import { VeiculoRepository, VEICULO_REPOSITORY } from '../../veiculo/domain/veiculo.repository';
@@ -161,4 +163,112 @@ export class OrdemDeServicoService {
     ordemDeServico.removerServico(servicoId);
     return this.repository.update(ordemDeServico);
   }
+
+  async findStatusByNumero(numero: string): Promise<OsStatusView> {
+    const ordemDeServico = await this.repository.findByNumero(numero);
+    if (!ordemDeServico) {
+      throw new OrdemDeServicoNotFoundError(numero);
+    }
+
+    const servicoIds = ordemDeServico.itensServico.map((i) => i.servicoId);
+    const servicoNomeById = await this.loadServicoNomes(servicoIds);
+
+    const servicos = ordemDeServico.itensServico.map((i) => ({
+      servicoId: i.servicoId,
+      nome: servicoNomeById.get(i.servicoId) ?? 'Servico removido do catalogo',
+      quantidade: i.quantidade,
+      precoUnitario: i.precoUnitario,
+      subtotal: i.subtotal(),
+    }));
+
+    const valorTotalServicos = ordemDeServico.valorTotalServicos();
+    const valorTotalProdutos = 0;
+
+    return {
+      numero: ordemDeServico.numero,
+      status: ordemDeServico.status,
+      descricaoInicial: ordemDeServico.descricaoInicial,
+      diagnostico: ordemDeServico.diagnostico,
+      servicos,
+      produtos: [],
+      valorTotalServicos,
+      valorTotalProdutos,
+      valorTotal: valorTotalServicos + valorTotalProdutos,
+      createdAt: ordemDeServico.createdAt,
+      updatedAt: ordemDeServico.updatedAt,
+    };
+  }
+
+  async findByCpfCnpj(
+    cpfCnpj: string,
+    emailCliente: string,
+    params: { page?: number; limit?: number } = {},
+  ): Promise<PaginatedResult<OsHistoryItem>> {
+    const cliente = await this.clienteRepository.findByCpfCnpj(cpfCnpj);
+    if (!cliente) {
+      throw new ClienteNotFoundError(cpfCnpj);
+    }
+    if (!cliente.email || cliente.email.toLowerCase() !== emailCliente.toLowerCase()) {
+      throw new ClienteNotOwnedByUsuarioError(cpfCnpj);
+    }
+    const result = await this.repository.findAll({
+      clienteId: cliente.id,
+      page: params.page ?? 1,
+      limit: params.limit ?? 10,
+    });
+    return {
+      data: result.data.map((os) => ({
+        numero: os.numero,
+        status: os.status,
+        descricaoInicial: os.descricaoInicial,
+        createdAt: os.createdAt,
+        updatedAt: os.updatedAt,
+      })),
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    };
+  }
+
+  private async loadServicoNomes(servicoIds: string[]): Promise<Map<string, string>> {
+    const unique = Array.from(new Set(servicoIds));
+    const map = new Map<string, string>();
+    await Promise.all(
+      unique.map(async (id) => {
+        const s = await this.servicoRepository.findById(id);
+        if (s) map.set(id, s.nome);
+      }),
+    );
+    return map;
+  }
+}
+
+export interface OsStatusServico {
+  servicoId: string;
+  nome: string;
+  quantidade: number;
+  precoUnitario: number;
+  subtotal: number;
+}
+
+export interface OsStatusView {
+  numero: string;
+  status: string;
+  descricaoInicial: string;
+  diagnostico: string | null;
+  servicos: OsStatusServico[];
+  produtos: unknown[];
+  valorTotalServicos: number;
+  valorTotalProdutos: number;
+  valorTotal: number;
+  createdAt: Date | undefined;
+  updatedAt: Date | undefined;
+}
+
+export interface OsHistoryItem {
+  numero: string;
+  status: string;
+  descricaoInicial: string;
+  createdAt: Date | undefined;
+  updatedAt: Date | undefined;
 }

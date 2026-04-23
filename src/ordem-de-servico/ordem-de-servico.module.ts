@@ -5,12 +5,13 @@ import { VeiculoModule } from '../veiculo/veiculo.module';
 import { ServicoModule } from '../servico/servico.module';
 import { OrdemDeServicoService } from './application/ordem-de-servico.service';
 import { OrdemDeServicoController } from './infrastructure/ordem-de-servico.controller';
+import { ClienteOrdemDeServicoController } from './infrastructure/cliente-ordem-de-servico.controller';
 import { PrismaOrdemDeServicoRepository } from './infrastructure/prisma-ordem-de-servico.repository';
 import { ORDEM_DE_SERVICO_REPOSITORY } from './domain/ordem-de-servico.repository';
 
 @Module({
   imports: [PrismaModule, ClienteModule, VeiculoModule, ServicoModule],
-  controllers: [OrdemDeServicoController],
+  controllers: [OrdemDeServicoController, ClienteOrdemDeServicoController],
   providers: [
     OrdemDeServicoService,
     {
