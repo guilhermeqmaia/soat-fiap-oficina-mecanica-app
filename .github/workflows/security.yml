@@ -96,12 +96,9 @@ jobs:
           SONAR_JDBC_USERNAME: sonar
           SONAR_JDBC_PASSWORD: sonar
         ports: ['9000:9000']
-        options: >-
-          --health-cmd="wget -q -O - http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=30
-          --health-start-period=60s
+        # Sem healthcheck: wget/curl podem nao existir na imagem e o escape
+        # de aspas do grep quebra. O step "Wait for SonarQube ready" abaixo
+        # gerencia a prontidao polling a propria API.
 
     steps:
       - uses: actions/checkout@v4
@@ -120,14 +117,18 @@ jobs:
 
       - name: Wait for SonarQube ready
         run: |
+          # Ate 5 min (60 * 5s) aguardando API responder "UP"
           for i in {1..60}; do
             status=$(curl -s http://localhost:9000/api/system/status | grep -oE '"status":"[A-Z]+"' || true)
-            echo "SonarQube status: $status"
+            echo "[$i/60] SonarQube status: $status"
             if [[ "$status" == '"status":"UP"' ]]; then
-              break
+              echo "SonarQube pronto apos $((i * 5))s"
+              exit 0
             fi
             sleep 5
           done
+          echo "SonarQube nao ficou UP em 5 minutos" >&2
+          exit 1
 
       - name: Change default admin password and generate token
         id: sonar_token
