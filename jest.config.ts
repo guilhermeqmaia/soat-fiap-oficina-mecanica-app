@@ -1,6 +1,7 @@
 import type { Config } from 'jest';
 
 const config: Config = {
+  collectCoverage: false,
   projects: [
     {
       displayName: 'unit',
@@ -8,7 +9,6 @@ const config: Config = {
       rootDir: 'src',
       testRegex: '^(?!.*\\.(integration|e2e)\\.spec\\.ts$).*\\.spec\\.ts$',
       transform: { '^.+\\.ts$': 'ts-jest' },
-      collectCoverage: false,
       testEnvironment: 'node',
     },
     {
@@ -17,7 +17,6 @@ const config: Config = {
       rootDir: 'src',
       testRegex: '.*\\.(integration|e2e)\\.spec\\.ts$',
       transform: { '^.+\\.ts$': 'ts-jest' },
-      collectCoverage: false,
       testEnvironment: 'node',
     },
   ],

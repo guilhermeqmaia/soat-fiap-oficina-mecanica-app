@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
-    "test": "jest",
+    "test": "npm run test:unit && npm run test:integration",
     "test:watch": "jest --watch",
     "test:unit": "jest --config jest.unit.config.ts",
     "test:unit:cov": "jest --config jest.unit.config.ts --coverage",

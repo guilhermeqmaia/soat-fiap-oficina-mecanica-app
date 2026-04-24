@@ -21,6 +21,10 @@ const config: Config = {
   },
   testEnvironment: 'node',
   testTimeout: 60000,
+  // Cada e2e/integration spec sobe seu proprio PostgreSQL via testcontainers;
+  // rodar em paralelo satura o daemon Docker e causa flakiness (404 em testes
+  // que dependem de dados do beforeAll). Serializado e estavel em ~30s a mais.
+  maxWorkers: 1,
 };
 
 export default config;
