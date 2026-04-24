@@ -1,0 +1,11 @@
+export enum StatusOrdemDeServico {
+  RECEBIDA = 'RECEBIDA',
+  EM_DIAGNOSTICO = 'EM_DIAGNOSTICO',
+  AGUARDANDO_APROVACAO = 'AGUARDANDO_APROVACAO',
+  EM_EXECUCAO = 'EM_EXECUCAO',
+  FINALIZADA = 'FINALIZADA',
+  ENTREGUE = 'ENTREGUE',
+  CANCELADA = 'CANCELADA',
+  /** @deprecated Use FINALIZADA. Mantido para compatibilidade temporária. */
+  CONCLUIDA = 'CONCLUIDA',
+}

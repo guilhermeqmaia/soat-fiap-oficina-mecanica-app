@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2021",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "typeRoots": ["../../node_modules/@types"],
+    "types": ["jest", "node"]
+  },
+  "include": ["*.ts", "src/**/*.ts", "tests/**/*.ts"]
+}
