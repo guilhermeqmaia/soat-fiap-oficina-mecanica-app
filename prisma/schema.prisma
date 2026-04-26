@@ -137,3 +137,36 @@ enum StatusOrdemDeServico {
   ENTREGUE
   CANCELADA
 }
+
+model Notificacao {
+  id               String             @id @default(uuid())
+  clienteId        String             @map("cliente_id")
+  ordemDeServicoId String?            @map("ordem_de_servico_id")
+  tipo             TipoNotificacao
+  canal            CanalNotificacao
+  destinatario     String
+  assunto          String
+  mensagem         String
+  status           StatusNotificacao
+  erro             String?
+  enviadaEm        DateTime?          @map("enviada_em")
+  createdAt        DateTime           @default(now()) @map("created_at")
+
+  @@index([clienteId])
+  @@index([ordemDeServicoId])
+  @@map("notificacao")
+}
+
+enum TipoNotificacao {
+  ORCAMENTO_PRONTO
+  OS_FINALIZADA
+}
+
+enum CanalNotificacao {
+  EMAIL
+}
+
+enum StatusNotificacao {
+  ENVIADA
+  FALHOU
+}

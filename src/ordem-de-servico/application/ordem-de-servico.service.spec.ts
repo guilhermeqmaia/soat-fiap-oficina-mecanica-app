@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OrdemDeServicoService } from './ordem-de-servico.service';
 import {
   ORDEM_DE_SERVICO_REPOSITORY,
@@ -85,6 +86,10 @@ describe('OrdemDeServicoService', () => {
         {
           provide: SERVICO_REPOSITORY,
           useValue: mockServicoRepository,
+        },
+        {
+          provide: EventEmitter2,
+          useValue: { emit: jest.fn() },
         },
       ],
     }).compile();

@@ -1,0 +1,4 @@
+export enum TipoNotificacao {
+  ORCAMENTO_PRONTO = 'ORCAMENTO_PRONTO',
+  OS_FINALIZADA = 'OS_FINALIZADA',
+}
