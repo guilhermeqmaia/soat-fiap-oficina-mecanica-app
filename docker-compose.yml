@@ -28,6 +28,7 @@ services:
       PORT: '${PORT:-3000}'
       JWT_SECRET: '${JWT_SECRET:?JWT_SECRET is required — set it in .env or your shell env}'
       JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-1h}'
+      PUBLIC_BASE_URL: '${PUBLIC_BASE_URL:-http://localhost:3000}'
     depends_on:
       postgres:
         condition: service_healthy

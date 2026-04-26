@@ -15,7 +15,7 @@ describe('Notificacao', () => {
   };
 
   describe('create', () => {
-    it('cria notificacao com status ENVIADA por padrao e sem timestamp de envio', () => {
+    it('cria notificacao com status PENDENTE ate o envio ser tentado', () => {
       const n = Notificacao.create(baseInput);
 
       expect(n.clienteId).toBe('cliente-1');
@@ -23,7 +23,7 @@ describe('Notificacao', () => {
       expect(n.tipo).toBe(TipoNotificacao.ORCAMENTO_PRONTO);
       expect(n.canal).toBe(CanalNotificacao.EMAIL);
       expect(n.destinatario).toBe('cliente@email.com');
-      expect(n.status).toBe(StatusNotificacao.ENVIADA);
+      expect(n.status).toBe(StatusNotificacao.PENDENTE);
       expect(n.erro).toBeNull();
       expect(n.enviadaEm).toBeNull();
     });

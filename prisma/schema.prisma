@@ -167,6 +167,7 @@ enum CanalNotificacao {
 }
 
 enum StatusNotificacao {
+  PENDENTE
   ENVIADA
   FALHOU
 }

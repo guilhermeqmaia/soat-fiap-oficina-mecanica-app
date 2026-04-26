@@ -34,6 +34,12 @@ export class NotificacaoService {
     this.notificadoresPorCanal = new Map(
       notificadores.map((n) => [n.canal, n]),
     );
+    if (this.notificadoresPorCanal.size !== notificadores.length) {
+      const canais = notificadores.map((n) => n.canal);
+      throw new Error(
+        `Notificadores duplicados para o mesmo canal: ${canais.join(', ')}`,
+      );
+    }
   }
 
   async enviar(input: EnviarNotificacaoInput): Promise<Notificacao> {

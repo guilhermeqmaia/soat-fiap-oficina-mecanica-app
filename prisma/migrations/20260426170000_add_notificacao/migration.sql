@@ -5,7 +5,7 @@ CREATE TYPE "TipoNotificacao" AS ENUM ('ORCAMENTO_PRONTO', 'OS_FINALIZADA');
 CREATE TYPE "CanalNotificacao" AS ENUM ('EMAIL');
 
 -- CreateEnum
-CREATE TYPE "StatusNotificacao" AS ENUM ('ENVIADA', 'FALHOU');
+CREATE TYPE "StatusNotificacao" AS ENUM ('PENDENTE', 'ENVIADA', 'FALHOU');
 
 -- CreateTable
 CREATE TABLE "notificacao" (

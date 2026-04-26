@@ -8,6 +8,7 @@ Validacao manual do modulo de notificacao via Docker. Os cURLs deste documento u
 - `jq` instalado (`brew install jq` no Mac, `sudo apt install jq` no Linux)
 - `curl` (ja vem por padrao)
 - Repositorio clonado e branch `us-20-implement-notification-system` checada
+- `.env` com `JWT_SECRET` e `PUBLIC_BASE_URL` (copie de `.env.example` se ainda nao existir). `PUBLIC_BASE_URL=http://localhost:3000` eh o default e cai bem para o teste local.
 
 ```bash
 git checkout us-20-implement-notification-system
@@ -135,14 +136,10 @@ curl -s -X POST $API/ordens-servico/$OS_ID/completar-diagnostico \
 
 > **No terminal de logs** voce deve ver algo como:
 > ```
-> [MockEmailNotificador] [MOCK EMAIL] to=dono@oficina.com subject="Orcamento da OS OS-2026-... pronto para aprovacao"
-> Ola Joao da Silva,
-> O orcamento da sua Ordem de Servico OS-2026-... esta pronto.
-> Diagnostico: Pastilhas de freio desgastadas...
-> Valor total estimado: R$ 150,00
-> Para aprovar: POST /ordens-servico/<id>/aprovar-orcamento
-> Para rejeitar: POST /ordens-servico/<id>/rejeitar-orcamento
+> [MockEmailNotificador] [MOCK EMAIL] to=do**@oficina.com subject="Orcamento da OS OS-2026-... pronto para aprovacao" bodyLength=412
 > ```
+>
+> O log mostra apenas **destinatario mascarado**, **assunto** e **tamanho do corpo** (sem o conteudo). Para inspecionar a mensagem completa, use o endpoint `GET /notificacoes` ou consulte direto na tabela `notificacao`. Isso evita vazar PII (nome, email completo, diagnostico) em logs de producao.
 
 ### 3.7 — Validar registro no historico de notificacoes
 
@@ -152,7 +149,9 @@ curl -s "$API/notificacoes?ordemDeServicoId=$OS_ID" \
   | jq '.data[] | {tipo, canal, destinatario, assunto, status, mensagem}'
 ```
 
-**Esperado:** uma entrada com `tipo=ORCAMENTO_PRONTO`, `canal=EMAIL`, `destinatario=dono@oficina.com`, `status=ENVIADA`, e a `mensagem` contendo as instrucoes de aprovar/rejeitar.
+**Esperado:** uma entrada com `tipo=ORCAMENTO_PRONTO`, `canal=EMAIL`, `destinatario=dono@oficina.com`, `status=ENVIADA`, e a `mensagem` contendo as instrucoes de aprovar/rejeitar com URLs absolutas (`http://localhost:3000/ordens-servico/{id}/aprovar-orcamento`).
+
+> **Nota sobre o status:** notificacoes nascem como `PENDENTE` na entity e so transitam para `ENVIADA` ou `FALHOU` apos o `Notificador` ser invocado. Em condicoes normais voce nunca ve `PENDENTE` aqui (o registro so eh persistido apos a transicao). Se aparecer, eh sintoma de bug.
 
 ## 4. Cenario 2: Notificacao quando OS for finalizada (= veiculo pronto para retirada)
 
@@ -180,9 +179,7 @@ curl -s -X POST $API/ordens-servico/$OS_ID/finalizar-execucao \
 
 > **No terminal de logs:**
 > ```
-> [MockEmailNotificador] [MOCK EMAIL] to=dono@oficina.com subject="OS OS-2026-... finalizada - veiculo pronto para retirada"
-> Ola Joao da Silva,
-> Sua Ordem de Servico OS-2026-... foi finalizada e o veiculo esta pronto para retirada.
+> [MockEmailNotificador] [MOCK EMAIL] to=do**@oficina.com subject="OS OS-2026-... finalizada - veiculo pronto para retirada" bodyLength=187
 > ```
 
 ### 4.3 — Validar as 2 notificacoes no historico desta OS
@@ -351,4 +348,5 @@ docker compose down -v         # remove volume (zera o banco)
 - [ ] Cenario 4: notificacao `OS_FINALIZADA` aparece nos logs e no `GET /notificacoes`
 - [ ] Cenario 5: cliente sem email NAO gera registro de notificacao (apenas warning no log)
 - [ ] Cenario 7: roles (`MECANICO` recebe 403, sem token recebe 401)
-- [ ] Mensagens de notificacao incluem instrucao do endpoint correto (`aprovar-orcamento` / `rejeitar-orcamento` para orcamento; `numero/{n}/status` para finalizacao)
+- [ ] Mensagens de notificacao incluem instrucao do endpoint correto (`aprovar-orcamento` / `rejeitar-orcamento` para orcamento; `numero/{n}/status` para finalizacao) com **URL absoluta** baseada em `PUBLIC_BASE_URL`
+- [ ] Log do `MockEmailNotificador` mostra destinatario **mascarado** (ex: `do**@oficina.com`), nao o email completo

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   CLIENTE_REPOSITORY,
@@ -13,12 +14,18 @@ import { NotificacaoService } from '../notificacao.service';
 @Injectable()
 export class OrdemDeServicoNotificacaoListener {
   private readonly logger = new Logger(OrdemDeServicoNotificacaoListener.name);
+  private readonly baseUrl: string;
 
   constructor(
     private readonly notificacaoService: NotificacaoService,
     @Inject(CLIENTE_REPOSITORY)
     private readonly clienteRepository: ClienteRepository,
-  ) {}
+    private readonly config: ConfigService,
+  ) {
+    this.baseUrl = this.config
+      .get<string>('PUBLIC_BASE_URL', 'http://localhost:3000')
+      .replace(/\/+$/, '');
+  }
 
   @OnEvent(OrcamentoProntoEvent.EVENT_NAME)
   async onOrcamentoPronto(event: OrcamentoProntoEvent): Promise<void> {
@@ -36,13 +43,16 @@ export class OrdemDeServicoNotificacaoListener {
         currency: 'BRL',
       });
 
+      const aprovarUrl = `${this.baseUrl}/ordens-servico/${event.ordemDeServicoId}/aprovar-orcamento`;
+      const rejeitarUrl = `${this.baseUrl}/ordens-servico/${event.ordemDeServicoId}/rejeitar-orcamento`;
+
       const mensagem =
         `Ola ${cliente.nome},\n\n` +
         `O orcamento da sua Ordem de Servico ${event.numero} esta pronto.\n\n` +
         `Diagnostico: ${event.diagnostico}\n` +
         `Valor total estimado: ${valorFormatado}\n\n` +
-        `Para aprovar: POST /ordens-servico/${event.ordemDeServicoId}/aprovar-orcamento\n` +
-        `Para rejeitar: POST /ordens-servico/${event.ordemDeServicoId}/rejeitar-orcamento\n`;
+        `Para aprovar: POST ${aprovarUrl}\n` +
+        `Para rejeitar: POST ${rejeitarUrl}\n`;
 
       await this.notificacaoService.enviar({
         clienteId: event.clienteId,
@@ -72,10 +82,12 @@ export class OrdemDeServicoNotificacaoListener {
         return;
       }
 
+      const acompanharUrl = `${this.baseUrl}/ordens-servico/numero/${event.numero}/status`;
+
       const mensagem =
         `Ola ${cliente.nome},\n\n` +
         `Sua Ordem de Servico ${event.numero} foi finalizada e o veiculo esta pronto para retirada.\n\n` +
-        `Para acompanhar a OS: GET /ordens-servico/numero/${event.numero}/status\n`;
+        `Para acompanhar a OS: GET ${acompanharUrl}\n`;
 
       await this.notificacaoService.enviar({
         clienteId: event.clienteId,

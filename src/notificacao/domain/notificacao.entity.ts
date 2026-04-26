@@ -80,7 +80,7 @@ export class Notificacao {
       destinatario: props.destinatario,
       assunto: props.assunto,
       mensagem: props.mensagem,
-      status: StatusNotificacao.ENVIADA,
+      status: StatusNotificacao.PENDENTE,
       erro: null,
       enviadaEm: null,
     });

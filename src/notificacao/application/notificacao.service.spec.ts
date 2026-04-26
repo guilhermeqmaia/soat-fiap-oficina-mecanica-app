@@ -50,6 +50,29 @@ describe('NotificacaoService', () => {
     service = module.get(NotificacaoService);
   });
 
+  describe('construtor', () => {
+    it('lanca erro quando dois notificadores compartilham o mesmo canal', async () => {
+      const dupA: Notificador = {
+        canal: CanalNotificacao.EMAIL,
+        enviar: jest.fn(),
+      };
+      const dupB: Notificador = {
+        canal: CanalNotificacao.EMAIL,
+        enviar: jest.fn(),
+      };
+
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            NotificacaoService,
+            { provide: NOTIFICACAO_REPOSITORY, useValue: repository },
+            { provide: NOTIFICADOR, useValue: [dupA, dupB] },
+          ],
+        }).compile(),
+      ).rejects.toThrow(/duplicados/);
+    });
+  });
+
   describe('enviar', () => {
     it('envia pelo notificador correto e persiste com status ENVIADA', async () => {
       const result = await service.enviar(input);

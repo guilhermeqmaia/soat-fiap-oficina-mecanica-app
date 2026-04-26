@@ -4,6 +4,7 @@ import {
   MensagemNotificacao,
   Notificador,
 } from '../application/ports/notificador.port';
+import { maskEmail } from './utils/mask-email';
 
 @Injectable()
 export class MockEmailNotificador implements Notificador {
@@ -12,7 +13,7 @@ export class MockEmailNotificador implements Notificador {
 
   async enviar(mensagem: MensagemNotificacao): Promise<void> {
     this.logger.log(
-      `[MOCK EMAIL] to=${mensagem.destinatario} subject="${mensagem.assunto}"\n${mensagem.corpo}`,
+      `[MOCK EMAIL] to=${maskEmail(mensagem.destinatario)} subject="${mensagem.assunto}" bodyLength=${mensagem.corpo.length}`,
     );
   }
 }

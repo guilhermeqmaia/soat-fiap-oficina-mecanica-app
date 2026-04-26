@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import {
   CLIENTE_REPOSITORY,
   ClienteRepository,
@@ -43,6 +44,10 @@ describe('OrdemDeServicoNotificacaoListener', () => {
         OrdemDeServicoNotificacaoListener,
         { provide: NotificacaoService, useValue: notificacaoService },
         { provide: CLIENTE_REPOSITORY, useValue: clienteRepository },
+        {
+          provide: ConfigService,
+          useValue: { get: () => 'http://localhost:3000' },
+        },
       ],
     }).compile();
 
@@ -72,6 +77,20 @@ describe('OrdemDeServicoNotificacaoListener', () => {
       expect(arg.mensagem).toContain('OS-2026-001');
       expect(arg.mensagem).toContain('aprovar-orcamento');
       expect(arg.mensagem).toContain('rejeitar-orcamento');
+    });
+
+    it('inclui URL absoluta com baseUrl do PUBLIC_BASE_URL', async () => {
+      clienteRepository.findById.mockResolvedValueOnce(clienteComEmail);
+
+      await listener.onOrcamentoPronto(event);
+
+      const arg = notificacaoService.enviar.mock.calls[0][0];
+      expect(arg.mensagem).toContain(
+        'http://localhost:3000/ordens-servico/os-id-1/aprovar-orcamento',
+      );
+      expect(arg.mensagem).toContain(
+        'http://localhost:3000/ordens-servico/os-id-1/rejeitar-orcamento',
+      );
     });
 
     it('nao envia notificacao quando cliente nao tem email', async () => {
