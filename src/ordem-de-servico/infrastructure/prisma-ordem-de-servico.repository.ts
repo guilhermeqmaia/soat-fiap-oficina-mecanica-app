@@ -7,7 +7,10 @@ import {
 } from '../domain/ordem-de-servico.repository';
 import { OrdemDeServico } from '../domain/ordem-de-servico.entity';
 import { StatusOS } from '../domain/value-objects/status-os.vo';
-import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
+import {
+  ItemServicoOS,
+  StatusExecucaoItem,
+} from '../domain/value-objects/item-servico-os.vo';
 
 const INCLUDE_ITENS = { itensServico: true } as const;
 
@@ -99,6 +102,10 @@ export class PrismaOrdemDeServicoRepository
             servicoId: item.servicoId,
             quantidade: item.quantidade,
             precoUnitario: item.precoUnitario,
+            statusExecucao: item.statusExecucao,
+            inicioExecucao: item.inicioExecucao,
+            fimExecucao: item.fimExecucao,
+            horasTrabalhadas: item.horasTrabalhadas,
           })),
         });
       }
@@ -126,7 +133,15 @@ export class PrismaOrdemDeServicoRepository
   private toDomain(data: any): OrdemDeServico {
     const itensServico: ItemServicoOS[] = (data.itensServico ?? []).map(
       (i: any) =>
-        new ItemServicoOS(i.servicoId, i.quantidade, Number(i.precoUnitario)),
+        new ItemServicoOS(
+          i.servicoId,
+          i.quantidade,
+          Number(i.precoUnitario),
+          (i.statusExecucao ?? 'PENDENTE') as StatusExecucaoItem,
+          i.inicioExecucao ?? null,
+          i.fimExecucao ?? null,
+          i.horasTrabalhadas ?? null,
+        ),
     );
     return OrdemDeServico.reconstitute({
       id: data.id,

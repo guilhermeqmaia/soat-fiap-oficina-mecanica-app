@@ -137,6 +137,32 @@ export class OrdemDeServicoService {
     }
   }
 
+  async iniciarServico(
+    osId: string,
+    servicoId: string,
+  ): Promise<OrdemDeServico> {
+    const ordemDeServico = await this.findById(osId);
+    ordemDeServico.iniciarServico(servicoId);
+    return this.repository.update(ordemDeServico);
+  }
+
+  async concluirServico(
+    osId: string,
+    servicoId: string,
+    horasTrabalhadas: number,
+  ): Promise<OrdemDeServico> {
+    const ordemDeServico = await this.findById(osId);
+    ordemDeServico.concluirServico(servicoId, horasTrabalhadas);
+    const updated = await this.repository.update(ordemDeServico);
+    if (updated.status === 'FINALIZADA') {
+      this.eventEmitter.emit(
+        OsFinalizadaEvent.EVENT_NAME,
+        new OsFinalizadaEvent(updated.id!, updated.numero, updated.clienteId),
+      );
+    }
+    return updated;
+  }
+
   async finalizarExecucao(id: string): Promise<OrdemDeServico> {
     const ordemDeServico = await this.findById(id);
     ordemDeServico.finalizarExecucao();

@@ -372,4 +372,135 @@ describe('PrismaOrdemDeServicoRepository (integration)', () => {
       expect(final.status).toBe(StatusOS.CANCELADA);
     });
   });
+
+  describe('execucao de servicos (US-14)', () => {
+    const advanceToEmExecucao = async () => {
+      const os = await repository.create(buildOs());
+      os.atribuirMecanico(usuarioId);
+      os.adicionarServico(new ItemServicoOS(servicoId, 1, 150));
+      await repository.update(os);
+      os.completarDiagnostico('Correia dentada com desgaste, oleo vencido');
+      await repository.update(os);
+      os.aprovar();
+      await repository.update(os);
+      return os;
+    };
+
+    it('should persist statusExecucao=PENDENTE on new items', async () => {
+      const os = await repository.create(buildOs());
+      os.atribuirMecanico(usuarioId);
+      os.adicionarServico(new ItemServicoOS(servicoId, 1, 150));
+      await repository.update(os);
+
+      const found = await repository.findById(os.id!);
+      expect(found!.itensServico[0].statusExecucao).toBe('PENDENTE');
+      expect(found!.itensServico[0].inicioExecucao).toBeNull();
+      expect(found!.itensServico[0].fimExecucao).toBeNull();
+      expect(found!.itensServico[0].horasTrabalhadas).toBeNull();
+    });
+
+    it('should persist inicioExecucao when service is started', async () => {
+      const os = await advanceToEmExecucao();
+
+      os.iniciarServico(servicoId);
+      await repository.update(os);
+
+      const found = await repository.findById(os.id!);
+      expect(found!.itensServico[0].statusExecucao).toBe('EM_EXECUCAO');
+      expect(found!.itensServico[0].inicioExecucao).toBeInstanceOf(Date);
+      expect(found!.itensServico[0].fimExecucao).toBeNull();
+    });
+
+    it('should persist fimExecucao and horasTrabalhadas when service is concluded', async () => {
+      const os = await advanceToEmExecucao();
+
+      os.iniciarServico(servicoId);
+      await repository.update(os);
+
+      os.concluirServico(servicoId, 2.5);
+      await repository.update(os);
+
+      const found = await repository.findById(os.id!);
+      const item = found!.itensServico[0];
+
+      expect(item.statusExecucao).toBe('CONCLUIDO');
+      expect(item.fimExecucao).toBeInstanceOf(Date);
+      expect(item.horasTrabalhadas).toBe(2.5);
+      expect(item.inicioExecucao).toBeInstanceOf(Date);
+    });
+
+    it('should auto-finalize OS when all services are concluded', async () => {
+      const os = await advanceToEmExecucao();
+
+      os.iniciarServico(servicoId);
+      await repository.update(os);
+
+      os.concluirServico(servicoId, 1);
+      const final = await repository.update(os);
+
+      expect(final.status).toBe(StatusOS.FINALIZADA);
+
+      const fromDb = await repository.findById(os.id!);
+      expect(fromDb!.status).toBe(StatusOS.FINALIZADA);
+    });
+
+    it('should persist complete execution lifecycle with two services', async () => {
+      let servicoId2: string;
+      const servico2 = await prisma.servico.create({
+        data: {
+          nome: 'Alinhamento',
+          precoBase: 80.0,
+          tempoEstimadoHoras: 0.5,
+          ativo: true,
+        },
+      });
+      servicoId2 = servico2.id;
+
+      const os = await repository.create(buildOs());
+      os.atribuirMecanico(usuarioId);
+      os.adicionarServico(new ItemServicoOS(servicoId, 1, 150));
+      os.adicionarServico(new ItemServicoOS(servicoId2, 1, 80));
+      await repository.update(os);
+      os.completarDiagnostico('Oleo e alinhamento necessarios');
+      await repository.update(os);
+      os.aprovar();
+      await repository.update(os);
+
+      os.iniciarServico(servicoId);
+      await repository.update(os);
+
+      os.iniciarServico(servicoId2);
+      await repository.update(os);
+
+      os.concluirServico(servicoId, 1.5);
+      const afterFirst = await repository.update(os);
+      expect(afterFirst.status).toBe(StatusOS.EM_EXECUCAO);
+
+      os.concluirServico(servicoId2, 0.5);
+      const afterSecond = await repository.update(os);
+      expect(afterSecond.status).toBe(StatusOS.FINALIZADA);
+
+      const fromDb = await repository.findById(os.id!);
+      expect(fromDb!.itensServico.every((i) => i.statusExecucao === 'CONCLUIDO')).toBe(true);
+      expect(fromDb!.itensServico.find((i) => i.servicoId === servicoId)!.horasTrabalhadas).toBe(1.5);
+      expect(fromDb!.itensServico.find((i) => i.servicoId === servicoId2)!.horasTrabalhadas).toBe(0.5);
+
+      await prisma.itemOrdemDeServicoServico.deleteMany();
+      await prisma.ordemDeServico.deleteMany();
+      await prisma.servico.delete({ where: { id: servicoId2 } });
+    });
+
+    it('should reconstruct execution fields correctly after findByNumero', async () => {
+      const os = await advanceToEmExecucao();
+      os.iniciarServico(servicoId);
+      await repository.update(os);
+      os.concluirServico(servicoId, 3);
+      await repository.update(os);
+
+      const found = await repository.findByNumero(os.numero);
+      expect(found).not.toBeNull();
+      expect(found!.itensServico[0].statusExecucao).toBe('CONCLUIDO');
+      expect(found!.itensServico[0].horasTrabalhadas).toBe(3);
+    });
+  });
 });

@@ -19,6 +19,7 @@ import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-foun
 import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
 import { ServicoNotAddedError } from '../domain/errors/servico-not-added.error';
 import { InvalidQuantityError } from '../domain/errors/invalid-quantity.error';
+import { ItemServicoInvalidStatusError } from '../domain/errors/item-servico-invalid-status.error';
 import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { Role } from '../../auth/domain/role.enum';
 import { Usuario } from '../../auth/domain/usuario.entity';
@@ -63,6 +64,8 @@ const mockService = {
   entregar: jest.fn(),
   adicionarServico: jest.fn(),
   removerServico: jest.fn(),
+  iniciarServico: jest.fn(),
+  concluirServico: jest.fn(),
   delete: jest.fn(),
 };
 
@@ -600,6 +603,168 @@ describe('OrdemDeServicoController', () => {
       await controller.delete('os-123');
 
       expect(mockService.delete).toHaveBeenCalledWith('os-123');
+    });
+  });
+
+  // ==================== PATCH /:id/servicos/:servicoId/iniciar (US-14) ====================
+
+  const makeOsEmExecucaoComItem = (statusExecucao = 'EM_EXECUCAO') =>
+    OrdemDeServico.reconstitute({
+      id: 'os-123',
+      numero: 'OS-2026-00001',
+      clienteId: 'cliente-123',
+      veiculoId: 'veiculo-456',
+      usuarioId: 'mecanico-1',
+      descricaoInicial: 'Revisao completa',
+      diagnostico: 'Oleo desgastado',
+      status: StatusOS.EM_EXECUCAO,
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+      itensServico: [
+        new ItemServicoOS(
+          'servico-abc',
+          1,
+          100,
+          statusExecucao as any,
+          statusExecucao !== 'PENDENTE' ? new Date() : null,
+          statusExecucao === 'CONCLUIDO' ? new Date() : null,
+          statusExecucao === 'CONCLUIDO' ? 2 : null,
+        ),
+      ],
+    });
+
+  describe('iniciarServico (US-14)', () => {
+    it('should return 200 and updated OS when service is started', async () => {
+      const os = makeOsEmExecucaoComItem('EM_EXECUCAO');
+      mockService.iniciarServico.mockResolvedValue(os);
+
+      const result = await controller.iniciarServico('os-123', 'servico-abc');
+
+      expect(mockService.iniciarServico).toHaveBeenCalledWith('os-123', 'servico-abc');
+      expect(result.itensServico[0].statusExecucao).toBe('EM_EXECUCAO');
+    });
+
+    it('should expose execution fields in response', async () => {
+      const os = makeOsEmExecucaoComItem('EM_EXECUCAO');
+      mockService.iniciarServico.mockResolvedValue(os);
+
+      const result = await controller.iniciarServico('os-123', 'servico-abc');
+      const item = result.itensServico[0];
+
+      expect(item).toHaveProperty('statusExecucao');
+      expect(item).toHaveProperty('inicioExecucao');
+      expect(item).toHaveProperty('fimExecucao');
+      expect(item).toHaveProperty('horasTrabalhadas');
+    });
+
+    it('should throw NotFoundException when ServicoNotAddedError is thrown', async () => {
+      mockService.iniciarServico.mockRejectedValue(
+        new ServicoNotAddedError('servico-abc'),
+      );
+
+      await expect(
+        controller.iniciarServico('os-123', 'servico-abc'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when InvalidStatusTransitionError is thrown', async () => {
+      mockService.iniciarServico.mockRejectedValue(
+        new InvalidStatusTransitionError('RECEBIDA', 'iniciar servico'),
+      );
+
+      await expect(
+        controller.iniciarServico('os-123', 'servico-abc'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when ItemServicoInvalidStatusError is thrown', async () => {
+      mockService.iniciarServico.mockRejectedValue(
+        new ItemServicoInvalidStatusError('servico-abc', 'EM_EXECUCAO', 'iniciar'),
+      );
+
+      await expect(
+        controller.iniciarServico('os-123', 'servico-abc'),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ==================== PATCH /:id/servicos/:servicoId/concluir (US-14) ====================
+
+  describe('concluirServico (US-14)', () => {
+    it('should return 200 and OS with CONCLUIDO item', async () => {
+      const os = makeOsEmExecucaoComItem('CONCLUIDO');
+      mockService.concluirServico.mockResolvedValue(os);
+
+      const result = await controller.concluirServico(
+        'os-123',
+        'servico-abc',
+        { horasTrabalhadas: 2 },
+      );
+
+      expect(mockService.concluirServico).toHaveBeenCalledWith(
+        'os-123',
+        'servico-abc',
+        2,
+      );
+      expect(result.itensServico[0].statusExecucao).toBe('CONCLUIDO');
+      expect(result.itensServico[0].horasTrabalhadas).toBe(2);
+    });
+
+    it('should return FINALIZADA status when all services are concluded', async () => {
+      const finalizada = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'mecanico-1',
+        descricaoInicial: 'Revisao completa',
+        diagnostico: 'Oleo desgastado',
+        status: StatusOS.FINALIZADA,
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+        itensServico: [
+          new ItemServicoOS('servico-abc', 1, 100, 'CONCLUIDO', new Date(), new Date(), 2),
+        ],
+      });
+      mockService.concluirServico.mockResolvedValue(finalizada);
+
+      const result = await controller.concluirServico(
+        'os-123',
+        'servico-abc',
+        { horasTrabalhadas: 2 },
+      );
+
+      expect(result.status).toBe(StatusOS.FINALIZADA);
+    });
+
+    it('should throw NotFoundException when ServicoNotAddedError is thrown', async () => {
+      mockService.concluirServico.mockRejectedValue(
+        new ServicoNotAddedError('servico-abc'),
+      );
+
+      await expect(
+        controller.concluirServico('os-123', 'servico-abc', { horasTrabalhadas: 1 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when InvalidStatusTransitionError is thrown', async () => {
+      mockService.concluirServico.mockRejectedValue(
+        new InvalidStatusTransitionError('RECEBIDA', 'concluir servico'),
+      );
+
+      await expect(
+        controller.concluirServico('os-123', 'servico-abc', { horasTrabalhadas: 1 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when ItemServicoInvalidStatusError is thrown', async () => {
+      mockService.concluirServico.mockRejectedValue(
+        new ItemServicoInvalidStatusError('servico-abc', 'PENDENTE', 'concluir'),
+      );
+
+      await expect(
+        controller.concluirServico('os-123', 'servico-abc', { horasTrabalhadas: 1 }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

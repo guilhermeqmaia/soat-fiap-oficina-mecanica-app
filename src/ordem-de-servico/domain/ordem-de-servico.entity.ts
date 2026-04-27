@@ -4,6 +4,7 @@ import { InvalidDescriptionError } from './errors/invalid-description.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
 import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
 import { ServicoNotAddedError } from './errors/servico-not-added.error';
+import { ItemServicoInvalidStatusError } from './errors/item-servico-invalid-status.error';
 
 export interface CreateOrdemDeServicoProps {
   clienteId: string;
@@ -204,6 +205,64 @@ export class OrdemDeServico {
       );
     }
     this._status = StatusOSVO.create(StatusOS.CANCELADA);
+  }
+
+  iniciarServico(servicoId: string): void {
+    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_EXECUCAO))) {
+      throw new InvalidStatusTransitionError(
+        this._status.toString(),
+        'iniciar servico',
+      );
+    }
+    const idx = this._itensServico.findIndex((i) => i.servicoId === servicoId);
+    if (idx === -1) {
+      throw new ServicoNotAddedError(servicoId);
+    }
+    const item = this._itensServico[idx];
+    if (item.statusExecucao !== 'PENDENTE') {
+      throw new ItemServicoInvalidStatusError(
+        servicoId,
+        item.statusExecucao,
+        'iniciar',
+      );
+    }
+    const updated = [...this._itensServico];
+    updated[idx] = item.iniciar();
+    this._itensServico = updated;
+  }
+
+  concluirServico(servicoId: string, horasTrabalhadas: number): void {
+    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_EXECUCAO))) {
+      throw new InvalidStatusTransitionError(
+        this._status.toString(),
+        'concluir servico',
+      );
+    }
+    if (horasTrabalhadas <= 0) {
+      throw new Error('Horas trabalhadas deve ser maior que zero');
+    }
+    const idx = this._itensServico.findIndex((i) => i.servicoId === servicoId);
+    if (idx === -1) {
+      throw new ServicoNotAddedError(servicoId);
+    }
+    const item = this._itensServico[idx];
+    if (item.statusExecucao !== 'EM_EXECUCAO') {
+      throw new ItemServicoInvalidStatusError(
+        servicoId,
+        item.statusExecucao,
+        'concluir',
+      );
+    }
+    const updated = [...this._itensServico];
+    updated[idx] = item.concluir(horasTrabalhadas);
+    this._itensServico = updated;
+
+    const todosConcluidos = this._itensServico.every(
+      (i) => i.statusExecucao === 'CONCLUIDO',
+    );
+    if (todosConcluidos) {
+      this._status = StatusOSVO.create(StatusOS.FINALIZADA);
+    }
   }
 
   finalizarExecucao(): void {

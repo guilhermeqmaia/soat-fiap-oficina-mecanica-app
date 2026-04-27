@@ -6,6 +6,7 @@ import { InvalidStatusTransitionError } from './errors/invalid-status-transition
 import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
 import { ServicoNotAddedError } from './errors/servico-not-added.error';
 import { InvalidQuantityError } from './errors/invalid-quantity.error';
+import { ItemServicoInvalidStatusError } from './errors/item-servico-invalid-status.error';
 
 const reconstituteEmDiagnostico = () =>
   OrdemDeServico.reconstitute({
@@ -442,6 +443,251 @@ describe('OrdemDeServico Entity', () => {
       expect(() => os.removerServico('servico-1')).toThrow(
         InvalidStatusTransitionError,
       );
+    });
+  });
+
+  const makeOsEmExecucaoComItens = (itens: ItemServicoOS[] = []) =>
+    OrdemDeServico.reconstitute({
+      id: 'os-123',
+      numero: 'OS-2026-00001',
+      clienteId: 'cliente-123',
+      veiculoId: 'veiculo-456',
+      usuarioId: 'usuario-789',
+      descricaoInicial: 'Revisao completa',
+      diagnostico: 'Oleo e correia desgastados',
+      status: StatusOS.EM_EXECUCAO,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      itensServico: itens,
+    });
+
+  describe('iniciarServico (US-14)', () => {
+    it('should transition item from PENDENTE to EM_EXECUCAO', () => {
+      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
+
+      os.iniciarServico('s-1');
+
+      expect(os.itensServico[0].statusExecucao).toBe('EM_EXECUCAO');
+      expect(os.itensServico[0].inicioExecucao).toBeInstanceOf(Date);
+    });
+
+    it('should not change OS status when initiating a service', () => {
+      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
+
+      os.iniciarServico('s-1');
+
+      expect(os.status).toBe(StatusOS.EM_EXECUCAO);
+    });
+
+    it('should allow multiple services to be started independently', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100),
+        new ItemServicoOS('s-2', 1, 200),
+      ]);
+
+      os.iniciarServico('s-1');
+
+      expect(os.itensServico[0].statusExecucao).toBe('EM_EXECUCAO');
+      expect(os.itensServico[1].statusExecucao).toBe('PENDENTE');
+    });
+
+    it('should throw InvalidStatusTransitionError when OS is not EM_EXECUCAO', () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Revisao completa',
+        diagnostico: null,
+        status: StatusOS.AGUARDANDO_APROVACAO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        itensServico: [new ItemServicoOS('s-1', 1, 100)],
+      });
+
+      expect(() => os.iniciarServico('s-1')).toThrow(InvalidStatusTransitionError);
+    });
+
+    it('should throw ServicoNotAddedError when servicoId not in OS', () => {
+      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
+
+      expect(() => os.iniciarServico('s-inexistente')).toThrow(ServicoNotAddedError);
+    });
+
+    it('should throw ItemServicoInvalidStatusError when item is already EM_EXECUCAO', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+      ]);
+
+      expect(() => os.iniciarServico('s-1')).toThrow(ItemServicoInvalidStatusError);
+    });
+
+    it('should throw ItemServicoInvalidStatusError when item is already CONCLUIDO', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'CONCLUIDO', new Date(), new Date(), 2),
+      ]);
+
+      expect(() => os.iniciarServico('s-1')).toThrow(ItemServicoInvalidStatusError);
+    });
+  });
+
+  describe('concluirServico (US-14)', () => {
+    it('should transition item from EM_EXECUCAO to CONCLUIDO with hours recorded', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+      ]);
+
+      os.concluirServico('s-1', 2.5);
+
+      const item = os.itensServico[0];
+      expect(item.statusExecucao).toBe('CONCLUIDO');
+      expect(item.horasTrabalhadas).toBe(2.5);
+      expect(item.fimExecucao).toBeInstanceOf(Date);
+    });
+
+    it('should preserve inicioExecucao after conclusion', () => {
+      const inicio = new Date('2026-04-27T08:00:00Z');
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', inicio),
+      ]);
+
+      os.concluirServico('s-1', 1);
+
+      expect(os.itensServico[0].inicioExecucao).toEqual(inicio);
+    });
+
+    it('should auto-finalize OS when single service is concluded', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+      ]);
+
+      os.concluirServico('s-1', 1);
+
+      expect(os.status).toBe(StatusOS.FINALIZADA);
+    });
+
+    it('should auto-finalize OS only when ALL services are concluded', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+        new ItemServicoOS('s-2', 1, 200, 'EM_EXECUCAO', new Date()),
+      ]);
+
+      os.concluirServico('s-1', 1.5);
+      expect(os.status).toBe(StatusOS.EM_EXECUCAO);
+
+      os.concluirServico('s-2', 0.5);
+      expect(os.status).toBe(StatusOS.FINALIZADA);
+    });
+
+    it('should NOT auto-finalize when there are PENDENTE services remaining', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+        new ItemServicoOS('s-2', 1, 200),
+      ]);
+
+      os.concluirServico('s-1', 1);
+
+      expect(os.status).toBe(StatusOS.EM_EXECUCAO);
+    });
+
+    it('should throw InvalidStatusTransitionError when OS is not EM_EXECUCAO', () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Revisao completa',
+        diagnostico: null,
+        status: StatusOS.AGUARDANDO_APROVACAO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        itensServico: [
+          new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+        ],
+      });
+
+      expect(() => os.concluirServico('s-1', 1)).toThrow(InvalidStatusTransitionError);
+    });
+
+    it('should throw ServicoNotAddedError when servicoId not in OS', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+      ]);
+
+      expect(() => os.concluirServico('s-inexistente', 1)).toThrow(ServicoNotAddedError);
+    });
+
+    it('should throw ItemServicoInvalidStatusError when item is PENDENTE', () => {
+      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
+
+      expect(() => os.concluirServico('s-1', 1)).toThrow(ItemServicoInvalidStatusError);
+    });
+
+    it('should throw ItemServicoInvalidStatusError when item is already CONCLUIDO', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'CONCLUIDO', new Date(), new Date(), 2),
+      ]);
+
+      expect(() => os.concluirServico('s-1', 1)).toThrow(ItemServicoInvalidStatusError);
+    });
+
+    it('should throw Error when horasTrabalhadas is zero', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+      ]);
+
+      expect(() => os.concluirServico('s-1', 0)).toThrow(Error);
+    });
+
+    it('should throw Error when horasTrabalhadas is negative', () => {
+      const os = makeOsEmExecucaoComItens([
+        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
+      ]);
+
+      expect(() => os.concluirServico('s-1', -1)).toThrow(Error);
+    });
+  });
+
+  describe('ItemServicoOS VO — execution methods', () => {
+    it('iniciar() returns new instance with EM_EXECUCAO and inicioExecucao set', () => {
+      const item = new ItemServicoOS('s-1', 2, 50);
+      const started = item.iniciar();
+
+      expect(started.statusExecucao).toBe('EM_EXECUCAO');
+      expect(started.inicioExecucao).toBeInstanceOf(Date);
+      expect(started.fimExecucao).toBeNull();
+      expect(started.horasTrabalhadas).toBeNull();
+      expect(started.servicoId).toBe('s-1');
+      expect(started.quantidade).toBe(2);
+      expect(started.precoUnitario).toBe(50);
+    });
+
+    it('concluir() returns new instance with CONCLUIDO and hours set', () => {
+      const item = new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date());
+      const done = item.concluir(3.5);
+
+      expect(done.statusExecucao).toBe('CONCLUIDO');
+      expect(done.horasTrabalhadas).toBe(3.5);
+      expect(done.fimExecucao).toBeInstanceOf(Date);
+    });
+
+    it('concluir() preserves inicioExecucao from previous state', () => {
+      const inicio = new Date('2026-04-27T09:00:00Z');
+      const item = new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', inicio);
+      const done = item.concluir(2);
+
+      expect(done.inicioExecucao).toEqual(inicio);
+    });
+
+    it('new ItemServicoOS without execution args defaults to PENDENTE', () => {
+      const item = new ItemServicoOS('s-1', 1, 100);
+
+      expect(item.statusExecucao).toBe('PENDENTE');
+      expect(item.inicioExecucao).toBeNull();
+      expect(item.fimExecucao).toBeNull();
+      expect(item.horasTrabalhadas).toBeNull();
     });
   });
 });

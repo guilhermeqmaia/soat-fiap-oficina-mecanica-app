@@ -114,18 +114,28 @@ model OrdemDeServico {
 }
 
 model ItemOrdemDeServicoServico {
-  id               String   @id @default(uuid())
-  ordemDeServicoId String   @map("ordem_de_servico_id")
-  servicoId        String   @map("servico_id")
+  id               String             @id @default(uuid())
+  ordemDeServicoId String             @map("ordem_de_servico_id")
+  servicoId        String             @map("servico_id")
   quantidade       Int
-  precoUnitario    Decimal  @map("preco_unitario")
-  createdAt        DateTime @default(now()) @map("created_at")
+  precoUnitario    Decimal            @map("preco_unitario")
+  statusExecucao   StatusExecucaoItem @default(PENDENTE) @map("status_execucao")
+  inicioExecucao   DateTime?          @map("inicio_execucao")
+  fimExecucao      DateTime?          @map("fim_execucao")
+  horasTrabalhadas Float?             @map("horas_trabalhadas")
+  createdAt        DateTime           @default(now()) @map("created_at")
 
   ordemDeServico OrdemDeServico @relation(fields: [ordemDeServicoId], references: [id], onDelete: Cascade)
   servico        Servico        @relation(fields: [servicoId], references: [id])
 
   @@unique([ordemDeServicoId, servicoId])
   @@map("item_ordem_de_servico_servico")
+}
+
+enum StatusExecucaoItem {
+  PENDENTE
+  EM_EXECUCAO
+  CONCLUIDO
 }
 
 enum StatusOrdemDeServico {

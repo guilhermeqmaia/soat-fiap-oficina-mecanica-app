@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   NotFoundException,
@@ -32,6 +33,7 @@ import { CompletarDiagnosticoDto } from './dto/completar-diagnostico.dto';
 import { QueryOrdemDeServicoDto } from './dto/query-ordem-de-servico.dto';
 import { AtribuirMecanicoDto } from './dto/atribuir-mecanico.dto';
 import { AdicionarServicoDto } from './dto/adicionar-servico.dto';
+import { ConcluirServicoDto } from './dto/concluir-servico.dto';
 import { ClienteNotFoundError } from '../domain/errors/cliente-not-found.error';
 import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
 import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mismatch.error';
@@ -41,6 +43,7 @@ import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-clien
 import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
 import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
 import { ServicoNotAddedError } from '../domain/errors/servico-not-added.error';
+import { ItemServicoInvalidStatusError } from '../domain/errors/item-servico-invalid-status.error';
 import { InvalidQuantityError } from '../domain/errors/invalid-quantity.error';
 import { OrdemDeServicoNotFoundError } from '../domain/errors/ordem-de-servico-not-found.error';
 import { Public } from '../../auth/infrastructure/decorators/public.decorator';
@@ -330,6 +333,61 @@ export class OrdemDeServicoController {
     }
   }
 
+  @Patch(':id/servicos/:servicoId/iniciar')
+  @Roles(Role.ADMIN, Role.MECANICO)
+  @ApiOperation({ summary: 'Iniciar execucao de um servico da OS — US-14' })
+  @ApiOkResponse({ description: 'Execucao do servico iniciada' })
+  @ApiNotFoundResponse({ description: 'OS ou servico nao encontrado' })
+  @ApiBadRequestResponse({ description: 'Status invalido para iniciar execucao' })
+  async iniciarServico(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('servicoId', ParseUUIDPipe) servicoId: string,
+  ) {
+    try {
+      return this.toResponse(await this.service.iniciarServico(id, servicoId));
+    } catch (error) {
+      if (error instanceof ServicoNotAddedError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof InvalidStatusTransitionError) {
+        throw new BadRequestException(error.message);
+      }
+      if (error instanceof ItemServicoInvalidStatusError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Patch(':id/servicos/:servicoId/concluir')
+  @Roles(Role.ADMIN, Role.MECANICO)
+  @ApiOperation({ summary: 'Concluir execucao de um servico da OS — US-14' })
+  @ApiOkResponse({ description: 'Servico concluido; se todos concluidos a OS passa a FINALIZADA automaticamente' })
+  @ApiNotFoundResponse({ description: 'OS ou servico nao encontrado' })
+  @ApiBadRequestResponse({ description: 'Status invalido ou horas invalidas' })
+  async concluirServico(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('servicoId', ParseUUIDPipe) servicoId: string,
+    @Body() dto: ConcluirServicoDto,
+  ) {
+    try {
+      return this.toResponse(
+        await this.service.concluirServico(id, servicoId, dto.horasTrabalhadas),
+      );
+    } catch (error) {
+      if (error instanceof ServicoNotAddedError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof InvalidStatusTransitionError) {
+        throw new BadRequestException(error.message);
+      }
+      if (error instanceof ItemServicoInvalidStatusError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
   @Delete(':id/servicos/:servicoId')
   @Roles(Role.ADMIN, Role.MECANICO)
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -378,6 +436,10 @@ export class OrdemDeServicoController {
         quantidade: i.quantidade,
         precoUnitario: i.precoUnitario,
         subtotal: i.subtotal(),
+        statusExecucao: i.statusExecucao,
+        inicioExecucao: i.inicioExecucao,
+        fimExecucao: i.fimExecucao,
+        horasTrabalhadas: i.horasTrabalhadas,
       })),
       valorTotalServicos:
         typeof os.valorTotalServicos === 'function'
