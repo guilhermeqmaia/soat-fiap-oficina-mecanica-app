@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Produto } from '../domain/produto.entity';
+import { MovimentacaoEstoque } from '../domain/movimentacao-estoque.entity';
+import { TipoMovimentacaoEstoque } from '../domain/value-objects/tipo-movimentacao-estoque.vo';
 import {
   ProdutoRepository,
   FindAllParams,
@@ -64,6 +66,43 @@ export class PrismaProdutoRepository implements ProdutoRepository {
     };
   }
 
+  async findLowStock(): Promise<Produto[]> {
+    // Prisma nao suporta comparar duas colunas no where, entao usamos SQL raw.
+    // Ordena pelos mais criticos primeiro (estoque mais abaixo do minimo).
+    const records = await this.prisma.$queryRaw<
+      Array<{
+        id: string;
+        nome: string;
+        descricao: string | null;
+        preco_unitario: unknown;
+        quantidade_estoque: number;
+        quantidade_reservada: number;
+        estoque_minimo: number;
+        ativo: boolean;
+      }>
+    >`
+      SELECT id, nome, descricao, preco_unitario,
+             quantidade_estoque, quantidade_reservada,
+             estoque_minimo, ativo
+      FROM produto
+      WHERE ativo = true AND quantidade_estoque <= estoque_minimo
+      ORDER BY (quantidade_estoque - estoque_minimo) ASC, nome ASC
+    `;
+
+    return records.map((r) =>
+      Produto.reconstitute({
+        id: r.id,
+        nome: r.nome,
+        descricao: r.descricao,
+        precoUnitario: Number(r.preco_unitario),
+        quantidadeEstoque: r.quantidade_estoque,
+        quantidadeReservada: r.quantidade_reservada,
+        estoqueMinimo: r.estoque_minimo,
+        ativo: r.ativo,
+      }),
+    );
+  }
+
   async update(produto: Produto): Promise<Produto> {
     const record = await this.prisma.produto.update({
       where: { id: produto.id },
@@ -79,6 +118,52 @@ export class PrismaProdutoRepository implements ProdutoRepository {
     });
 
     return this.toDomain(record);
+  }
+
+  async updateAndRecordMovimentacao(
+    produto: Produto,
+    movimentacao: MovimentacaoEstoque,
+  ): Promise<{ produto: Produto; movimentacao: MovimentacaoEstoque }> {
+    const [produtoRecord, movRecord] = await this.prisma.$transaction([
+      this.prisma.produto.update({
+        where: { id: produto.id },
+        data: {
+          nome: produto.nome,
+          descricao: produto.descricao ?? null,
+          precoUnitario: produto.precoUnitario.value,
+          quantidadeEstoque: produto.quantidadeEstoque,
+          quantidadeReservada: produto.quantidadeReservada,
+          estoqueMinimo: produto.estoqueMinimo,
+          ativo: produto.ativo,
+        },
+      }),
+      this.prisma.movimentacaoEstoque.create({
+        data: {
+          produtoId: movimentacao.produtoId,
+          tipo: movimentacao.tipo,
+          quantidade: movimentacao.quantidade,
+          estoqueResultante: movimentacao.estoqueResultante,
+          ordemDeServicoId: movimentacao.ordemDeServicoId,
+          motivo: movimentacao.motivo,
+          usuarioId: movimentacao.usuarioId,
+        },
+      }),
+    ]);
+
+    return {
+      produto: this.toDomain(produtoRecord),
+      movimentacao: MovimentacaoEstoque.reconstitute({
+        id: movRecord.id,
+        produtoId: movRecord.produtoId,
+        tipo: movRecord.tipo as TipoMovimentacaoEstoque,
+        quantidade: movRecord.quantidade,
+        estoqueResultante: movRecord.estoqueResultante,
+        ordemDeServicoId: movRecord.ordemDeServicoId,
+        motivo: movRecord.motivo,
+        usuarioId: movRecord.usuarioId,
+        createdAt: movRecord.createdAt,
+      }),
+    };
   }
 
   async delete(id: string): Promise<void> {

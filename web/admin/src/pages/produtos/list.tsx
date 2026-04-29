@@ -37,8 +37,14 @@ const empty: FormState = {
   estoqueMinimo: 0,
 };
 
+const EMPTY_PRODUTOS: Produto[] = [];
+const MOTIVO_MAX_LEN = 500;
+
 const isLowStock = (p: Produto) =>
   p.alertaEstoqueBaixo ?? p.quantidadeEstoque <= p.estoqueMinimo;
+
+const disponivelDe = (p: Produto) =>
+  p.quantidadeDisponivel ?? p.quantidadeEstoque - p.quantidadeReservada;
 
 export function ProdutosListPage() {
   const qc = useQueryClient();
@@ -54,9 +60,10 @@ export function ProdutosListPage() {
       }),
   });
 
+  const produtos = data?.data ?? EMPTY_PRODUTOS;
   const filtered = useMemo(
-    () => (onlyLowStock ? (data?.data ?? []).filter(isLowStock) : data?.data ?? []),
-    [data, onlyLowStock],
+    () => (onlyLowStock ? produtos.filter(isLowStock) : produtos),
+    [produtos, onlyLowStock],
   );
 
   const createMut = useMutation({
@@ -141,7 +148,7 @@ export function ProdutosListPage() {
     else createMut.mutate(form);
   };
 
-  const totalLowStock = (data?.data ?? []).filter(isLowStock).length;
+  const totalLowStock = produtos.filter(isLowStock).length;
 
   return (
     <div className="space-y-6">
@@ -197,9 +204,6 @@ export function ProdutosListPage() {
               <TBody>
                 {filtered.map((p) => {
                   const baixo = isLowStock(p);
-                  const disponivel =
-                    p.quantidadeDisponivel ??
-                    p.quantidadeEstoque - p.quantidadeReservada;
                   return (
                     <TR key={p.id}>
                       <TD className="font-medium">
@@ -220,7 +224,7 @@ export function ProdutosListPage() {
                         {p.quantidadeReservada}
                       </TD>
                       <TD className="text-right font-mono font-medium">
-                        {disponivel}
+                        {disponivelDe(p)}
                       </TD>
                       <TD className="text-right font-mono text-slate-500">
                         {p.estoqueMinimo}
@@ -432,9 +436,7 @@ export function ProdutosListPage() {
                 <div>
                   Disponivel:{' '}
                   <span className="font-mono text-slate-900">
-                    {movModal.produto.quantidadeDisponivel ??
-                      movModal.produto.quantidadeEstoque -
-                        movModal.produto.quantidadeReservada}
+                    {disponivelDe(movModal.produto)}
                   </span>
                 </div>
               </div>
@@ -453,6 +455,12 @@ export function ProdutosListPage() {
                 }
                 required
               />
+              {movModal.tipo === 'SAIDA' &&
+                movModal.quantidade > disponivelDe(movModal.produto) && (
+                  <p className="mt-1 text-xs text-red-600">
+                    Excede o disponivel ({disponivelDe(movModal.produto)})
+                  </p>
+                )}
             </div>
             <div>
               <Label>Motivo</Label>
@@ -461,12 +469,16 @@ export function ProdutosListPage() {
                 onChange={(e) =>
                   setMovModal({ ...movModal, motivo: e.target.value })
                 }
+                maxLength={MOTIVO_MAX_LEN}
                 placeholder={
                   movModal.tipo === 'ENTRADA'
                     ? 'Compra fornecedor X, ajuste...'
                     : 'Perda, ajuste de inventario...'
                 }
               />
+              <p className="mt-1 text-xs text-slate-400">
+                {movModal.motivo.length}/{MOTIVO_MAX_LEN}
+              </p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button
@@ -476,7 +488,15 @@ export function ProdutosListPage() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={movMut.isPending}>
+              <Button
+                type="submit"
+                disabled={
+                  movMut.isPending ||
+                  movModal.quantidade <= 0 ||
+                  (movModal.tipo === 'SAIDA' &&
+                    movModal.quantidade > disponivelDe(movModal.produto))
+                }
+              >
                 Confirmar
               </Button>
             </div>

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ProdutoService } from './application/produto.service';
 import { MovimentacaoEstoqueService } from './application/movimentacao-estoque.service';
+import { EstoqueBaixoListener } from './application/listeners/estoque-baixo.listener';
 import { ProdutoController } from './infrastructure/produto.controller';
 import { PrismaProdutoRepository } from './infrastructure/prisma-produto.repository';
 import { PrismaMovimentacaoEstoqueRepository } from './infrastructure/prisma-movimentacao-estoque.repository';
@@ -12,6 +13,7 @@ import { MOVIMENTACAO_ESTOQUE_REPOSITORY } from './domain/movimentacao-estoque.r
   providers: [
     ProdutoService,
     MovimentacaoEstoqueService,
+    EstoqueBaixoListener,
     {
       provide: PRODUTO_REPOSITORY,
       useClass: PrismaProdutoRepository,

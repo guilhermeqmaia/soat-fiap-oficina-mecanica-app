@@ -12,6 +12,7 @@ import {
   PaginatedResult,
 } from '../domain/produto.repository';
 import { DuplicateNameError } from '../domain/errors/duplicate-name.error';
+import { InsufficientStockError } from '../domain/errors/insufficient-stock.error';
 import { MovimentacaoEstoque } from '../domain/movimentacao-estoque.entity';
 import {
   MOVIMENTACAO_ESTOQUE_REPOSITORY,
@@ -59,8 +60,7 @@ export class ProdutoService {
   }
 
   async findLowStock(): Promise<Produto[]> {
-    const all = await this.repository.findAll({ page: 1, limit: 1000 });
-    return all.data.filter((p) => p.ativo && p.isLowStock());
+    return this.repository.findLowStock();
   }
 
   async update(id: string, props: UpdateProdutoProps): Promise<Produto> {
@@ -95,14 +95,12 @@ export class ProdutoService {
   ): Promise<Produto> {
     const produto = await this.findById(id);
     produto.addStock(quantity);
-    const updated = await this.repository.update(produto);
-    await this.registrarMovimentacao(
-      updated,
+    return this.persistirComMovimentacao(
+      produto,
       TipoMovimentacaoEstoque.ENTRADA,
       quantity,
       ctx,
     );
-    return updated;
   }
 
   async removeStock(
@@ -112,14 +110,15 @@ export class ProdutoService {
   ): Promise<Produto> {
     const produto = await this.findById(id);
     if (quantity > produto.quantidadeDisponivel) {
-      throw new NotFoundException(
-        `Quantidade ${quantity} excede o disponivel (${produto.quantidadeDisponivel})`,
+      throw new InsufficientStockError(
+        produto.nome,
+        quantity,
+        produto.quantidadeDisponivel,
       );
     }
     produto.deduct(quantity);
-    const updated = await this.repository.update(produto);
-    await this.registrarMovimentacao(
-      updated,
+    const updated = await this.persistirComMovimentacao(
+      produto,
       TipoMovimentacaoEstoque.SAIDA,
       quantity,
       ctx,
@@ -135,14 +134,12 @@ export class ProdutoService {
   ): Promise<Produto> {
     const produto = await this.findById(id);
     produto.reserve(quantity);
-    const updated = await this.repository.update(produto);
-    await this.registrarMovimentacao(
-      updated,
+    return this.persistirComMovimentacao(
+      produto,
       TipoMovimentacaoEstoque.RESERVA,
       quantity,
       ctx,
     );
-    return updated;
   }
 
   async releaseStock(
@@ -152,14 +149,12 @@ export class ProdutoService {
   ): Promise<Produto> {
     const produto = await this.findById(id);
     produto.release(quantity);
-    const updated = await this.repository.update(produto);
-    await this.registrarMovimentacao(
-      updated,
+    return this.persistirComMovimentacao(
+      produto,
       TipoMovimentacaoEstoque.ESTORNO_RESERVA,
       quantity,
       ctx,
     );
-    return updated;
   }
 
   async deductStock(
@@ -169,9 +164,8 @@ export class ProdutoService {
   ): Promise<Produto> {
     const produto = await this.findById(id);
     produto.deduct(quantity);
-    const updated = await this.repository.update(produto);
-    await this.registrarMovimentacao(
-      updated,
+    const updated = await this.persistirComMovimentacao(
+      produto,
       TipoMovimentacaoEstoque.BAIXA,
       quantity,
       ctx,
@@ -180,12 +174,17 @@ export class ProdutoService {
     return updated;
   }
 
-  private async registrarMovimentacao(
+  /**
+   * Persiste produto + registra movimentacao numa unica transacao via repository.
+   * Garante que o estado do estoque e o historico de auditoria estao sempre
+   * em sincronia (atomicidade).
+   */
+  private async persistirComMovimentacao(
     produto: Produto,
     tipo: TipoMovimentacaoEstoque,
     quantidade: number,
     ctx: MovimentacaoContext,
-  ): Promise<void> {
+  ): Promise<Produto> {
     const movimentacao = MovimentacaoEstoque.create({
       produtoId: produto.id!,
       tipo,
@@ -195,7 +194,11 @@ export class ProdutoService {
       motivo: ctx.motivo,
       usuarioId: ctx.usuarioId,
     });
-    await this.movimentacaoRepository.create(movimentacao);
+    const result = await this.repository.updateAndRecordMovimentacao(
+      produto,
+      movimentacao,
+    );
+    return result.produto;
   }
 
   private maybeEmitEstoqueBaixo(produto: Produto): void {

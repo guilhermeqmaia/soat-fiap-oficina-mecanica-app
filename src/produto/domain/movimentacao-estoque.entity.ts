@@ -1,3 +1,4 @@
+import { InvalidMovimentacaoError } from './errors/invalid-movimentacao.error';
 import { TipoMovimentacaoEstoque } from './value-objects/tipo-movimentacao-estoque.vo';
 
 export interface CreateMovimentacaoEstoqueProps {
@@ -59,10 +60,14 @@ export class MovimentacaoEstoque {
 
   static create(props: CreateMovimentacaoEstoqueProps): MovimentacaoEstoque {
     if (props.quantidade <= 0) {
-      throw new Error('Quantidade da movimentacao deve ser positiva');
+      throw new InvalidMovimentacaoError(
+        'Quantidade da movimentacao deve ser positiva',
+      );
     }
     if (props.estoqueResultante < 0) {
-      throw new Error('Estoque resultante nao pode ser negativo');
+      throw new InvalidMovimentacaoError(
+        'Estoque resultante nao pode ser negativo',
+      );
     }
     return new MovimentacaoEstoque({
       produtoId: props.produtoId,

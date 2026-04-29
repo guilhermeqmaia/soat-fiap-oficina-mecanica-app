@@ -16,7 +16,14 @@ const mockRepository: jest.Mocked<ProdutoRepository> = {
   create: jest.fn(),
   findById: jest.fn(),
   findAll: jest.fn(),
+  findLowStock: jest.fn(),
   update: jest.fn(),
+  updateAndRecordMovimentacao: jest
+    .fn()
+    .mockImplementation(async (produto, movimentacao) => ({
+      produto,
+      movimentacao,
+    })),
   delete: jest.fn(),
 };
 
@@ -260,8 +267,8 @@ describe('ProdutoService', () => {
         usuarioId: 'u-1',
       });
 
-      expect(mockMovimentacaoRepository.create).toHaveBeenCalledTimes(1);
-      const arg = mockMovimentacaoRepository.create.mock.calls[0][0];
+      expect(mockRepository.updateAndRecordMovimentacao).toHaveBeenCalledTimes(1);
+      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('ENTRADA');
       expect(arg.quantidade).toBe(10);
       expect(arg.estoqueResultante).toBe(30);
@@ -275,7 +282,7 @@ describe('ProdutoService', () => {
 
       await service.reserveStock('p-1', 3, { ordemDeServicoId: 'os-9' });
 
-      const arg = mockMovimentacaoRepository.create.mock.calls[0][0];
+      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('RESERVA');
       expect(arg.quantidade).toBe(3);
       expect(arg.ordemDeServicoId).toBe('os-9');
@@ -292,7 +299,7 @@ describe('ProdutoService', () => {
 
       await service.releaseStock('p-1', 5, { ordemDeServicoId: 'os-9' });
 
-      const arg = mockMovimentacaoRepository.create.mock.calls[0][0];
+      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('ESTORNO_RESERVA');
     });
 
@@ -305,7 +312,7 @@ describe('ProdutoService', () => {
         motivo: 'Baixa por execucao de servico',
       });
 
-      const arg = mockMovimentacaoRepository.create.mock.calls[0][0];
+      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('BAIXA');
       expect(arg.quantidade).toBe(4);
       expect(arg.estoqueResultante).toBe(16);
@@ -320,9 +327,9 @@ describe('ProdutoService', () => {
       });
       mockRepository.findById.mockResolvedValue(produto);
 
-      await expect(service.removeStock('p-1', 5)).rejects.toThrow(NotFoundException);
+      await expect(service.removeStock('p-1', 5)).rejects.toThrow(InsufficientStockError);
       expect(mockRepository.update).not.toHaveBeenCalled();
-      expect(mockMovimentacaoRepository.create).not.toHaveBeenCalled();
+      expect(mockRepository.updateAndRecordMovimentacao).not.toHaveBeenCalled();
     });
 
     it('emite EstoqueBaixoEvent quando deductStock leva o estoque <= minimo', async () => {
@@ -375,9 +382,10 @@ describe('ProdutoService', () => {
         id: '3', nome: 'P3', descricao: null, precoUnitario: 10,
         quantidadeEstoque: 0, quantidadeReservada: 0, estoqueMinimo: 5, ativo: false,
       });
-      mockRepository.findAll.mockResolvedValue({
-        data: [baixo, ok, inativo], total: 3, page: 1, limit: 1000,
-      });
+      // Repository agora filtra no banco; mocka o resultado ja filtrado
+      void ok;
+      void inativo;
+      mockRepository.findLowStock.mockResolvedValue([baixo]);
 
       const result = await service.findLowStock();
 

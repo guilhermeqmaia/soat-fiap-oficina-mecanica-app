@@ -173,20 +173,28 @@ export class ProdutoController {
     summary: 'Registrar saida manual de estoque (ajuste, perda)',
   })
   @ApiOkResponse({ description: 'Saida registrada com sucesso' })
-  @ApiNotFoundResponse({
-    description: 'Produto nao encontrado ou quantidade indisponivel',
+  @ApiNotFoundResponse({ description: 'Produto nao encontrado' })
+  @ApiConflictResponse({
+    description: 'Quantidade excede o estoque disponivel',
   })
   async saidaEstoque(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SaidaEstoqueDto,
     @CurrentUser() usuario: Usuario,
   ) {
-    return this.toResponse(
-      await this.service.removeStock(id, dto.quantidade, {
-        motivo: dto.motivo,
-        usuarioId: usuario.id,
-      }),
-    );
+    try {
+      return this.toResponse(
+        await this.service.removeStock(id, dto.quantidade, {
+          motivo: dto.motivo,
+          usuarioId: usuario.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof InsufficientStockError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Get(':id/movimentacoes')
