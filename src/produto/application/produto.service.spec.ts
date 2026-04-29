@@ -7,9 +7,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotFoundException } from '@nestjs/common';
 import {
-  MovimentacaoEstoqueRepository,
-  MOVIMENTACAO_ESTOQUE_REPOSITORY,
-} from '../domain/movimentacao-estoque.repository';
+  ESTOQUE_UNIT_OF_WORK,
+  EstoqueUnitOfWork,
+} from '../domain/estoque-unit-of-work';
 
 const mockRepository: jest.Mocked<ProdutoRepository> = {
   existsByNome: jest.fn(),
@@ -18,18 +18,16 @@ const mockRepository: jest.Mocked<ProdutoRepository> = {
   findAll: jest.fn(),
   findLowStock: jest.fn(),
   update: jest.fn(),
-  updateAndRecordMovimentacao: jest
+  delete: jest.fn(),
+};
+
+const mockUow: jest.Mocked<EstoqueUnitOfWork> = {
+  persistirAtualizacaoComMovimentacao: jest
     .fn()
     .mockImplementation(async (produto, movimentacao) => ({
       produto,
       movimentacao,
     })),
-  delete: jest.fn(),
-};
-
-const mockMovimentacaoRepository: jest.Mocked<MovimentacaoEstoqueRepository> = {
-  create: jest.fn().mockImplementation(async (m) => m),
-  findAll: jest.fn(),
 };
 
 const mockEventEmitter = { emit: jest.fn() } as unknown as EventEmitter2;
@@ -44,10 +42,7 @@ describe('ProdutoService', () => {
       providers: [
         ProdutoService,
         { provide: PRODUTO_REPOSITORY, useValue: mockRepository },
-        {
-          provide: MOVIMENTACAO_ESTOQUE_REPOSITORY,
-          useValue: mockMovimentacaoRepository,
-        },
+        { provide: ESTOQUE_UNIT_OF_WORK, useValue: mockUow },
         { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
@@ -267,8 +262,8 @@ describe('ProdutoService', () => {
         usuarioId: 'u-1',
       });
 
-      expect(mockRepository.updateAndRecordMovimentacao).toHaveBeenCalledTimes(1);
-      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
+      expect(mockUow.persistirAtualizacaoComMovimentacao).toHaveBeenCalledTimes(1);
+      const arg = mockUow.persistirAtualizacaoComMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('ENTRADA');
       expect(arg.quantidade).toBe(10);
       expect(arg.estoqueResultante).toBe(30);
@@ -282,7 +277,7 @@ describe('ProdutoService', () => {
 
       await service.reserveStock('p-1', 3, { ordemDeServicoId: 'os-9' });
 
-      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
+      const arg = mockUow.persistirAtualizacaoComMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('RESERVA');
       expect(arg.quantidade).toBe(3);
       expect(arg.ordemDeServicoId).toBe('os-9');
@@ -299,7 +294,7 @@ describe('ProdutoService', () => {
 
       await service.releaseStock('p-1', 5, { ordemDeServicoId: 'os-9' });
 
-      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
+      const arg = mockUow.persistirAtualizacaoComMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('ESTORNO_RESERVA');
     });
 
@@ -312,7 +307,7 @@ describe('ProdutoService', () => {
         motivo: 'Baixa por execucao de servico',
       });
 
-      const arg = mockRepository.updateAndRecordMovimentacao.mock.calls[0][1];
+      const arg = mockUow.persistirAtualizacaoComMovimentacao.mock.calls[0][1];
       expect(arg.tipo).toBe('BAIXA');
       expect(arg.quantidade).toBe(4);
       expect(arg.estoqueResultante).toBe(16);
@@ -329,7 +324,7 @@ describe('ProdutoService', () => {
 
       await expect(service.removeStock('p-1', 5)).rejects.toThrow(InsufficientStockError);
       expect(mockRepository.update).not.toHaveBeenCalled();
-      expect(mockRepository.updateAndRecordMovimentacao).not.toHaveBeenCalled();
+      expect(mockUow.persistirAtualizacaoComMovimentacao).not.toHaveBeenCalled();
     });
 
     it('emite EstoqueBaixoEvent quando deductStock leva o estoque <= minimo', async () => {

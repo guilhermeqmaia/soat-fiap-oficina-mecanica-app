@@ -14,26 +14,24 @@ import {
 import { DuplicateNameError } from '../domain/errors/duplicate-name.error';
 import { InsufficientStockError } from '../domain/errors/insufficient-stock.error';
 import { MovimentacaoEstoque } from '../domain/movimentacao-estoque.entity';
-import {
-  MOVIMENTACAO_ESTOQUE_REPOSITORY,
-  MovimentacaoEstoqueRepository,
-} from '../domain/movimentacao-estoque.repository';
 import { TipoMovimentacaoEstoque } from '../domain/value-objects/tipo-movimentacao-estoque.vo';
 import { EstoqueBaixoEvent } from '../domain/events/estoque-baixo.event';
+import { MovimentacaoContext } from '../domain/movimentacao-context';
+import {
+  ESTOQUE_UNIT_OF_WORK,
+  EstoqueUnitOfWork,
+} from '../domain/estoque-unit-of-work';
 
-export interface MovimentacaoContext {
-  ordemDeServicoId?: string;
-  motivo?: string;
-  usuarioId?: string;
-}
+// Re-export para nao quebrar imports existentes
+export { MovimentacaoContext };
 
 @Injectable()
 export class ProdutoService {
   constructor(
     @Inject(PRODUTO_REPOSITORY)
     private readonly repository: ProdutoRepository,
-    @Inject(MOVIMENTACAO_ESTOQUE_REPOSITORY)
-    private readonly movimentacaoRepository: MovimentacaoEstoqueRepository,
+    @Inject(ESTOQUE_UNIT_OF_WORK)
+    private readonly uow: EstoqueUnitOfWork,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -175,7 +173,7 @@ export class ProdutoService {
   }
 
   /**
-   * Persiste produto + registra movimentacao numa unica transacao via repository.
+   * Persiste produto + registra movimentacao numa unica transacao via UoW.
    * Garante que o estado do estoque e o historico de auditoria estao sempre
    * em sincronia (atomicidade).
    */
@@ -194,7 +192,7 @@ export class ProdutoService {
       motivo: ctx.motivo,
       usuarioId: ctx.usuarioId,
     });
-    const result = await this.repository.updateAndRecordMovimentacao(
+    const result = await this.uow.persistirAtualizacaoComMovimentacao(
       produto,
       movimentacao,
     );
