@@ -29,6 +29,6 @@ import { ESTOQUE_UNIT_OF_WORK } from './domain/estoque-unit-of-work';
       useClass: PrismaEstoqueUnitOfWork,
     },
   ],
-  exports: [ProdutoService, MovimentacaoEstoqueService],
+  exports: [ProdutoService, MovimentacaoEstoqueService, PRODUTO_REPOSITORY],
 })
 export class ProdutoModule {}

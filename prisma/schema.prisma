@@ -58,6 +58,7 @@ model Produto {
   updatedAt            DateTime @updatedAt @map("updated_at")
 
   movimentacoes        MovimentacaoEstoque[]
+  itensOrdemDeServico  ItemOrdemDeServicoProduto[]
 
   @@map("produto")
 }
@@ -136,7 +137,8 @@ model OrdemDeServico {
   veiculo   Veiculo  @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
   usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
 
-  itensServico ItemOrdemDeServicoServico[]
+  itensServico  ItemOrdemDeServicoServico[]
+  itensProduto   ItemOrdemDeServicoProduto[]
 
   @@map("ordem_de_servico")
 }
@@ -158,6 +160,21 @@ model ItemOrdemDeServicoServico {
 
   @@unique([ordemDeServicoId, servicoId])
   @@map("item_ordem_de_servico_servico")
+}
+
+model ItemOrdemDeServicoProduto {
+  id               String   @id @default(uuid())
+  ordemDeServicoId String   @map("ordem_de_servico_id")
+  produtoId        String   @map("produto_id")
+  quantidade       Int
+  precoUnitario    Decimal  @map("preco_unitario")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  ordemDeServico OrdemDeServico @relation(fields: [ordemDeServicoId], references: [id], onDelete: Cascade)
+  produto        Produto        @relation(fields: [produtoId], references: [id])
+
+  @@unique([ordemDeServicoId, produtoId])
+  @@map("item_ordem_de_servico_produto")
 }
 
 enum StatusExecucaoItem {

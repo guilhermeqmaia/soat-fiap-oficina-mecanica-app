@@ -33,6 +33,7 @@ import { CompletarDiagnosticoDto } from './dto/completar-diagnostico.dto';
 import { QueryOrdemDeServicoDto } from './dto/query-ordem-de-servico.dto';
 import { AtribuirMecanicoDto } from './dto/atribuir-mecanico.dto';
 import { AdicionarServicoDto } from './dto/adicionar-servico.dto';
+import { AdicionarProdutoDto } from './dto/adicionar-produto.dto';
 import { ConcluirServicoDto } from './dto/concluir-servico.dto';
 import { ClienteNotFoundError } from '../domain/errors/cliente-not-found.error';
 import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
@@ -43,6 +44,9 @@ import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-clien
 import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
 import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
 import { ServicoNotAddedError } from '../domain/errors/servico-not-added.error';
+import { ProdutoNotFoundInCatalogError } from '../domain/errors/produto-not-found-in-catalog.error';
+import { ProdutoAlreadyAddedError } from '../domain/errors/produto-already-added.error';
+import { ProdutoNotAddedError } from '../domain/errors/produto-not-added.error';
 import { ItemServicoInvalidStatusError } from '../domain/errors/item-servico-invalid-status.error';
 import { InvalidQuantityError } from '../domain/errors/invalid-quantity.error';
 import { OrdemDeServicoNotFoundError } from '../domain/errors/ordem-de-servico-not-found.error';
@@ -136,11 +140,11 @@ export class OrdemDeServicoController {
 
   @Get(':id')
   @Roles(Role.ADMIN, Role.ATENDENTE, Role.MECANICO)
-  @ApiOperation({ summary: 'Buscar ordem de servico por ID' })
-  @ApiOkResponse({ description: 'OS encontrada' })
+  @ApiOperation({ summary: 'Buscar detalhes da ordem de servico por ID' })
+  @ApiOkResponse({ description: 'Detalhes da OS (cabecalho, corpo, rodape)' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   async findById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.toResponse(await this.service.findById(id));
+    return this.service.findByIdDetalhado(id);
   }
 
   @Post(':id/atribuir-mecanico')
@@ -411,6 +415,64 @@ export class OrdemDeServicoController {
     }
   }
 
+  @Post(':id/produtos')
+  @Roles(Role.ADMIN, Role.MECANICO)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Adicionar produto do catalogo a OS' })
+  @ApiCreatedResponse({ description: 'Produto adicionado a OS com sucesso' })
+  @ApiNotFoundResponse({ description: 'OS ou produto nao encontrado' })
+  @ApiBadRequestResponse({
+    description: 'Status invalido, quantidade invalida ou dados invalidos',
+  })
+  @ApiConflictResponse({ description: 'Produto ja adicionado a OS' })
+  async adicionarProduto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdicionarProdutoDto,
+  ) {
+    try {
+      return this.toResponse(
+        await this.service.adicionarProduto(id, dto.produtoId, dto.quantidade),
+      );
+    } catch (error) {
+      if (error instanceof ProdutoNotFoundInCatalogError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof ProdutoAlreadyAddedError) {
+        throw new ConflictException(error.message);
+      }
+      if (error instanceof InvalidStatusTransitionError) {
+        throw new BadRequestException(error.message);
+      }
+      if (error instanceof InvalidQuantityError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Delete(':id/produtos/:produtoId')
+  @Roles(Role.ADMIN, Role.MECANICO)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remover produto da OS' })
+  @ApiNotFoundResponse({ description: 'OS ou produto nao encontrado na OS' })
+  @ApiBadRequestResponse({ description: 'Status invalido para remocao' })
+  async removerProduto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('produtoId', ParseUUIDPipe) produtoId: string,
+  ) {
+    try {
+      await this.service.removerProduto(id, produtoId);
+    } catch (error) {
+      if (error instanceof ProdutoNotAddedError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof InvalidStatusTransitionError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
   @Delete(':id')
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -441,9 +503,19 @@ export class OrdemDeServicoController {
         fimExecucao: i.fimExecucao,
         horasTrabalhadas: i.horasTrabalhadas,
       })),
+      itensProduto: (os.itensProduto ?? []).map((i: any) => ({
+        produtoId: i.produtoId,
+        quantidade: i.quantidade,
+        precoUnitario: i.precoUnitario,
+        subtotal: i.subtotal(),
+      })),
       valorTotalServicos:
         typeof os.valorTotalServicos === 'function'
           ? os.valorTotalServicos()
+          : 0,
+      valorTotalProdutos:
+        typeof os.valorTotalProdutos === 'function'
+          ? os.valorTotalProdutos()
           : 0,
       createdAt: os.createdAt,
       updatedAt: os.updatedAt,

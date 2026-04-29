@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "item_ordem_de_servico_produto_ordem_de_servico_id_produto_id_ke" RENAME TO "item_ordem_de_servico_produto_ordem_de_servico_id_produto_i_key";

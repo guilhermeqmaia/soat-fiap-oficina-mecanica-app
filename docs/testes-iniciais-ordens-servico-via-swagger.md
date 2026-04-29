@@ -196,7 +196,102 @@ Resposta esperada — **status mudará para `EM_DIAGNOSTICO`**:
 
 ---
 
-## Passo 7: Completar Diagnóstico (Status: AGUARDANDO_APROVACAO)
+## Passo 7: Criar um Produto no Catálogo
+
+**Endpoint:** `POST /produtos`
+
+1. Localize a seção **Produtos**
+2. Clique em **POST /produtos**
+3. Clique em **Try it out**
+4. Preencha o body:
+
+```json
+{
+  "nome": "Filtro de óleo",
+  "descricao": "Filtro de óleo para motor",
+  "precoUnitario": 45.90,
+  "quantidadeEstoque": 100,
+  "estoqueMinimo": 10
+}
+```
+
+5. Clique em **Execute**
+6. **Copie o `id` do produto** da resposta
+
+Resposta esperada:
+```json
+{
+  "id": "produto-123-xyz",
+  "nome": "Filtro de óleo",
+  "descricao": "Filtro de óleo para motor",
+  "precoUnitario": 45.90,
+  "quantidadeEstoque": 100,
+  "estoqueMinimo": 10,
+  "ativo": true
+}
+```
+
+---
+
+## Passo 8: Adicionar Produto à OS
+
+**Endpoint:** `POST /ordens-servico/{id}/produtos`
+
+> **Importante:** A OS precisa estar no status `EM_DIAGNOSTICO` para adicionar produtos.
+
+1. Localize a seção **Ordens de Servico**
+2. Clique em **POST /ordens-servico/{id}/produtos**
+3. Clique em **Try it out**
+4. No campo `id`, cole o ID da OS criada no **Passo 5**
+5. Preencha o body:
+
+```json
+{
+  "produtoId": "produto-123-xyz",
+  "quantidade": 2
+}
+```
+
+6. Clique em **Execute**
+
+Resposta esperada — a OS retornará com o produto nos `itensProduto`:
+```json
+{
+  "id": "os-123-456",
+  "numero": "OS-001",
+  "status": "EM_DIAGNOSTICO",
+  "itensProduto": [
+    {
+      "produtoId": "produto-123-xyz",
+      "quantidade": 2,
+      "precoUnitario": 45.90,
+      "subtotal": 91.80
+    }
+  ],
+  "valorTotalProdutos": 91.80,
+  ...
+}
+```
+
+---
+
+## Passo 8.1 (Opcional): Remover Produto da OS
+
+**Endpoint:** `DELETE /ordens-servico/{id}/produtos/{produtoId}`
+
+> Caso queira remover um produto adicionado por engano.
+
+1. Clique em **DELETE /ordens-servico/{id}/produtos/{produtoId}**
+2. Clique em **Try it out**
+3. No campo `id`, cole o ID da OS
+4. No campo `produtoId`, cole o ID do produto a remover
+5. Clique em **Execute**
+
+Resposta esperada: **204 No Content** (sem body)
+
+---
+
+## Passo 9: Completar Diagnóstico (Status: AGUARDANDO_APROVACAO)
 
 **Endpoint:** `POST /ordens-servico/{id}/completar-diagnostico`
 
@@ -226,7 +321,7 @@ Resposta esperada — **status mudará para `AGUARDANDO_APROVACAO`**:
 
 ---
 
-## Passo 8: Aprovar Orçamento (Status: EM_EXECUCAO)
+## Passo 10: Aprovar Orçamento (Status: EM_EXECUCAO)
 
 **Endpoint:** `POST /ordens-servico/{id}/aprovar-orcamento`
 
@@ -247,7 +342,7 @@ Resposta esperada — **status mudará para `EM_EXECUCAO`**:
 
 ---
 
-## Passo 9: Finalizar Execução (Status: FINALIZADA)
+## Passo 11: Finalizar Execução (Status: FINALIZADA)
 
 **Endpoint:** `POST /ordens-servico/{id}/finalizar-execucao`
 
@@ -268,7 +363,7 @@ Resposta esperada — **status mudará para `FINALIZADA`**:
 
 ---
 
-## Passo 10: Entregar Veículo (Status: ENTREGUE)
+## Passo 12: Entregar Veículo (Status: ENTREGUE)
 
 **Endpoint:** `POST /ordens-servico/{id}/entregar`
 
@@ -298,10 +393,13 @@ Resposta esperada — **status mudará para `ENTREGUE`** ✅:
 | 3 | `/clientes/{id}/veiculos` | POST | — (cria veículo) |
 | 4 | `/ordens-servico` | POST | **RECEBIDA** |
 | 5 | `/ordens-servico/{id}/atribuir-mecanico` | POST | **EM_DIAGNOSTICO** |
-| 6 | `/ordens-servico/{id}/completar-diagnostico` | POST | **AGUARDANDO_APROVACAO** |
-| 7 | `/ordens-servico/{id}/aprovar-orcamento` | POST | **EM_EXECUCAO** |
-| 8 | `/ordens-servico/{id}/finalizar-execucao` | POST | **FINALIZADA** |
-| 9 | `/ordens-servico/{id}/entregar` | POST | **ENTREGUE** ✅ |
+| 6 | `/ordens-servico/{id}/servicos` | POST | — (adiciona serviço) |
+| 7 | `/produtos` | POST | — (cria produto) |
+| 8 | `/ordens-servico/{id}/produtos` | POST | — (adiciona produto) |
+| 9 | `/ordens-servico/{id}/completar-diagnostico` | POST | **AGUARDANDO_APROVACAO** |
+| 10 | `/ordens-servico/{id}/aprovar-orcamento` | POST | **EM_EXECUCAO** |
+| 11 | `/ordens-servico/{id}/finalizar-execucao` | POST | **FINALIZADA** |
+| 12 | `/ordens-servico/{id}/entregar` | POST | **ENTREGUE** ✅ |
 
 ---
 
@@ -313,7 +411,7 @@ Resposta esperada — **status mudará para `ENTREGUE`** ✅:
 
 ✅ **Respeite a ordem dos status** — não é possível pular etapas
 
-✅ **Você pode rejeitar um orçamento** (Passo 8 alternativo):
+✅ **Você pode rejeitar um orçamento** (Passo 10 alternativo):
 - Endpoint: `POST /ordens-servico/{id}/rejeitar-orcamento`
 - Status resultante: **CANCELADA**
 
@@ -321,7 +419,7 @@ Resposta esperada — **status mudará para `ENTREGUE`** ✅:
 
 ## Alternativa: Rejeitar Orçamento
 
-Se desejar testar a rejeição, no **Passo 8**, em vez de aprovar:
+Se desejar testar a rejeição, no **Passo 10**, em vez de aprovar:
 
 **Endpoint:** `POST /ordens-servico/{id}/rejeitar-orcamento`
 

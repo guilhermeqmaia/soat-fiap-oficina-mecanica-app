@@ -1,10 +1,13 @@
 import { OrdemDeServico } from './ordem-de-servico.entity';
 import { StatusOS } from './value-objects/status-os.vo';
 import { ItemServicoOS } from './value-objects/item-servico-os.vo';
+import { ItemProdutoOS } from './value-objects/item-produto-os.vo';
 import { InvalidDescriptionError } from './errors/invalid-description.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
 import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
 import { ServicoNotAddedError } from './errors/servico-not-added.error';
+import { ProdutoAlreadyAddedError } from './errors/produto-already-added.error';
+import { ProdutoNotAddedError } from './errors/produto-not-added.error';
 import { InvalidQuantityError } from './errors/invalid-quantity.error';
 import { ItemServicoInvalidStatusError } from './errors/item-servico-invalid-status.error';
 
@@ -441,6 +444,99 @@ describe('OrdemDeServico Entity', () => {
       });
 
       expect(() => os.removerServico('servico-1')).toThrow(
+        InvalidStatusTransitionError,
+      );
+    });
+  });
+
+  describe('adicionarProduto', () => {
+    it('should add product to OS and compute subtotal', () => {
+      const os = reconstituteEmDiagnostico();
+      const item = new ItemProdutoOS('produto-1', 3, 25);
+
+      os.adicionarProduto(item);
+
+      expect(os.itensProduto).toHaveLength(1);
+      expect(os.itensProduto[0].subtotal()).toBe(75);
+      expect(os.valorTotalProdutos()).toBe(75);
+    });
+
+    it('should accumulate valor total across multiple products', () => {
+      const os = reconstituteEmDiagnostico();
+      os.adicionarProduto(new ItemProdutoOS('produto-1', 2, 50));
+      os.adicionarProduto(new ItemProdutoOS('produto-2', 1, 30));
+
+      expect(os.itensProduto).toHaveLength(2);
+      expect(os.valorTotalProdutos()).toBe(130);
+    });
+
+    it('should reject duplicate produtoId', () => {
+      const os = reconstituteEmDiagnostico();
+      os.adicionarProduto(new ItemProdutoOS('produto-1', 1, 10));
+
+      expect(() =>
+        os.adicionarProduto(new ItemProdutoOS('produto-1', 5, 10)),
+      ).toThrow(ProdutoAlreadyAddedError);
+    });
+
+    it('should reject when OS is not EM_DIAGNOSTICO', () => {
+      const os = OrdemDeServico.create({
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        descricaoInicial: 'Cliente relata problemas no freio',
+      });
+
+      expect(() =>
+        os.adicionarProduto(new ItemProdutoOS('produto-1', 1, 10)),
+      ).toThrow(InvalidStatusTransitionError);
+    });
+
+    it('should reject quantidade zero or negative in the VO', () => {
+      expect(() => new ItemProdutoOS('produto-1', 0, 10)).toThrow(
+        InvalidQuantityError,
+      );
+      expect(() => new ItemProdutoOS('produto-1', -1, 10)).toThrow(
+        InvalidQuantityError,
+      );
+    });
+  });
+
+  describe('removerProduto', () => {
+    it('should remove product and recompute total', () => {
+      const os = reconstituteEmDiagnostico();
+      os.adicionarProduto(new ItemProdutoOS('produto-1', 2, 50));
+      os.adicionarProduto(new ItemProdutoOS('produto-2', 1, 30));
+
+      os.removerProduto('produto-1');
+
+      expect(os.itensProduto).toHaveLength(1);
+      expect(os.itensProduto[0].produtoId).toBe('produto-2');
+      expect(os.valorTotalProdutos()).toBe(30);
+    });
+
+    it('should throw when product is not in OS', () => {
+      const os = reconstituteEmDiagnostico();
+
+      expect(() => os.removerProduto('inexistente')).toThrow(
+        ProdutoNotAddedError,
+      );
+    });
+
+    it('should reject when OS is not EM_DIAGNOSTICO', () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: 'pastilhas',
+        status: StatusOS.AGUARDANDO_APROVACAO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      expect(() => os.removerProduto('produto-1')).toThrow(
         InvalidStatusTransitionError,
       );
     });

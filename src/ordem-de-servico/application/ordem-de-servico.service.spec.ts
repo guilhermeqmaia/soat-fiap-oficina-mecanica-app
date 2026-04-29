@@ -15,12 +15,17 @@ import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mi
 import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
 import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
 import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
+import { ProdutoNotFoundInCatalogError } from '../domain/errors/produto-not-found-in-catalog.error';
+import { ProdutoAlreadyAddedError } from '../domain/errors/produto-already-added.error';
 import { OrdemDeServicoNotFoundError } from '../domain/errors/ordem-de-servico-not-found.error';
 import { ClienteNotOwnedByUsuarioError } from '../domain/errors/cliente-not-owned-by-usuario.error';
 import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
+import { ItemProdutoOS } from '../domain/value-objects/item-produto-os.vo';
 import { CLIENTE_REPOSITORY, ClienteRepository } from '../../cliente/domain/cliente.repository';
 import { VEICULO_REPOSITORY, VeiculoRepository } from '../../veiculo/domain/veiculo.repository';
 import { SERVICO_REPOSITORY, ServicoRepository } from '../../servico/domain/servico.repository';
+import { PRODUTO_REPOSITORY, ProdutoRepository } from '../../produto/domain/produto.repository';
+import { USUARIO_REPOSITORY, UsuarioRepository } from '../../usuario/domain/usuario.repository';
 import { OrdemDeServico } from '../domain/ordem-de-servico.entity';
 import { StatusOS } from '../domain/value-objects/status-os.vo';
 
@@ -30,6 +35,8 @@ describe('OrdemDeServicoService', () => {
   let clienteRepository: jest.Mocked<ClienteRepository>;
   let veiculoRepository: jest.Mocked<VeiculoRepository>;
   let servicoRepository: jest.Mocked<ServicoRepository>;
+  let produtoRepository: jest.Mocked<ProdutoRepository>;
+  let usuarioRepository: jest.Mocked<UsuarioRepository>;
 
   beforeEach(async () => {
     const mockOrdemRepository = {
@@ -71,6 +78,24 @@ describe('OrdemDeServicoService', () => {
       existsByNome: jest.fn(),
     };
 
+    const mockProdutoRepository = {
+      create: jest.fn(),
+      findById: jest.fn(),
+      findAll: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      existsByNome: jest.fn(),
+    };
+
+    const mockUsuarioRepository = {
+      findByEmail: jest.fn(),
+      findById: jest.fn(),
+      create: jest.fn(),
+      findAll: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdemDeServicoService,
@@ -91,6 +116,14 @@ describe('OrdemDeServicoService', () => {
           useValue: mockServicoRepository,
         },
         {
+          provide: PRODUTO_REPOSITORY,
+          useValue: mockProdutoRepository,
+        },
+        {
+          provide: USUARIO_REPOSITORY,
+          useValue: mockUsuarioRepository,
+        },
+        {
           provide: EventEmitter2,
           useValue: { emit: jest.fn() },
         },
@@ -109,6 +142,12 @@ describe('OrdemDeServicoService', () => {
     );
     servicoRepository = module.get<jest.Mocked<ServicoRepository>>(
       SERVICO_REPOSITORY,
+    );
+    produtoRepository = module.get<jest.Mocked<ProdutoRepository>>(
+      PRODUTO_REPOSITORY,
+    );
+    usuarioRepository = module.get<jest.Mocked<UsuarioRepository>>(
+      USUARIO_REPOSITORY,
     );
   });
 
@@ -780,6 +819,167 @@ describe('OrdemDeServicoService', () => {
       await expect(
         service.findByCpfCnpj('39053344705', 'joao@email.com'),
       ).rejects.toThrow(ClienteNotOwnedByUsuarioError);
+    });
+  });
+
+  describe('adicionarProduto', () => {
+    const makeOsEmDiagnostico = () =>
+      OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: null,
+        status: StatusOS.EM_DIAGNOSTICO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+    it('should add product using snapshot of current precoUnitario', async () => {
+      const os = makeOsEmDiagnostico();
+      const produto: any = { id: 'produto-1', precoUnitario: { value: 45.5 } };
+
+      repository.findById.mockResolvedValue(os);
+      produtoRepository.findById.mockResolvedValue(produto);
+      repository.update.mockResolvedValue(os);
+
+      await service.adicionarProduto('os-123', 'produto-1', 3);
+
+      expect(produtoRepository.findById).toHaveBeenCalledWith('produto-1');
+      expect(os.itensProduto).toHaveLength(1);
+      expect(os.itensProduto[0].precoUnitario).toBe(45.5);
+      expect(os.valorTotalProdutos()).toBe(136.5);
+      expect(repository.update).toHaveBeenCalledWith(os);
+    });
+
+    it('should throw when produto is not in catalog', async () => {
+      const os = makeOsEmDiagnostico();
+
+      repository.findById.mockResolvedValue(os);
+      produtoRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.adicionarProduto('os-123', 'produto-x', 1),
+      ).rejects.toThrow(ProdutoNotFoundInCatalogError);
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+
+    it('should propagate ProdutoAlreadyAddedError from aggregate', async () => {
+      const os = makeOsEmDiagnostico();
+      const produto: any = { id: 'produto-1', precoUnitario: { value: 10 } };
+
+      repository.findById.mockResolvedValue(os);
+      produtoRepository.findById.mockResolvedValue(produto);
+      repository.update.mockResolvedValue(os);
+
+      await service.adicionarProduto('os-123', 'produto-1', 1);
+      await expect(
+        service.adicionarProduto('os-123', 'produto-1', 1),
+      ).rejects.toThrow(ProdutoAlreadyAddedError);
+    });
+  });
+
+  describe('removerProduto', () => {
+    it('should remove product and persist', async () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-00001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'usuario-789',
+        descricaoInicial: 'Cliente relata problemas no freio',
+        diagnostico: null,
+        status: StatusOS.EM_DIAGNOSTICO,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const produto: any = { id: 'produto-1', precoUnitario: { value: 10 } };
+
+      repository.findById.mockResolvedValue(os);
+      produtoRepository.findById.mockResolvedValue(produto);
+      repository.update.mockResolvedValue(os);
+      await service.adicionarProduto('os-123', 'produto-1', 1);
+
+      await service.removerProduto('os-123', 'produto-1');
+
+      expect(os.itensProduto).toHaveLength(0);
+      expect(repository.update).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('findStatusByNumero with produtos', () => {
+    it('should return enriched status view with produto names and totals', async () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-1234567890-0001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'mecanico-1',
+        descricaoInicial: 'barulho no motor',
+        diagnostico: 'pastilhas desgastadas',
+        status: StatusOS.EM_EXECUCAO,
+        createdAt: new Date('2026-04-20T10:00:00Z'),
+        updatedAt: new Date('2026-04-20T12:00:00Z'),
+        itensServico: [
+          new ItemServicoOS('servico-1', 1, 100),
+        ],
+        itensProduto: [
+          new ItemProdutoOS('produto-1', 2, 50),
+          new ItemProdutoOS('produto-2', 1, 30),
+        ],
+      });
+
+      repository.findByNumero.mockResolvedValue(os);
+      servicoRepository.findById.mockImplementation(async (id: string) => {
+        if (id === 'servico-1') return { nome: 'Troca de oleo' } as any;
+        return null;
+      });
+      produtoRepository.findById.mockImplementation(async (id: string) => {
+        if (id === 'produto-1') return { nome: 'Filtro de oleo' } as any;
+        if (id === 'produto-2') return { nome: 'Oleo 5W30' } as any;
+        return null;
+      });
+
+      const view = await service.findStatusByNumero('OS-2026-1234567890-0001');
+
+      expect(view.produtos).toHaveLength(2);
+      expect(view.produtos[0]).toEqual({
+        produtoId: 'produto-1',
+        nome: 'Filtro de oleo',
+        quantidade: 2,
+        precoUnitario: 50,
+        subtotal: 100,
+      });
+      expect(view.valorTotalProdutos).toBe(130);
+      expect(view.valorTotalServicos).toBe(100);
+      expect(view.valorTotal).toBe(230);
+    });
+
+    it('should use fallback name when produto removed from catalog', async () => {
+      const os = OrdemDeServico.reconstitute({
+        id: 'os-123',
+        numero: 'OS-2026-1234567890-0001',
+        clienteId: 'cliente-123',
+        veiculoId: 'veiculo-456',
+        usuarioId: 'mecanico-1',
+        descricaoInicial: 'barulho no motor',
+        diagnostico: 'pastilhas desgastadas',
+        status: StatusOS.EM_EXECUCAO,
+        createdAt: new Date('2026-04-20T10:00:00Z'),
+        updatedAt: new Date('2026-04-20T12:00:00Z'),
+        itensProduto: [
+          new ItemProdutoOS('produto-1', 1, 50),
+        ],
+      });
+
+      repository.findByNumero.mockResolvedValue(os);
+      produtoRepository.findById.mockResolvedValue(null);
+
+      const view = await service.findStatusByNumero('OS-2026-1234567890-0001');
+
+      expect(view.produtos[0].nome).toBe('Produto removido do catalogo');
     });
   });
 

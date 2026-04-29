@@ -37,6 +37,10 @@ const mockPrisma = {
     deleteMany: jest.fn(),
     createMany: jest.fn(),
   },
+  itemOrdemDeServicoProduto: {
+    deleteMany: jest.fn(),
+    createMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -187,6 +191,10 @@ describe('PrismaOrdemDeServicoRepository', () => {
             deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
             createMany: jest.fn().mockResolvedValue({ count: 0 }),
           },
+          itemOrdemDeServicoProduto: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+            createMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
         };
         return cb(tx);
       });
@@ -225,6 +233,10 @@ describe('PrismaOrdemDeServicoRepository', () => {
               createManyCalled = true;
               return Promise.resolve({ count: 1 });
             }),
+          },
+          itemOrdemDeServicoProduto: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+            createMany: jest.fn().mockResolvedValue({ count: 0 }),
           },
         };
         return cb(tx);
