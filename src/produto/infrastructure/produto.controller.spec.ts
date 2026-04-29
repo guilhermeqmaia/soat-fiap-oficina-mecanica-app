@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ProdutoController } from './produto.controller';
 import { ProdutoService } from '../application/produto.service';
+import { MovimentacaoEstoqueService } from '../application/movimentacao-estoque.service';
 import { Produto } from '../domain/produto.entity';
 import { DuplicateNameError } from '../domain/errors/duplicate-name.error';
 import { InsufficientStockError } from '../domain/errors/insufficient-stock.error';
@@ -21,11 +22,18 @@ const mockService = {
   create: jest.fn(),
   findAll: jest.fn(),
   findById: jest.fn(),
+  findLowStock: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   addStock: jest.fn(),
+  removeStock: jest.fn(),
   reserveStock: jest.fn(),
   releaseStock: jest.fn(),
+  deductStock: jest.fn(),
+};
+
+const mockMovimentacaoService = {
+  findAll: jest.fn(),
 };
 
 describe('ProdutoController', () => {
@@ -36,7 +44,10 @@ describe('ProdutoController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProdutoController],
-      providers: [{ provide: ProdutoService, useValue: mockService }],
+      providers: [
+        { provide: ProdutoService, useValue: mockService },
+        { provide: MovimentacaoEstoqueService, useValue: mockMovimentacaoService },
+      ],
     }).compile();
 
     controller = module.get<ProdutoController>(ProdutoController);
@@ -144,7 +155,11 @@ describe('ProdutoController', () => {
       });
       mockService.addStock.mockResolvedValue(updated);
 
-      const result = await controller.addStock('abc-123', { quantidade: 20 });
+      const result = await controller.addStock(
+        'abc-123',
+        { quantidade: 20 },
+        { id: 'usr-1' } as any,
+      );
       expect(result.quantidadeEstoque).toBe(70);
     });
   });

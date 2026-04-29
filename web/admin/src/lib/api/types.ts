@@ -43,8 +43,29 @@ export interface Produto {
   precoUnitario: number;
   quantidadeEstoque: number;
   quantidadeReservada: number;
+  quantidadeDisponivel?: number;
   estoqueMinimo: number;
   ativo: boolean;
+  alertaEstoqueBaixo?: boolean;
+}
+
+export type TipoMovimentacaoEstoque =
+  | 'ENTRADA'
+  | 'SAIDA'
+  | 'RESERVA'
+  | 'ESTORNO_RESERVA'
+  | 'BAIXA';
+
+export interface MovimentacaoEstoque {
+  id: string;
+  produtoId: string;
+  tipo: TipoMovimentacaoEstoque;
+  quantidade: number;
+  estoqueResultante: number;
+  ordemDeServicoId: string | null;
+  motivo: string | null;
+  usuarioId: string | null;
+  createdAt: string;
 }
 
 export interface ItemServicoOS {

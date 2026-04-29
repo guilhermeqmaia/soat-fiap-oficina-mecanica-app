@@ -57,7 +57,35 @@ model Produto {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
+  movimentacoes        MovimentacaoEstoque[]
+
   @@map("produto")
+}
+
+model MovimentacaoEstoque {
+  id                String                  @id @default(uuid())
+  produtoId         String                  @map("produto_id")
+  tipo              TipoMovimentacaoEstoque
+  quantidade        Int
+  estoqueResultante Int                     @map("estoque_resultante")
+  ordemDeServicoId  String?                 @map("ordem_de_servico_id")
+  motivo            String?
+  usuarioId         String?                 @map("usuario_id")
+  createdAt         DateTime                @default(now()) @map("created_at")
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([produtoId, createdAt])
+  @@index([ordemDeServicoId])
+  @@map("movimentacao_estoque")
+}
+
+enum TipoMovimentacaoEstoque {
+  ENTRADA
+  SAIDA
+  RESERVA
+  ESTORNO_RESERVA
+  BAIXA
 }
 
 model Cliente {

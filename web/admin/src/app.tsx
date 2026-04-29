@@ -5,6 +5,7 @@ import { ClientesListPage } from '@/pages/clientes/list';
 import { VeiculosListPage } from '@/pages/veiculos/list';
 import { ServicosListPage } from '@/pages/servicos/list';
 import { ProdutosListPage } from '@/pages/produtos/list';
+import { ProdutoMovimentacoesPage } from '@/pages/produtos/movimentacoes';
 import {
   OrdensServicoListPage,
   OrdemServicoDetailPage,
@@ -58,6 +59,14 @@ export function App() {
             element={
               <RequireAuth roles={['ADMIN', 'ESTOQUISTA']}>
                 <ProdutosListPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="produtos/:id/movimentacoes"
+            element={
+              <RequireAuth roles={['ADMIN', 'ATENDENTE', 'ESTOQUISTA']}>
+                <ProdutoMovimentacoesPage />
               </RequireAuth>
             }
           />

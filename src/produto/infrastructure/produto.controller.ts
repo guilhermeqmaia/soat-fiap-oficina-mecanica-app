@@ -24,13 +24,21 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { ProdutoService } from '../application/produto.service';
+import { MovimentacaoEstoqueService } from '../application/movimentacao-estoque.service';
 import { CreateProdutoDto } from './dto/create-produto.dto';
 import { UpdateProdutoDto } from './dto/update-produto.dto';
 import { QueryProdutoDto } from './dto/query-produto.dto';
 import { AddStockDto } from './dto/add-stock.dto';
+import { EntradaEstoqueDto } from './dto/entrada-estoque.dto';
+import { SaidaEstoqueDto } from './dto/saida-estoque.dto';
+import { QueryMovimentacoesDto } from './dto/query-movimentacoes.dto';
+import { MovimentacaoEstoqueResponseDto } from './dto/movimentacao-response.dto';
 import { DuplicateNameError } from '../domain/errors/duplicate-name.error';
 import { InsufficientStockError } from '../domain/errors/insufficient-stock.error';
+import { MovimentacaoEstoque } from '../domain/movimentacao-estoque.entity';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
+import { Usuario } from '../../auth/domain/usuario.entity';
 import { Role } from '../../auth/domain/role.enum';
 
 @ApiTags('Produtos')
@@ -39,7 +47,10 @@ import { Role } from '../../auth/domain/role.enum';
 @ApiForbiddenResponse({ description: 'Role insuficiente' })
 @Controller('produtos')
 export class ProdutoController {
-  constructor(private readonly service: ProdutoService) {}
+  constructor(
+    private readonly service: ProdutoService,
+    private readonly movimentacaoService: MovimentacaoEstoqueService,
+  ) {}
 
   @Post()
   @Roles(Role.ADMIN, Role.ESTOQUISTA)
@@ -55,6 +66,17 @@ export class ProdutoController {
       }
       throw error;
     }
+  }
+
+  @Get('estoque-baixo')
+  @Roles(Role.ADMIN, Role.ATENDENTE, Role.ESTOQUISTA)
+  @ApiOperation({
+    summary: 'Listar produtos com estoque abaixo do minimo',
+  })
+  @ApiOkResponse({ description: 'Lista de produtos com alerta de estoque' })
+  async findLowStock() {
+    const produtos = await this.service.findLowStock();
+    return produtos.map((p) => this.toResponse(p));
   }
 
   @Get()
@@ -107,14 +129,90 @@ export class ProdutoController {
 
   @Post(':id/estoque')
   @Roles(Role.ADMIN, Role.ESTOQUISTA)
-  @ApiOperation({ summary: 'Adicionar quantidade ao estoque' })
+  @ApiOperation({
+    summary: 'Adicionar quantidade ao estoque (legado, use /entrada)',
+    deprecated: true,
+  })
   @ApiOkResponse({ description: 'Estoque atualizado com sucesso' })
   @ApiNotFoundResponse({ description: 'Produto nao encontrado' })
   async addStock(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddStockDto,
+    @CurrentUser() usuario: Usuario,
   ) {
-    return this.toResponse(await this.service.addStock(id, dto.quantidade));
+    return this.toResponse(
+      await this.service.addStock(id, dto.quantidade, {
+        usuarioId: usuario.id,
+      }),
+    );
+  }
+
+  @Post(':id/entrada')
+  @Roles(Role.ADMIN, Role.ESTOQUISTA)
+  @ApiOperation({
+    summary: 'Registrar entrada de estoque (compra, ajuste, etc.)',
+  })
+  @ApiOkResponse({ description: 'Entrada registrada com sucesso' })
+  @ApiNotFoundResponse({ description: 'Produto nao encontrado' })
+  async entradaEstoque(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EntradaEstoqueDto,
+    @CurrentUser() usuario: Usuario,
+  ) {
+    return this.toResponse(
+      await this.service.addStock(id, dto.quantidade, {
+        motivo: dto.motivo,
+        usuarioId: usuario.id,
+      }),
+    );
+  }
+
+  @Post(':id/saida')
+  @Roles(Role.ADMIN, Role.ESTOQUISTA)
+  @ApiOperation({
+    summary: 'Registrar saida manual de estoque (ajuste, perda)',
+  })
+  @ApiOkResponse({ description: 'Saida registrada com sucesso' })
+  @ApiNotFoundResponse({
+    description: 'Produto nao encontrado ou quantidade indisponivel',
+  })
+  async saidaEstoque(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaidaEstoqueDto,
+    @CurrentUser() usuario: Usuario,
+  ) {
+    return this.toResponse(
+      await this.service.removeStock(id, dto.quantidade, {
+        motivo: dto.motivo,
+        usuarioId: usuario.id,
+      }),
+    );
+  }
+
+  @Get(':id/movimentacoes')
+  @Roles(Role.ADMIN, Role.ATENDENTE, Role.ESTOQUISTA)
+  @ApiOperation({ summary: 'Listar movimentacoes de estoque do produto' })
+  @ApiOkResponse({
+    description: 'Movimentacoes paginadas',
+    type: MovimentacaoEstoqueResponseDto,
+    isArray: true,
+  })
+  async movimentacoes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: QueryMovimentacoesDto,
+  ) {
+    const result = await this.movimentacaoService.findAll({
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      produtoId: id,
+      tipo: query.tipo,
+    });
+    return {
+      data: result.data.map((m) => this.movimentacaoToResponse(m)),
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    };
   }
 
   @Post(':id/reservar')
@@ -156,6 +254,22 @@ export class ProdutoController {
   @ApiNotFoundResponse({ description: 'Produto nao encontrado' })
   async delete(@Param('id', ParseUUIDPipe) id: string) {
     await this.service.delete(id);
+  }
+
+  private movimentacaoToResponse(
+    m: MovimentacaoEstoque,
+  ): MovimentacaoEstoqueResponseDto {
+    return {
+      id: m.id!,
+      produtoId: m.produtoId,
+      tipo: m.tipo,
+      quantidade: m.quantidade,
+      estoqueResultante: m.estoqueResultante,
+      ordemDeServicoId: m.ordemDeServicoId,
+      motivo: m.motivo,
+      usuarioId: m.usuarioId,
+      createdAt: m.createdAt!,
+    };
   }
 
   private toResponse(produto: {
