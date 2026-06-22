@@ -1,6 +1,8 @@
-export class ClienteNotFoundError extends Error {
+import { DomainError, DomainErrorKind } from '../../../shared/domain/domain-error';
+export class ClienteNotFoundError extends DomainError {
+  readonly kind = DomainErrorKind.NOT_FOUND;
+
   constructor(clienteId: string) {
     super(`Cliente com id '${clienteId}' nao encontrado`);
-    this.name = 'ClienteNotFoundError';
   }
 }

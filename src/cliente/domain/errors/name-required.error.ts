@@ -1,6 +1,8 @@
-export class NameRequiredError extends Error {
+import { DomainError, DomainErrorKind } from '../../../shared/domain/domain-error';
+export class NameRequiredError extends DomainError {
+  readonly kind = DomainErrorKind.INVALID_INPUT;
+
   constructor() {
     super("Nome do cliente e obrigatorio");
-    this.name = "NameRequiredError";
   }
 }
