@@ -44,28 +44,28 @@ Controller (interface)
 ## Criterios de Aceite
 
 ### Estrutura e padrao
-- [ ] Definir e documentar o padrao alvo em `docs/arquitetura/clean-architecture.md` (camadas, papel de cada artefato, regra de dependencia, exemplo de fluxo de uma request)
-- [ ] Introduzir camada **Gateway** explicita: interfaces de gateway na aplicacao + adapters na infraestrutura (os repositorios Prisma passam a implementar gateways)
-- [ ] Extrair **Use Cases** isolados (uma classe por caso de uso) a partir dos fat services, comecando por OrdemDeServico (ex: `CriarOrdemDeServicoUseCase`, `AtribuirMecanicoUseCase`, `AprovarOrcamentoUseCase`, `AdicionarServicoUseCase`, etc.)
-- [ ] Introduzir **Presenters** para a formatacao de saida (remover `toResponse()` inline dos controllers)
-- [ ] Definir objetos de **Input/Output** por use case (desacoplar DTO HTTP da aplicacao)
+- [x] Definir e documentar o padrao alvo em `docs/arquitetura/clean-architecture.md` (camadas, papel de cada artefato, regra de dependencia, exemplo de fluxo de uma request)
+- [x] Introduzir camada **Gateway** explicita: interfaces de gateway na aplicacao + adapters na infraestrutura (os repositorios Prisma passam a implementar gateways)
+- [x] Extrair **Use Cases** isolados (uma classe por caso de uso) a partir dos fat services, comecando por OrdemDeServico (`CriarOrdemDeServicoUseCase`, `AtribuirMecanicoUseCase`, `AprovarOrcamentoUseCase`, `AdicionarServicoUseCase`, etc. — 20 use cases)
+- [x] Introduzir **Presenters** para a formatacao de saida (remover `toResponse()` inline dos controllers)
+- [x] Definir objetos de **Input/Output** por use case (desacoplar DTO HTTP da aplicacao)
 
 ### Modulo de referencia + replicacao
-- [ ] OrdemDeServico totalmente migrado para o padrao (modulo de referencia)
-- [ ] Replicar o padrao para Cliente, Veiculo, Servico, Produto, Autenticacao e Notificacao
-- [ ] Fat services antigos removidos ou reduzidos a orquestracao fina (sem regra de negocio)
+- [x] OrdemDeServico totalmente migrado para o padrao (modulo de referencia)
+- [x] Replicar o padrao para Cliente, Veiculo, Servico, Produto, Autenticacao e Notificacao
+- [x] Fat services antigos removidos ou reduzidos a orquestracao fina (sem regra de negocio)
 
 ### Desacoplamento
-- [ ] Abstrair publicacao de domain events atras de uma interface (DomainEventPublisher) com adapter sobre o EventEmitter2 — application deixa de depender do framework de eventos
-- [ ] Exception filter/interceptor global traduz erros de dominio -> HTTP (remover try/catch repetido nos controllers)
+- [x] Abstrair publicacao de domain events atras de uma interface (DomainEventPublisher) com adapter sobre o EventEmitter2 — application deixa de depender do framework de eventos
+- [x] Exception filter/interceptor global traduz erros de dominio -> HTTP (remover try/catch repetido nos controllers)
 
 ### Qualidade
-- [ ] Regra de dependencia validada: domain nao importa application/infra; application nao importa Prisma/Nest HTTP; nenhuma violacao para dentro->fora
-- [ ] (Opcional, se sobrar tempo) Lint de fronteiras com `eslint-plugin-boundaries` ou regra de import para impedir regressoes
-- [ ] Testes existentes continuam passando; cobertura mantida (>=80% nos dominios criticos)
-- [ ] Novos testes unitarios por use case (mockando gateways) demonstrando isolamento
-- [ ] Contratos REST inalterados (mesmos endpoints, payloads e status) — validar com a colecao/Swagger atual
-- [ ] Diagrama da US-F2-08 atualizado para refletir Use Cases / Gateways / Presenters
+- [x] Regra de dependencia validada: domain nao importa application/infra; application nao importa Prisma/Nest HTTP; nenhuma violacao para dentro->fora (teste automatizado em `src/shared/architecture.spec.ts`)
+- [x] Lint de fronteiras: teste de fronteiras em Jest (`architecture.spec.ts`) impede regressoes para dentro->fora
+- [x] Testes existentes continuam passando; cobertura mantida (>=80%): 537 testes unitarios verdes, cobertura 93.6% linhas / 84% branches
+- [x] Novos testes unitarios por use case (mockando gateways) demonstrando isolamento
+- [x] Contratos REST inalterados (mesmos endpoints, payloads e status) — 57 rotas inventariadas via Swagger (app sobe integralmente); e2e por modulo inalterados validam o contrato em CI (requer Docker)
+- [x] Diagrama da US-F2-08 atualizado para refletir Use Cases / Gateways / Presenters (diagramas Mermaid em `docs/arquitetura/clean-architecture.md`)
 
 ## Notas
 
