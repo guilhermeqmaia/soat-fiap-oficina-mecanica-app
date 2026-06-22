@@ -1,5 +1,5 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DomainEvent } from '../application/domain-event';
+import { DomainEvent } from '../domain/domain-event';
 import { EventEmitterDomainEventPublisher } from './event-emitter-domain-event-publisher';
 
 describe('EventEmitterDomainEventPublisher', () => {

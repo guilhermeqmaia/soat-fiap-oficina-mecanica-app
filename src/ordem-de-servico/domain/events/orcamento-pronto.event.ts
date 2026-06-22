@@ -1,4 +1,4 @@
-import { DomainEvent } from '../../../shared/application/domain-event';
+import { DomainEvent } from '../../../shared/domain/domain-event';
 
 export class OrcamentoProntoEvent implements DomainEvent {
   static readonly EVENT_NAME = 'os.orcamento-pronto';

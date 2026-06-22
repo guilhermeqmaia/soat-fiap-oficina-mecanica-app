@@ -1,4 +1,4 @@
-import { DomainEvent } from './domain-event';
+import { DomainEvent } from '../domain/domain-event';
 
 /**
  * Porta de saida para publicacao de eventos de dominio.

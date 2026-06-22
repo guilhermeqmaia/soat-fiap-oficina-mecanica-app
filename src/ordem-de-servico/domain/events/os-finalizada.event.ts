@@ -1,4 +1,4 @@
-import { DomainEvent } from '../../../shared/application/domain-event';
+import { DomainEvent } from '../../../shared/domain/domain-event';
 
 export class OsFinalizadaEvent implements DomainEvent {
   static readonly EVENT_NAME = 'os.finalizada';
