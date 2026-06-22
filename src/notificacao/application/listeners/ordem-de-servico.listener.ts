@@ -9,7 +9,7 @@ import { OrcamentoProntoEvent } from '../../../ordem-de-servico/domain/events/or
 import { OsFinalizadaEvent } from '../../../ordem-de-servico/domain/events/os-finalizada.event';
 import { CanalNotificacao } from '../../domain/value-objects/canal-notificacao.vo';
 import { TipoNotificacao } from '../../domain/value-objects/tipo-notificacao.vo';
-import { NotificacaoService } from '../notificacao.service';
+import { EnviarNotificacaoUseCase } from '../use-cases/enviar-notificacao.use-case';
 
 @Injectable()
 export class OrdemDeServicoNotificacaoListener {
@@ -17,7 +17,7 @@ export class OrdemDeServicoNotificacaoListener {
   private readonly baseUrl: string;
 
   constructor(
-    private readonly notificacaoService: NotificacaoService,
+    private readonly enviarNotificacao: EnviarNotificacaoUseCase,
     @Inject(CLIENTE_REPOSITORY)
     private readonly clienteRepository: ClienteRepository,
     private readonly config: ConfigService,
@@ -54,7 +54,7 @@ export class OrdemDeServicoNotificacaoListener {
         `Para aprovar: POST ${aprovarUrl}\n` +
         `Para rejeitar: POST ${rejeitarUrl}\n`;
 
-      await this.notificacaoService.enviar({
+      await this.enviarNotificacao.execute({
         clienteId: event.clienteId,
         ordemDeServicoId: event.ordemDeServicoId,
         tipo: TipoNotificacao.ORCAMENTO_PRONTO,
@@ -89,7 +89,7 @@ export class OrdemDeServicoNotificacaoListener {
         `Sua Ordem de Servico ${event.numero} foi finalizada e o veiculo esta pronto para retirada.\n\n` +
         `Para acompanhar a OS: GET ${acompanharUrl}\n`;
 
-      await this.notificacaoService.enviar({
+      await this.enviarNotificacao.execute({
         clienteId: event.clienteId,
         ordemDeServicoId: event.ordemDeServicoId,
         tipo: TipoNotificacao.OS_FINALIZADA,

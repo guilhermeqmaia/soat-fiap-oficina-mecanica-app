@@ -1,9 +1,7 @@
 import {
   BadRequestException,
   Controller,
-  ForbiddenException,
   Get,
-  NotFoundException,
   Param,
   Query,
 } from '@nestjs/common';
@@ -20,12 +18,10 @@ import { Role } from '../../auth/domain/role.enum';
 import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
 import { Usuario } from '../../auth/domain/usuario.entity';
-import { ClienteNotFoundError } from '../../ordem-de-servico/domain/errors/cliente-not-found.error';
-import { ClienteNotOwnedByUsuarioError } from '../../ordem-de-servico/domain/errors/cliente-not-owned-by-usuario.error';
-import { NotificacaoService } from '../application/notificacao.service';
-import { Notificacao } from '../domain/notificacao.entity';
+import { ListarNotificacoesPorCpfCnpjUseCase } from '../application/use-cases/listar-notificacoes-por-cpf-cnpj.use-case';
 import { NotificacaoResponseDto } from './dto/notificacao-response.dto';
 import { QueryNotificacaoDto } from './dto/query-notificacao.dto';
+import { NotificacaoPresenter } from './presenters/notificacao.presenter';
 
 const CPF_CNPJ_DIGITS_REGEX = /^\d{11}(\d{3})?$/;
 
@@ -37,7 +33,9 @@ const CPF_CNPJ_DIGITS_REGEX = /^\d{11}(\d{3})?$/;
 })
 @Controller('clientes')
 export class ClienteNotificacaoController {
-  constructor(private readonly service: NotificacaoService) {}
+  constructor(
+    private readonly useCase: ListarNotificacoesPorCpfCnpjUseCase,
+  ) {}
 
   @Get(':cpfCnpj/notificacoes')
   @Roles(Role.CLIENTE)
@@ -60,43 +58,14 @@ export class ClienteNotificacaoController {
         'CPF/CNPJ deve conter apenas digitos (11 para CPF ou 14 para CNPJ)',
       );
     }
-    try {
-      const result = await this.service.findByCpfCnpj(
-        cpfCnpj,
-        usuario.email.value,
-        { page: query.page ?? 1, limit: query.limit ?? 20 },
-      );
-      return {
-        data: result.data.map((n) => this.toResponse(n)),
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-      };
-    } catch (error) {
-      if (error instanceof ClienteNotFoundError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof ClienteNotOwnedByUsuarioError) {
-        throw new ForbiddenException(error.message);
-      }
-      throw error;
-    }
-  }
 
-  private toResponse(n: Notificacao): NotificacaoResponseDto {
-    return {
-      id: n.id!,
-      clienteId: n.clienteId,
-      ordemDeServicoId: n.ordemDeServicoId,
-      tipo: n.tipo,
-      canal: n.canal,
-      destinatario: n.destinatario,
-      assunto: n.assunto,
-      mensagem: n.mensagem,
-      status: n.status,
-      erro: n.erro,
-      enviadaEm: n.enviadaEm,
-      createdAt: n.createdAt!,
-    };
+    const result = await this.useCase.execute({
+      cpfCnpj,
+      emailCliente: usuario.email.value,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+    });
+
+    return NotificacaoPresenter.toPaginatedResponse(result);
   }
 }

@@ -3,13 +3,15 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { AuthService } from './application/auth.service';
 import { AuthController } from './infrastructure/auth.controller';
 import { JwtStrategy } from './infrastructure/strategies/jwt.strategy';
 import { PrismaUsuarioRepository } from './infrastructure/prisma-usuario.repository';
 import { USUARIO_REPOSITORY } from './domain/usuario.repository';
 import { JwtAuthGuard } from './infrastructure/guards/jwt-auth.guard';
 import { RolesGuard } from './infrastructure/guards/roles.guard';
+import { LoginUseCase } from './application/use-cases/login.use-case';
+import { ValidarUsuarioPorIdUseCase } from './application/use-cases/validar-usuario-por-id.use-case';
+import { USUARIO_AUTH_GATEWAY } from './application/gateways/usuario.gateway';
 
 @Module({
   imports: [
@@ -35,12 +37,15 @@ import { RolesGuard } from './infrastructure/guards/roles.guard';
   ],
   controllers: [AuthController],
   providers: [
-    AuthService,
+    LoginUseCase,
+    ValidarUsuarioPorIdUseCase,
     JwtStrategy,
-    { provide: USUARIO_REPOSITORY, useClass: PrismaUsuarioRepository },
+    PrismaUsuarioRepository,
+    { provide: USUARIO_REPOSITORY, useExisting: PrismaUsuarioRepository },
+    { provide: USUARIO_AUTH_GATEWAY, useExisting: PrismaUsuarioRepository },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [AuthService, USUARIO_REPOSITORY],
+  exports: [USUARIO_REPOSITORY],
 })
 export class AuthModule {}

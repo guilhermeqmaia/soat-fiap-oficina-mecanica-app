@@ -3,8 +3,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
-  NotFoundException,
-} from "@nestjs/common";
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
@@ -13,43 +12,29 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
-} from "@nestjs/swagger";
-import { VeiculoService } from "../application/veiculo.service";
-import { ClienteNotFoundError } from "../domain/errors/cliente-not-found.error";
-import { Roles } from "../../auth/infrastructure/decorators/roles.decorator";
-import { Role } from "../../auth/domain/role.enum";
+} from '@nestjs/swagger';
+import { VeiculoPresenter } from './presenters/veiculo.presenter';
+import { ListarVeiculosPorClienteUseCase } from '../application/use-cases/listar-veiculos-por-cliente.use-case';
+import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
+import { Role } from '../../auth/domain/role.enum';
 
-@ApiTags("Clientes")
+@ApiTags('Clientes')
 @ApiBearerAuth()
-@ApiUnauthorizedResponse({ description: "Token JWT ausente ou invalido" })
-@ApiForbiddenResponse({ description: "Role insuficiente" })
-@Controller("clientes")
+@ApiUnauthorizedResponse({ description: 'Token JWT ausente ou invalido' })
+@ApiForbiddenResponse({ description: 'Role insuficiente' })
+@Controller('clientes')
 export class ClienteVeiculoController {
-  constructor(private readonly veiculoService: VeiculoService) {}
+  constructor(
+    private readonly listarVeiculosPorCliente: ListarVeiculosPorClienteUseCase,
+  ) {}
 
-  @Get(":clienteId/veiculos")
+  @Get(':clienteId/veiculos')
   @Roles(Role.ADMIN, Role.ATENDENTE, Role.MECANICO)
-  @ApiOperation({ summary: "Listar veiculos de um cliente" })
-  @ApiOkResponse({ description: "Lista de veiculos do cliente" })
-  @ApiNotFoundResponse({ description: "Cliente nao encontrado" })
-  async findByCliente(@Param("clienteId", ParseUUIDPipe) clienteId: string) {
-    try {
-      const veiculos = await this.veiculoService.findByClienteId(clienteId);
-
-      return veiculos.map((v) => ({
-        id: v.id,
-        placa: v.placa.value,
-        marca: v.marca,
-        modelo: v.modelo,
-        ano: v.ano,
-        clienteId: v.clienteId,
-        ativo: v.ativo,
-      }));
-    } catch (error) {
-      if (error instanceof ClienteNotFoundError) {
-        throw new NotFoundException(error.message);
-      }
-      throw error;
-    }
+  @ApiOperation({ summary: 'Listar veiculos de um cliente' })
+  @ApiOkResponse({ description: 'Lista de veiculos do cliente' })
+  @ApiNotFoundResponse({ description: 'Cliente nao encontrado' })
+  async findByCliente(@Param('clienteId', ParseUUIDPipe) clienteId: string) {
+    const veiculos = await this.listarVeiculosPorCliente.execute({ clienteId });
+    return VeiculoPresenter.toResponseList(veiculos);
   }
 }

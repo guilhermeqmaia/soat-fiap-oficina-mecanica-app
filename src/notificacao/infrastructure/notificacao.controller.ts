@@ -9,10 +9,10 @@ import {
 } from '@nestjs/swagger';
 import { Role } from '../../auth/domain/role.enum';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
-import { NotificacaoService } from '../application/notificacao.service';
-import { Notificacao } from '../domain/notificacao.entity';
+import { ListarNotificacoesUseCase } from '../application/use-cases/listar-notificacoes.use-case';
 import { NotificacaoResponseDto } from './dto/notificacao-response.dto';
 import { QueryNotificacaoDto } from './dto/query-notificacao.dto';
+import { NotificacaoPresenter } from './presenters/notificacao.presenter';
 
 @ApiTags('Notificacoes')
 @ApiBearerAuth()
@@ -20,7 +20,7 @@ import { QueryNotificacaoDto } from './dto/query-notificacao.dto';
 @ApiForbiddenResponse({ description: 'Role insuficiente' })
 @Controller('notificacoes')
 export class NotificacaoController {
-  constructor(private readonly service: NotificacaoService) {}
+  constructor(private readonly useCase: ListarNotificacoesUseCase) {}
 
   @Get()
   @Roles(Role.ADMIN, Role.ATENDENTE)
@@ -31,35 +31,13 @@ export class NotificacaoController {
     isArray: true,
   })
   async findAll(@Query() query: QueryNotificacaoDto) {
-    const result = await this.service.findAll({
+    const result = await this.useCase.execute({
       page: query.page ?? 1,
       limit: query.limit ?? 10,
       clienteId: query.clienteId,
       ordemDeServicoId: query.ordemDeServicoId,
     });
 
-    return {
-      data: result.data.map((n) => this.toResponse(n)),
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-    };
-  }
-
-  private toResponse(notificacao: Notificacao): NotificacaoResponseDto {
-    return {
-      id: notificacao.id!,
-      clienteId: notificacao.clienteId,
-      ordemDeServicoId: notificacao.ordemDeServicoId,
-      tipo: notificacao.tipo,
-      canal: notificacao.canal,
-      destinatario: notificacao.destinatario,
-      assunto: notificacao.assunto,
-      mensagem: notificacao.mensagem,
-      status: notificacao.status,
-      erro: notificacao.erro,
-      enviadaEm: notificacao.enviadaEm,
-      createdAt: notificacao.createdAt!,
-    };
+    return NotificacaoPresenter.toPaginatedResponse(result);
   }
 }

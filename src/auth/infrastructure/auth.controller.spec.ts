@@ -1,13 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
 import { AuthController } from './auth.controller';
-import { AuthService } from '../application/auth.service';
-import { InvalidCredentialsError } from '../domain/errors/invalid-credentials.error';
+import { LoginUseCase } from '../application/use-cases/login.use-case';
 import { Usuario } from '../domain/usuario.entity';
 import { Role } from '../domain/role.enum';
 
-const mockService = {
-  login: jest.fn(),
+const mockLoginUseCase = {
+  execute: jest.fn(),
 };
 
 describe('AuthController', () => {
@@ -18,15 +16,15 @@ describe('AuthController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: mockService }],
+      providers: [{ provide: LoginUseCase, useValue: mockLoginUseCase }],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
   });
 
   describe('POST /auth/login', () => {
-    it('should return token and user on success', async () => {
-      mockService.login.mockResolvedValue({
+    it('returns token and user info on success', async () => {
+      mockLoginUseCase.execute.mockResolvedValue({
         accessToken: 'jwt-token',
         usuario: {
           id: 'user-id',
@@ -43,27 +41,24 @@ describe('AuthController', () => {
 
       expect(result.accessToken).toBe('jwt-token');
       expect(result.usuario.role).toBe(Role.ADMIN);
+      expect(mockLoginUseCase.execute).toHaveBeenCalledWith({
+        email: 'admin@oficina.com',
+        senha: 'admin123',
+      });
     });
 
-    it('should throw UnauthorizedException on invalid credentials', async () => {
-      mockService.login.mockRejectedValue(new InvalidCredentialsError());
+    it('propagates errors from LoginUseCase (no try/catch)', async () => {
+      const error = new Error('domain error');
+      mockLoginUseCase.execute.mockRejectedValue(error);
 
       await expect(
         controller.login({ email: 'x@x.com', senha: 'xxxxxx' }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('should rethrow unexpected errors', async () => {
-      mockService.login.mockRejectedValue(new Error('unexpected'));
-
-      await expect(
-        controller.login({ email: 'x@x.com', senha: 'xxxxxx' }),
-      ).rejects.toThrow('unexpected');
+      ).rejects.toThrow('domain error');
     });
   });
 
   describe('GET /auth/me', () => {
-    it('should return the current user info', async () => {
+    it('returns the current user info', async () => {
       const usuario = Usuario.reconstitute({
         id: 'user-id',
         nome: 'Admin',

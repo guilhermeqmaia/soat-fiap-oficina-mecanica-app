@@ -1,17 +1,16 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
-import { AuthService } from '../application/auth.service';
 import { LoginDto } from './dto/login.dto';
-import { InvalidCredentialsError } from '../domain/errors/invalid-credentials.error';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Usuario } from '../domain/usuario.entity';
+import { LoginUseCase } from '../application/use-cases/login.use-case';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly service: AuthService) {}
+  constructor(private readonly loginUseCase: LoginUseCase) {}
 
   @Public()
   @Post('login')
@@ -19,14 +18,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Autenticar usuario e retornar JWT' })
   @ApiUnauthorizedResponse({ description: 'Credenciais invalidas' })
   async login(@Body() dto: LoginDto) {
-    try {
-      return await this.service.login(dto.email, dto.senha);
-    } catch (error) {
-      if (error instanceof InvalidCredentialsError) {
-        throw new UnauthorizedException(error.message);
-      }
-      throw error;
-    }
+    return this.loginUseCase.execute({ email: dto.email, senha: dto.senha });
   }
 
   @UseGuards(JwtAuthGuard)
