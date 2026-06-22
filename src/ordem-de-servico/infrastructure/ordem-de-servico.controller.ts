@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -11,9 +10,6 @@ import {
   Patch,
   Post,
   Query,
-  NotFoundException,
-  BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -27,7 +23,6 @@ import {
   ApiBadRequestResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { OrdemDeServicoService } from '../application/ordem-de-servico.service';
 import { CreateOrdemDeServicoDto } from './dto/create-ordem-de-servico.dto';
 import { CompletarDiagnosticoDto } from './dto/completar-diagnostico.dto';
 import { QueryOrdemDeServicoDto } from './dto/query-ordem-de-servico.dto';
@@ -36,21 +31,26 @@ import { AdicionarServicoDto } from './dto/adicionar-servico.dto';
 import { AdicionarProdutoDto } from './dto/adicionar-produto.dto';
 import { ConcluirServicoDto } from './dto/concluir-servico.dto';
 import { QueryTempoMedioDto } from './dto/query-tempo-medio.dto';
-import { ClienteNotFoundError } from '../domain/errors/cliente-not-found.error';
-import { VeiculoNotFoundError } from '../domain/errors/veiculo-not-found.error';
-import { VeiculoClienteMismatchError } from '../domain/errors/veiculo-cliente-mismatch.error';
-import { InvalidStatusTransitionError } from '../domain/errors/invalid-status-transition.error';
-import { InvalidDescriptionError } from '../domain/errors/invalid-description.error';
-import { OsNotOwnedByClienteError } from '../domain/errors/os-not-owned-by-cliente.error';
-import { ServicoNotFoundInCatalogError } from '../domain/errors/servico-not-found-in-catalog.error';
-import { ServicoAlreadyAddedError } from '../domain/errors/servico-already-added.error';
-import { ServicoNotAddedError } from '../domain/errors/servico-not-added.error';
-import { ProdutoNotFoundInCatalogError } from '../domain/errors/produto-not-found-in-catalog.error';
-import { ProdutoAlreadyAddedError } from '../domain/errors/produto-already-added.error';
-import { ProdutoNotAddedError } from '../domain/errors/produto-not-added.error';
-import { ItemServicoInvalidStatusError } from '../domain/errors/item-servico-invalid-status.error';
-import { InvalidQuantityError } from '../domain/errors/invalid-quantity.error';
-import { OrdemDeServicoNotFoundError } from '../domain/errors/ordem-de-servico-not-found.error';
+import { OrdemDeServicoPresenter } from './presenters/ordem-de-servico.presenter';
+import { CriarOrdemDeServicoUseCase } from '../application/use-cases/criar-ordem-de-servico.use-case';
+import { ListarOrdensDeServicoUseCase } from '../application/use-cases/listar-ordens-de-servico.use-case';
+import { ObterTempoMedioExecucaoUseCase } from '../application/use-cases/obter-tempo-medio-execucao.use-case';
+import { BuscarOrdemDeServicoPorIdUseCase } from '../application/use-cases/buscar-ordem-de-servico-por-id.use-case';
+import { BuscarDetalhesOrdemDeServicoUseCase } from '../application/use-cases/buscar-detalhes-ordem-de-servico.use-case';
+import { BuscarStatusPorNumeroUseCase } from '../application/use-cases/buscar-status-por-numero.use-case';
+import { AtribuirMecanicoUseCase } from '../application/use-cases/atribuir-mecanico.use-case';
+import { CompletarDiagnosticoUseCase } from '../application/use-cases/completar-diagnostico.use-case';
+import { AprovarOrcamentoUseCase } from '../application/use-cases/aprovar-orcamento.use-case';
+import { RejeitarOrcamentoUseCase } from '../application/use-cases/rejeitar-orcamento.use-case';
+import { IniciarServicoUseCase } from '../application/use-cases/iniciar-servico.use-case';
+import { ConcluirServicoUseCase } from '../application/use-cases/concluir-servico.use-case';
+import { FinalizarExecucaoUseCase } from '../application/use-cases/finalizar-execucao.use-case';
+import { EntregarOrdemDeServicoUseCase } from '../application/use-cases/entregar-ordem-de-servico.use-case';
+import { AdicionarServicoUseCase } from '../application/use-cases/adicionar-servico.use-case';
+import { RemoverServicoUseCase } from '../application/use-cases/remover-servico.use-case';
+import { AdicionarProdutoAoServicoUseCase } from '../application/use-cases/adicionar-produto-ao-servico.use-case';
+import { RemoverProdutoDoServicoUseCase } from '../application/use-cases/remover-produto-do-servico.use-case';
+import { DeletarOrdemDeServicoUseCase } from '../application/use-cases/deletar-ordem-de-servico.use-case';
 import { Public } from '../../auth/infrastructure/decorators/public.decorator';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
@@ -63,38 +63,43 @@ import { Usuario } from '../../auth/domain/usuario.entity';
 @ApiForbiddenResponse({ description: 'Role insuficiente' })
 @Controller('ordens-servico')
 export class OrdemDeServicoController {
-  constructor(private readonly service: OrdemDeServicoService) {}
+  constructor(
+    private readonly criarOrdemDeServico: CriarOrdemDeServicoUseCase,
+    private readonly listarOrdensDeServico: ListarOrdensDeServicoUseCase,
+    private readonly obterTempoMedioExecucao: ObterTempoMedioExecucaoUseCase,
+    private readonly buscarOrdemDeServicoPorId: BuscarOrdemDeServicoPorIdUseCase,
+    private readonly buscarDetalhesOrdemDeServico: BuscarDetalhesOrdemDeServicoUseCase,
+    private readonly buscarStatusPorNumero: BuscarStatusPorNumeroUseCase,
+    private readonly atribuirMecanicoUseCase: AtribuirMecanicoUseCase,
+    private readonly completarDiagnosticoUseCase: CompletarDiagnosticoUseCase,
+    private readonly aprovarOrcamentoUseCase: AprovarOrcamentoUseCase,
+    private readonly rejeitarOrcamentoUseCase: RejeitarOrcamentoUseCase,
+    private readonly iniciarServicoUseCase: IniciarServicoUseCase,
+    private readonly concluirServicoUseCase: ConcluirServicoUseCase,
+    private readonly finalizarExecucaoUseCase: FinalizarExecucaoUseCase,
+    private readonly entregarUseCase: EntregarOrdemDeServicoUseCase,
+    private readonly adicionarServicoUseCase: AdicionarServicoUseCase,
+    private readonly removerServicoUseCase: RemoverServicoUseCase,
+    private readonly adicionarProdutoUseCase: AdicionarProdutoAoServicoUseCase,
+    private readonly removerProdutoUseCase: RemoverProdutoDoServicoUseCase,
+    private readonly deletarOrdemDeServicoUseCase: DeletarOrdemDeServicoUseCase,
+  ) {}
 
   @Post()
   @Roles(Role.ADMIN, Role.ATENDENTE)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Abrir nova ordem de servico' })
   @ApiCreatedResponse({ description: 'OS criada com sucesso' })
-  @ApiNotFoundResponse({
-    description: 'Cliente ou veiculo nao encontrado',
-  })
+  @ApiNotFoundResponse({ description: 'Cliente ou veiculo nao encontrado' })
   @ApiBadRequestResponse({ description: 'Dados invalidos' })
-  @ApiConflictResponse({
-    description: 'Veiculo nao pertence ao cliente',
-  })
+  @ApiConflictResponse({ description: 'Veiculo nao pertence ao cliente' })
   async create(@Body() dto: CreateOrdemDeServicoDto) {
-    try {
-      return this.toResponse(await this.service.create(dto));
-    } catch (error) {
-      if (error instanceof ClienteNotFoundError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof VeiculoNotFoundError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof VeiculoClienteMismatchError) {
-        throw new ConflictException(error.message);
-      }
-      if (error instanceof InvalidDescriptionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.criarOrdemDeServico.execute({
+      clienteId: dto.clienteId,
+      veiculoId: dto.veiculoId,
+      descricaoInicial: dto.descricaoInicial,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Get()
@@ -104,39 +109,27 @@ export class OrdemDeServicoController {
   })
   @ApiOkResponse({ description: 'Lista paginada de OS' })
   async findAll(@Query() query: QueryOrdemDeServicoDto) {
-    const result = await this.service.findAll({
+    const result = await this.listarOrdensDeServico.execute({
       page: query.page ?? 1,
       limit: query.limit ?? 10,
       clienteId: query.clienteId,
       status: query.status,
       numero: query.numero,
     });
-
-    return {
-      data: result.data.map((os) => this.toResponse(os)),
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-    };
+    return OrdemDeServicoPresenter.toPaginatedResponse(result);
   }
 
   @Get('numero/:numero/status')
   @Public()
   @ApiOperation({
-    summary:
-      'Acompanhar OS pelo numero (publico, sem autenticacao) — US-16',
+    summary: 'Acompanhar OS pelo numero (publico, sem autenticacao) — US-16',
   })
   @ApiOkResponse({ description: 'Status e itens da OS' })
-  @ApiNotFoundResponse({ description: 'OS nao encontrada para o numero informado' })
+  @ApiNotFoundResponse({
+    description: 'OS nao encontrada para o numero informado',
+  })
   async findStatusByNumero(@Param('numero') numero: string) {
-    try {
-      return await this.service.findStatusByNumero(numero);
-    } catch (error) {
-      if (error instanceof OrdemDeServicoNotFoundError) {
-        throw new NotFoundException(error.message);
-      }
-      throw error;
-    }
+    return this.buscarStatusPorNumero.execute({ numero });
   }
 
   @Get('metricas/tempo-medio')
@@ -150,7 +143,7 @@ export class OrdemDeServicoController {
       'Tempo medio em minutos/horas, total de execucoes concluidas e quebra por servico',
   })
   async tempoMedioExecucao(@Query() query: QueryTempoMedioDto) {
-    return this.service.getTempoMedioExecucao({
+    return this.obterTempoMedioExecucao.execute({
       servicoId: query.servicoId,
       dataInicio: query.dataInicio,
       dataFim: query.dataFim,
@@ -163,7 +156,8 @@ export class OrdemDeServicoController {
   @ApiOkResponse({ description: 'OS encontrada' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   async findById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.toResponse(await this.service.findById(id));
+    const os = await this.buscarOrdemDeServicoPorId.execute({ id });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Get(':id/detalhes')
@@ -174,7 +168,7 @@ export class OrdemDeServicoController {
   @ApiOkResponse({ description: 'Detalhes da OS estruturados' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   async findByIdDetalhado(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findByIdDetalhado(id);
+    return this.buscarDetalhesOrdemDeServico.execute({ id });
   }
 
   @Post(':id/atribuir-mecanico')
@@ -182,30 +176,21 @@ export class OrdemDeServicoController {
   @ApiOperation({ summary: 'Atribuir ordem de servico a um mecanico' })
   @ApiOkResponse({ description: 'OS atribuida com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
-  @ApiBadRequestResponse({
-    description: 'Transicao de status invalida',
-  })
+  @ApiBadRequestResponse({ description: 'Transicao de status invalida' })
   async atribuirMecanico(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AtribuirMecanicoDto,
   ) {
-    try {
-      return this.toResponse(
-        await this.service.atribuirMecanico(id, dto.usuarioId),
-      );
-    } catch (error) {
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.atribuirMecanicoUseCase.execute({
+      id,
+      usuarioId: dto.usuarioId,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Post(':id/completar-diagnostico')
   @Roles(Role.ADMIN, Role.MECANICO)
-  @ApiOperation({
-    summary: 'Completar diagnostico e gerar orcamento',
-  })
+  @ApiOperation({ summary: 'Completar diagnostico e gerar orcamento' })
   @ApiOkResponse({ description: 'Diagnostico completado com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   @ApiBadRequestResponse({
@@ -215,121 +200,69 @@ export class OrdemDeServicoController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CompletarDiagnosticoDto,
   ) {
-    try {
-      return this.toResponse(
-        await this.service.completarDiagnostico(id, dto.diagnostico),
-      );
-    } catch (error) {
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      if (error instanceof InvalidDescriptionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.completarDiagnosticoUseCase.execute({
+      id,
+      diagnostico: dto.diagnostico,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Post(':id/aprovar-orcamento')
   @Roles(Role.ADMIN, Role.CLIENTE)
-  @ApiOperation({
-    summary: 'Aprovar orcamento (cliente)',
-  })
+  @ApiOperation({ summary: 'Aprovar orcamento (cliente)' })
   @ApiOkResponse({ description: 'Orcamento aprovado com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
-  @ApiBadRequestResponse({
-    description: 'Transicao de status invalida',
-  })
+  @ApiBadRequestResponse({ description: 'Transicao de status invalida' })
   async aprovarOrcamento(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() usuario: Usuario,
   ) {
-    try {
-      if (usuario?.role === Role.CLIENTE) {
-        await this.service.assertOsPertenceAoCliente(id, usuario.email.value);
-      }
-      return this.toResponse(await this.service.aprovarOrcamento(id));
-    } catch (error) {
-      if (error instanceof OsNotOwnedByClienteError) {
-        throw new ForbiddenException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.aprovarOrcamentoUseCase.execute({
+      id,
+      emailClienteAutenticado:
+        usuario?.role === Role.CLIENTE ? usuario.email.value : undefined,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Post(':id/rejeitar-orcamento')
   @Roles(Role.ADMIN, Role.CLIENTE)
-  @ApiOperation({
-    summary: 'Rejeitar orcamento (cliente)',
-  })
+  @ApiOperation({ summary: 'Rejeitar orcamento (cliente)' })
   @ApiOkResponse({ description: 'Orcamento rejeitado com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
-  @ApiBadRequestResponse({
-    description: 'Transicao de status invalida',
-  })
+  @ApiBadRequestResponse({ description: 'Transicao de status invalida' })
   async rejeitarOrcamento(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() usuario: Usuario,
   ) {
-    try {
-      if (usuario?.role === Role.CLIENTE) {
-        await this.service.assertOsPertenceAoCliente(id, usuario.email.value);
-      }
-      return this.toResponse(await this.service.rejeitarOrcamento(id));
-    } catch (error) {
-      if (error instanceof OsNotOwnedByClienteError) {
-        throw new ForbiddenException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.rejeitarOrcamentoUseCase.execute({
+      id,
+      emailClienteAutenticado:
+        usuario?.role === Role.CLIENTE ? usuario.email.value : undefined,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Post(':id/finalizar-execucao')
   @Roles(Role.ADMIN, Role.MECANICO)
-  @ApiOperation({
-    summary: 'Finalizar execucao dos servicos',
-  })
+  @ApiOperation({ summary: 'Finalizar execucao dos servicos' })
   @ApiOkResponse({ description: 'Execucao finalizada com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
-  @ApiBadRequestResponse({
-    description: 'Transicao de status invalida',
-  })
+  @ApiBadRequestResponse({ description: 'Transicao de status invalida' })
   async finalizarExecucao(@Param('id', ParseUUIDPipe) id: string) {
-    try {
-      return this.toResponse(await this.service.finalizarExecucao(id));
-    } catch (error) {
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.finalizarExecucaoUseCase.execute({ id });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Post(':id/entregar')
   @Roles(Role.ADMIN, Role.ATENDENTE)
-  @ApiOperation({
-    summary: 'Entregar veiculo (encerrar OS)',
-  })
+  @ApiOperation({ summary: 'Entregar veiculo (encerrar OS)' })
   @ApiOkResponse({ description: 'Veiculo entregue com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
-  @ApiBadRequestResponse({
-    description: 'Transicao de status invalida',
-  })
+  @ApiBadRequestResponse({ description: 'Transicao de status invalida' })
   async entregar(@Param('id', ParseUUIDPipe) id: string) {
-    try {
-      return this.toResponse(await this.service.entregar(id));
-    } catch (error) {
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.entregarUseCase.execute({ id });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Post(':id/servicos')
@@ -346,25 +279,12 @@ export class OrdemDeServicoController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AdicionarServicoDto,
   ) {
-    try {
-      return this.toResponse(
-        await this.service.adicionarServico(id, dto.servicoId, dto.quantidade),
-      );
-    } catch (error) {
-      if (error instanceof ServicoNotFoundInCatalogError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof ServicoAlreadyAddedError) {
-        throw new ConflictException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      if (error instanceof InvalidQuantityError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.adicionarServicoUseCase.execute({
+      id,
+      servicoId: dto.servicoId,
+      quantidade: dto.quantidade,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Patch(':id/servicos/:servicoId/iniciar')
@@ -372,31 +292,24 @@ export class OrdemDeServicoController {
   @ApiOperation({ summary: 'Iniciar execucao de um servico da OS — US-14' })
   @ApiOkResponse({ description: 'Execucao do servico iniciada' })
   @ApiNotFoundResponse({ description: 'OS ou servico nao encontrado' })
-  @ApiBadRequestResponse({ description: 'Status invalido para iniciar execucao' })
+  @ApiBadRequestResponse({
+    description: 'Status invalido para iniciar execucao',
+  })
   async iniciarServico(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('servicoId', ParseUUIDPipe) servicoId: string,
   ) {
-    try {
-      return this.toResponse(await this.service.iniciarServico(id, servicoId));
-    } catch (error) {
-      if (error instanceof ServicoNotAddedError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      if (error instanceof ItemServicoInvalidStatusError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.iniciarServicoUseCase.execute({ id, servicoId });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Patch(':id/servicos/:servicoId/concluir')
   @Roles(Role.ADMIN, Role.MECANICO)
   @ApiOperation({ summary: 'Concluir execucao de um servico da OS — US-14' })
-  @ApiOkResponse({ description: 'Servico concluido; se todos concluidos a OS passa a FINALIZADA automaticamente' })
+  @ApiOkResponse({
+    description:
+      'Servico concluido; se todos concluidos a OS passa a FINALIZADA automaticamente',
+  })
   @ApiNotFoundResponse({ description: 'OS ou servico nao encontrado' })
   @ApiBadRequestResponse({ description: 'Status invalido ou horas invalidas' })
   async concluirServico(
@@ -404,22 +317,12 @@ export class OrdemDeServicoController {
     @Param('servicoId', ParseUUIDPipe) servicoId: string,
     @Body() dto: ConcluirServicoDto,
   ) {
-    try {
-      return this.toResponse(
-        await this.service.concluirServico(id, servicoId, dto.horasTrabalhadas),
-      );
-    } catch (error) {
-      if (error instanceof ServicoNotAddedError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      if (error instanceof ItemServicoInvalidStatusError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.concluirServicoUseCase.execute({
+      id,
+      servicoId,
+      horasTrabalhadas: dto.horasTrabalhadas,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Delete(':id/servicos/:servicoId')
@@ -432,17 +335,7 @@ export class OrdemDeServicoController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('servicoId', ParseUUIDPipe) servicoId: string,
   ) {
-    try {
-      await this.service.removerServico(id, servicoId);
-    } catch (error) {
-      if (error instanceof ServicoNotAddedError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    await this.removerServicoUseCase.execute({ id, servicoId });
   }
 
   @Post(':id/servicos/:servicoId/produtos')
@@ -464,33 +357,13 @@ export class OrdemDeServicoController {
     @Param('servicoId', ParseUUIDPipe) servicoId: string,
     @Body() dto: AdicionarProdutoDto,
   ) {
-    try {
-      return this.toResponse(
-        await this.service.adicionarProdutoAoServico(
-          id,
-          servicoId,
-          dto.produtoId,
-          dto.quantidade,
-        ),
-      );
-    } catch (error) {
-      if (error instanceof ProdutoNotFoundInCatalogError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof ServicoNotAddedError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof ProdutoAlreadyAddedError) {
-        throw new ConflictException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      if (error instanceof InvalidQuantityError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const os = await this.adicionarProdutoUseCase.execute({
+      id,
+      servicoId,
+      produtoId: dto.produtoId,
+      quantidade: dto.quantidade,
+    });
+    return OrdemDeServicoPresenter.toResponse(os);
   }
 
   @Delete(':id/servicos/:servicoId/produtos/:produtoId')
@@ -506,20 +379,7 @@ export class OrdemDeServicoController {
     @Param('servicoId', ParseUUIDPipe) servicoId: string,
     @Param('produtoId', ParseUUIDPipe) produtoId: string,
   ) {
-    try {
-      await this.service.removerProdutoDoServico(id, servicoId, produtoId);
-    } catch (error) {
-      if (error instanceof ServicoNotAddedError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof ProdutoNotAddedError) {
-        throw new NotFoundException(error.message);
-      }
-      if (error instanceof InvalidStatusTransitionError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    await this.removerProdutoUseCase.execute({ id, servicoId, produtoId });
   }
 
   @Delete(':id')
@@ -529,51 +389,6 @@ export class OrdemDeServicoController {
   @ApiOkResponse({ description: 'OS deletada com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   async delete(@Param('id', ParseUUIDPipe) id: string) {
-    await this.service.delete(id);
-  }
-
-  private toResponse(os: any) {
-    return {
-      id: os.id,
-      numero: os.numero,
-      clienteId: os.clienteId,
-      veiculoId: os.veiculoId,
-      usuarioId: os.usuarioId,
-      descricaoInicial: os.descricaoInicial,
-      diagnostico: os.diagnostico,
-      status: os.status,
-      itensServico: (os.itensServico ?? []).map((i: any) => ({
-        servicoId: i.servicoId,
-        quantidade: i.quantidade,
-        precoUnitario: i.precoUnitario,
-        subtotal:
-          typeof i.subtotalServico === 'function'
-            ? i.subtotalServico()
-            : i.quantidade * Number(i.precoUnitario),
-        statusExecucao: i.statusExecucao,
-        inicioExecucao: i.inicioExecucao,
-        fimExecucao: i.fimExecucao,
-        horasTrabalhadas: i.horasTrabalhadas,
-        produtos: (i.produtos ?? []).map((p: any) => ({
-          produtoId: p.produtoId,
-          quantidade: p.quantidade,
-          precoUnitario: p.precoUnitario,
-          subtotal:
-            typeof p.subtotal === 'function'
-              ? p.subtotal()
-              : p.quantidade * Number(p.precoUnitario),
-        })),
-      })),
-      valorTotalServicos:
-        typeof os.valorTotalServicos === 'function'
-          ? os.valorTotalServicos()
-          : 0,
-      valorTotalProdutos:
-        typeof os.valorTotalProdutos === 'function'
-          ? os.valorTotalProdutos()
-          : 0,
-      createdAt: os.createdAt,
-      updatedAt: os.updatedAt,
-    };
+    await this.deletarOrdemDeServicoUseCase.execute({ id });
   }
 }

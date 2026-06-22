@@ -1,5 +1,8 @@
-export class OrcamentoProntoEvent {
+import { DomainEvent } from '../../../shared/application/domain-event';
+
+export class OrcamentoProntoEvent implements DomainEvent {
   static readonly EVENT_NAME = 'os.orcamento-pronto';
+  readonly eventName = OrcamentoProntoEvent.EVENT_NAME;
 
   constructor(
     public readonly ordemDeServicoId: string,

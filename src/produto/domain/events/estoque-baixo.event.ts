@@ -1,5 +1,8 @@
-export class EstoqueBaixoEvent {
+import { DomainEvent } from '../../../shared/application/domain-event';
+
+export class EstoqueBaixoEvent implements DomainEvent {
   static readonly EVENT_NAME = 'estoque.baixo';
+  readonly eventName = EstoqueBaixoEvent.EVENT_NAME;
 
   constructor(
     public readonly produtoId: string,
