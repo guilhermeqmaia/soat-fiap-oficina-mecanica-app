@@ -1,10 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Security headers. CSP desabilitado para nao quebrar o Swagger UI em dev;
+  // os demais headers (nosniff, frameguard, HSTS, etc.) permanecem ativos.
+  app.use(helmet({ contentSecurityPolicy: false }));
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
 
   const allowedOrigins = (process.env.WEB_ORIGINS ?? 'http://localhost:5173,http://localhost:5174')
     .split(',')
@@ -35,6 +41,10 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api', app, document);
   }
+
+  // Encerra recursos (ex.: conexao Prisma via onModuleDestroy) ao receber
+  // SIGTERM/SIGINT — essencial para rolling deploys sem cortar requests em voo.
+  app.enableShutdownHooks();
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);

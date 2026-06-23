@@ -1,0 +1,18 @@
+# Evita enviar arquivos sensiveis/desnecessarios para o contexto de build da
+# imagem (seguranca + imagem menor).
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.*
+*.tsbuildinfo
+npm-debug.log*
+Dockerfile
+docker-compose.yml
+.dockerignore
+.vscode
+.idea
+**/*.spec.ts
+web

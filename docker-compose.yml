@@ -33,7 +33,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ['sh', '-c', 'npx prisma migrate deploy && node dist/main.js']
+    entrypoint: ['sh', '-c', 'npx prisma migrate deploy && exec node dist/main.js']
 
   web-admin:
     build:

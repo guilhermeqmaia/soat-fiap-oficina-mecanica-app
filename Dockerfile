@@ -15,4 +15,5 @@ USER node
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# `exec` faz o node virar PID 1 e receber SIGTERM (graceful shutdown em rolling deploys)
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/main.js"]

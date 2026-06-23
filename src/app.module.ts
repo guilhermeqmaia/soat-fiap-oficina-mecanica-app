@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/env.validation';
+import { HealthModule } from './health/health.module';
 import { SharedModule } from './shared/shared.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -17,8 +20,16 @@ import { NotificacaoModule } from './notificacao/notificacao.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     EventEmitterModule.forRoot(),
+    // Rate limiting global (anti brute-force/DoS). Desabilitado sob jest
+    // (JEST_WORKER_ID) para nao introduzir flakiness por 429 nos testes e2e.
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 100 }],
+      skipIf: () =>
+        process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID,
+    }),
     SharedModule,
     PrismaModule,
+    HealthModule,
     AuthModule,
     UsuarioModule,
     ServicoModule,
@@ -28,5 +39,6 @@ import { NotificacaoModule } from './notificacao/notificacao.module';
     OrdemDeServicoModule,
     NotificacaoModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
