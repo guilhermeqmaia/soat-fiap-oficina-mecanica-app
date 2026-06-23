@@ -159,17 +159,6 @@ export class OrdemDeServicoController {
     return this.buscarDetalhesOrdemDeServico.execute({ id });
   }
 
-  @Get(':id/detalhes')
-  @Roles(Role.ADMIN, Role.ATENDENTE, Role.MECANICO)
-  @ApiOperation({
-    summary: 'Buscar detalhes da OS (cabecalho, corpo, rodape) — view formatada',
-  })
-  @ApiOkResponse({ description: 'Detalhes da OS estruturados' })
-  @ApiNotFoundResponse({ description: 'OS nao encontrada' })
-  async findByIdDetalhado(@Param('id', ParseUUIDPipe) id: string) {
-    return this.buscarDetalhesOrdemDeServico.execute({ id });
-  }
-
   @Post(':id/atribuir-mecanico')
   @Roles(Role.ADMIN, Role.MECANICO)
   @ApiOperation({ summary: 'Atribuir ordem de servico a um mecanico' })

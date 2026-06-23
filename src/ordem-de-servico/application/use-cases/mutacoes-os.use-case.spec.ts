@@ -9,7 +9,6 @@ import { RemoverServicoUseCase } from './remover-servico.use-case';
 import { RemoverProdutoDoServicoUseCase } from './remover-produto-do-servico.use-case';
 import { AprovarOrcamentoUseCase } from './aprovar-orcamento.use-case';
 import { RejeitarOrcamentoUseCase } from './rejeitar-orcamento.use-case';
-import { BuscarOrdemDeServicoPorIdUseCase } from './buscar-ordem-de-servico-por-id.use-case';
 import { OrdemDeServicoNotFoundError } from '../../domain/errors/ordem-de-servico-not-found.error';
 import { OsNotOwnedByClienteError } from '../../domain/errors/os-not-owned-by-cliente.error';
 
@@ -137,14 +136,6 @@ describe('OS mutation use cases', () => {
     const g = gatewayWith(os);
     await new DeletarOrdemDeServicoUseCase(g as any).execute({ id: 'os-1' });
     expect(g.delete).toHaveBeenCalledWith('os-1');
-  });
-
-  it('BuscarOrdemDeServicoPorId returns the loaded OS', async () => {
-    const os = fakeOs();
-    const result = await new BuscarOrdemDeServicoPorIdUseCase(
-      gatewayWith(os) as any,
-    ).execute({ id: 'os-1' });
-    expect(result).toBe(os);
   });
 
   describe('Aprovar/Rejeitar ownership', () => {

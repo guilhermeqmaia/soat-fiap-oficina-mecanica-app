@@ -25,7 +25,6 @@ import {
 import { CriarOrdemDeServicoUseCase } from './application/use-cases/criar-ordem-de-servico.use-case';
 import { ListarOrdensDeServicoUseCase } from './application/use-cases/listar-ordens-de-servico.use-case';
 import { ObterTempoMedioExecucaoUseCase } from './application/use-cases/obter-tempo-medio-execucao.use-case';
-import { BuscarOrdemDeServicoPorIdUseCase } from './application/use-cases/buscar-ordem-de-servico-por-id.use-case';
 import { BuscarDetalhesOrdemDeServicoUseCase } from './application/use-cases/buscar-detalhes-ordem-de-servico.use-case';
 import { BuscarStatusPorNumeroUseCase } from './application/use-cases/buscar-status-por-numero.use-case';
 import { AtribuirMecanicoUseCase } from './application/use-cases/atribuir-mecanico.use-case';
@@ -47,7 +46,6 @@ const USE_CASES = [
   CriarOrdemDeServicoUseCase,
   ListarOrdensDeServicoUseCase,
   ObterTempoMedioExecucaoUseCase,
-  BuscarOrdemDeServicoPorIdUseCase,
   BuscarDetalhesOrdemDeServicoUseCase,
   BuscarStatusPorNumeroUseCase,
   AtribuirMecanicoUseCase,
