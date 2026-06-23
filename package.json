@@ -17,6 +17,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "seed": "ts-node prisma/seed.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "sonar:up": "docker compose -f infra/sonar/docker-compose.sonar.yml up -d",

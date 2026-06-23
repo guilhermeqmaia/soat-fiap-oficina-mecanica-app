@@ -77,11 +77,20 @@ cp .env.example .env
 
 A API usa JWT para proteger endpoints administrativos. Endpoints marcados com `@Public()` não requerem autenticação.
 
-### Usuários de teste
+### Usuários de teste (apenas desenvolvimento)
 
-Os usuários abaixo são criados automaticamente pela migration `99999999999999_seed_test_users`:
+> ⚠️ **Somente para desenvolvimento.** Estes usuários têm senhas conhecidas e
+> **nunca** devem existir em produção. Eles **não** são mais criados pelas
+> migrations (`prisma migrate deploy` não semeia nada). Para popular um banco de
+> dev com dados de demonstração + estes usuários, rode:
+>
+> ```bash
+> npm run seed   # recusa rodar com NODE_ENV=production
+> ```
+>
+> Em produção, crie o administrador inicial por um canal seguro/manual.
 
-| Role | Email | Senha |
+| Role | Email | Senha (dev) |
 |---|---|---|
 | ADMIN | `admin@oficina.com` | `admin123` |
 | ATENDENTE | `atendente@oficina.com` | `atendente123` |

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export class QueryOrdemDeServicoDto {
   @ApiProperty({
@@ -10,6 +10,8 @@ export class QueryOrdemDeServicoDto {
   })
   @Type(() => Number)
   @IsOptional()
+  @IsInt()
+  @Min(1)
   page?: number;
 
   @ApiProperty({
@@ -19,6 +21,9 @@ export class QueryOrdemDeServicoDto {
   })
   @Type(() => Number)
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit?: number;
 
   @ApiProperty({

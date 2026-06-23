@@ -22,15 +22,19 @@ async function bootstrap() {
     }),
   );
 
-  const config = new DocumentBuilder()
-    .setTitle('Oficina Mecânica API')
-    .setDescription('API do sistema integrado de oficina mecânica')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
+  // Swagger/OpenAPI expoe todo o surface da API e exemplos — desabilitado em
+  // producao para evitar information disclosure.
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('Oficina Mecânica API')
+      .setDescription('API do sistema integrado de oficina mecânica')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api', app, document);
+  }
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 enum RoleEnum {
   ADMIN = 'ADMIN',
@@ -18,6 +18,8 @@ export class QueryUsuarioDto {
   })
   @Type(() => Number)
   @IsOptional()
+  @IsInt()
+  @Min(1)
   page?: number;
 
   @ApiProperty({
@@ -27,6 +29,9 @@ export class QueryUsuarioDto {
   })
   @Type(() => Number)
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit?: number;
 
   @ApiProperty({
