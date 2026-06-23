@@ -64,7 +64,7 @@ Controller (interface)
 - [x] Lint de fronteiras: teste de fronteiras em Jest (`architecture.spec.ts`) impede regressoes para dentro->fora
 - [x] Testes existentes continuam passando; cobertura mantida (>=80%): 537 testes unitarios verdes, cobertura 93.6% linhas / 84% branches
 - [x] Novos testes unitarios por use case (mockando gateways) demonstrando isolamento
-- [x] Contratos REST inalterados (mesmos endpoints, payloads e status) — 57 rotas inventariadas via Swagger (app sobe integralmente); e2e por modulo inalterados validam o contrato em CI (requer Docker)
+- [x] Contratos REST preservados — 57 rotas inalteradas; suite e2e/integration completa verde (334/334) com Postgres via testcontainers. Excecao deliberada e aprovada: `GET /ordens-servico/:id` passou a retornar a view detalhada (cabecalho/corpo/rodape) para alinhar a expectativa do e2e pre-existente (a rota `:id/detalhes` permanece)
 - [x] Diagrama da US-F2-08 atualizado para refletir Use Cases / Gateways / Presenters (diagramas Mermaid em `docs/arquitetura/clean-architecture.md`)
 
 ## Notas

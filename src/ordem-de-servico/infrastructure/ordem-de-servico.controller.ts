@@ -35,7 +35,6 @@ import { OrdemDeServicoPresenter } from './presenters/ordem-de-servico.presenter
 import { CriarOrdemDeServicoUseCase } from '../application/use-cases/criar-ordem-de-servico.use-case';
 import { ListarOrdensDeServicoUseCase } from '../application/use-cases/listar-ordens-de-servico.use-case';
 import { ObterTempoMedioExecucaoUseCase } from '../application/use-cases/obter-tempo-medio-execucao.use-case';
-import { BuscarOrdemDeServicoPorIdUseCase } from '../application/use-cases/buscar-ordem-de-servico-por-id.use-case';
 import { BuscarDetalhesOrdemDeServicoUseCase } from '../application/use-cases/buscar-detalhes-ordem-de-servico.use-case';
 import { BuscarStatusPorNumeroUseCase } from '../application/use-cases/buscar-status-por-numero.use-case';
 import { AtribuirMecanicoUseCase } from '../application/use-cases/atribuir-mecanico.use-case';
@@ -67,7 +66,6 @@ export class OrdemDeServicoController {
     private readonly criarOrdemDeServico: CriarOrdemDeServicoUseCase,
     private readonly listarOrdensDeServico: ListarOrdensDeServicoUseCase,
     private readonly obterTempoMedioExecucao: ObterTempoMedioExecucaoUseCase,
-    private readonly buscarOrdemDeServicoPorId: BuscarOrdemDeServicoPorIdUseCase,
     private readonly buscarDetalhesOrdemDeServico: BuscarDetalhesOrdemDeServicoUseCase,
     private readonly buscarStatusPorNumero: BuscarStatusPorNumeroUseCase,
     private readonly atribuirMecanicoUseCase: AtribuirMecanicoUseCase,
@@ -152,12 +150,13 @@ export class OrdemDeServicoController {
 
   @Get(':id')
   @Roles(Role.ADMIN, Role.ATENDENTE, Role.MECANICO)
-  @ApiOperation({ summary: 'Buscar ordem de servico por ID (shape plano)' })
-  @ApiOkResponse({ description: 'OS encontrada' })
+  @ApiOperation({
+    summary: 'Buscar ordem de servico por ID (cabecalho, corpo, rodape)',
+  })
+  @ApiOkResponse({ description: 'OS encontrada (view detalhada)' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   async findById(@Param('id', ParseUUIDPipe) id: string) {
-    const os = await this.buscarOrdemDeServicoPorId.execute({ id });
-    return OrdemDeServicoPresenter.toResponse(os);
+    return this.buscarDetalhesOrdemDeServico.execute({ id });
   }
 
   @Get(':id/detalhes')
