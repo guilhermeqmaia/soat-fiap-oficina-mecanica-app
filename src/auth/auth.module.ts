@@ -12,6 +12,8 @@ import { RolesGuard } from './infrastructure/guards/roles.guard';
 import { LoginUseCase } from './application/use-cases/login.use-case';
 import { ValidarUsuarioPorIdUseCase } from './application/use-cases/validar-usuario-por-id.use-case';
 import { USUARIO_AUTH_GATEWAY } from './application/gateways/usuario.gateway';
+import { TOKEN_SIGNER } from './application/token-signer';
+import { JwtTokenSigner } from './infrastructure/jwt-token-signer';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { USUARIO_AUTH_GATEWAY } from './application/gateways/usuario.gateway';
     LoginUseCase,
     ValidarUsuarioPorIdUseCase,
     JwtStrategy,
+    JwtTokenSigner,
+    { provide: TOKEN_SIGNER, useExisting: JwtTokenSigner },
     PrismaUsuarioRepository,
     { provide: USUARIO_REPOSITORY, useExisting: PrismaUsuarioRepository },
     { provide: USUARIO_AUTH_GATEWAY, useExisting: PrismaUsuarioRepository },

@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   CLIENTE_REPOSITORY,
@@ -10,6 +9,7 @@ import { OsFinalizadaEvent } from '../../../ordem-de-servico/domain/events/os-fi
 import { CanalNotificacao } from '../../domain/value-objects/canal-notificacao.vo';
 import { TipoNotificacao } from '../../domain/value-objects/tipo-notificacao.vo';
 import { EnviarNotificacaoUseCase } from '../use-cases/enviar-notificacao.use-case';
+import { PUBLIC_BASE_URL } from '../ports/public-base-url';
 
 @Injectable()
 export class OrdemDeServicoNotificacaoListener {
@@ -20,11 +20,10 @@ export class OrdemDeServicoNotificacaoListener {
     private readonly enviarNotificacao: EnviarNotificacaoUseCase,
     @Inject(CLIENTE_REPOSITORY)
     private readonly clienteRepository: ClienteRepository,
-    private readonly config: ConfigService,
+    @Inject(PUBLIC_BASE_URL)
+    baseUrl: string,
   ) {
-    this.baseUrl = this.config
-      .get<string>('PUBLIC_BASE_URL', 'http://localhost:3000')
-      .replace(/\/+$/, '');
+    this.baseUrl = baseUrl;
   }
 
   @OnEvent(OrcamentoProntoEvent.EVENT_NAME)

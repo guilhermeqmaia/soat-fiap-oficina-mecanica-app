@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import {
   CLIENTE_REPOSITORY,
   ClienteRepository,
 } from '../../../cliente/domain/cliente.repository';
+import { PUBLIC_BASE_URL } from '../ports/public-base-url';
 import { Cliente } from '../../../cliente/domain/cliente.entity';
 import { OrcamentoProntoEvent } from '../../../ordem-de-servico/domain/events/orcamento-pronto.event';
 import { OsFinalizadaEvent } from '../../../ordem-de-servico/domain/events/os-finalizada.event';
@@ -44,10 +44,7 @@ describe('OrdemDeServicoNotificacaoListener', () => {
         OrdemDeServicoNotificacaoListener,
         { provide: EnviarNotificacaoUseCase, useValue: enviarNotificacao },
         { provide: CLIENTE_REPOSITORY, useValue: clienteRepository },
-        {
-          provide: ConfigService,
-          useValue: { get: () => 'http://localhost:3000' },
-        },
+        { provide: PUBLIC_BASE_URL, useValue: 'http://localhost:3000' },
       ],
     }).compile();
 

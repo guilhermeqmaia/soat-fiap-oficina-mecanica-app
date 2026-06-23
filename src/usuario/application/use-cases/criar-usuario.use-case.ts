@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
 import { UseCase } from '../../../shared/application/use-case';
+import {
+  PASSWORD_HASHER,
+  PasswordHasher,
+} from '../../../shared/application/password-hasher';
 import { Usuario } from '../../../auth/domain/usuario.entity';
 import { Role } from '../../../auth/domain/role.enum';
 import { InvalidRoleError } from '../../domain/errors/invalid-role.error';
@@ -22,6 +25,8 @@ export class CriarUsuarioUseCase
   constructor(
     @Inject(USUARIO_GATEWAY)
     private readonly gateway: UsuarioGateway,
+    @Inject(PASSWORD_HASHER)
+    private readonly passwordHasher: PasswordHasher,
   ) {}
 
   async execute(input: CriarUsuarioInput): Promise<UsuarioOutput> {
@@ -34,7 +39,7 @@ export class CriarUsuarioUseCase
       throw new EmailAlreadyExistsError(input.email);
     }
 
-    const senhaHash = await bcrypt.hash(input.senha, 10);
+    const senhaHash = await this.passwordHasher.hash(input.senha);
 
     const usuario = Usuario.create({
       nome: input.nome,

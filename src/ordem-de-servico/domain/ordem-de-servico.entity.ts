@@ -6,6 +6,7 @@ import { InvalidStatusTransitionError } from './errors/invalid-status-transition
 import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
 import { ServicoNotAddedError } from './errors/servico-not-added.error';
 import { ItemServicoInvalidStatusError } from './errors/item-servico-invalid-status.error';
+import { InvalidHorasTrabalhadasError } from './errors/invalid-horas-trabalhadas.error';
 
 export interface CreateOrdemDeServicoProps {
   clienteId: string;
@@ -272,7 +273,7 @@ export class OrdemDeServico {
       );
     }
     if (horasTrabalhadas <= 0) {
-      throw new Error('Horas trabalhadas deve ser maior que zero');
+      throw new InvalidHorasTrabalhadasError();
     }
     const idx = this._itensServico.findIndex((i) => i.servicoId === servicoId);
     if (idx === -1) {

@@ -6,9 +6,11 @@ import * as path from 'path';
  * regra de dependencia: as dependencias so apontam para dentro.
  *
  * - domain: nao importa application nem infrastructure, nem framework/ORM.
- * - application: nao importa Prisma (ORM), Swagger nem excecoes HTTP do Nest,
- *   nem nada de infrastructure. (DI via @nestjs/common Injectable/Inject e
- *   permitido; excecoes HTTP nao.)
+ * - application: nao importa Prisma (ORM), infrastructure, bcrypt, nem nenhum
+ *   pacote de framework `@nestjs/*` — exceto os da allowlist abaixo: `@nestjs/common`
+ *   (DI: Injectable/Inject/Logger) e `@nestjs/event-emitter` (assinatura inbound
+ *   via @OnEvent). Drivers concretos (JWT, bcrypt, config) devem ficar atras de
+ *   portas. Excecoes HTTP do Nest tambem sao proibidas.
  */
 
 const SRC = path.resolve(__dirname, '..');
@@ -42,6 +44,19 @@ function importsOf(file: string): string[] {
 
 const NEST_HTTP_EXCEPTIONS =
   /(NotFound|BadRequest|Conflict|Forbidden|Unauthorized|Http|InternalServerError|UnprocessableEntity)Exception/;
+
+/**
+ * Pacotes `@nestjs/*` tolerados no anel de aplicacao. Qualquer outro framework
+ * Nest (jwt, config, passport, ...) deve entrar via porta/adapter na infra.
+ */
+const ALLOWED_NEST_IN_APPLICATION = ['@nestjs/common', '@nestjs/event-emitter'];
+
+function isDisallowedNestImport(imp: string): boolean {
+  if (imp !== '@nestjs' && !imp.startsWith('@nestjs/')) return false;
+  return !ALLOWED_NEST_IN_APPLICATION.some(
+    (allowed) => imp === allowed || imp.startsWith(`${allowed}/`),
+  );
+}
 
 describe('Clean Architecture dependency rule', () => {
   const domainFiles = ALL_FILES.filter((f) =>
@@ -84,9 +99,11 @@ describe('Clean Architecture dependency rule', () => {
       for (const imp of importsOf(file)) {
         if (
           imp.includes('/infrastructure/') ||
-          imp.includes('@nestjs/swagger') ||
           imp.includes('generated/prisma') ||
-          imp.includes('@prisma')
+          imp.includes('@prisma') ||
+          imp === 'bcrypt' ||
+          imp.startsWith('bcrypt/') ||
+          isDisallowedNestImport(imp)
         ) {
           violations.push(`${path.relative(SRC, file)} -> ${imp}`);
         }

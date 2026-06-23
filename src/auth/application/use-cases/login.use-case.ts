@@ -1,13 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
 import { UseCase } from '../../../shared/application/use-case';
+import {
+  PASSWORD_HASHER,
+  PasswordHasher,
+} from '../../../shared/application/password-hasher';
 import { Role } from '../../domain/role.enum';
 import { InvalidCredentialsError } from '../../domain/errors/invalid-credentials.error';
 import {
   USUARIO_AUTH_GATEWAY,
   UsuarioGateway,
 } from '../gateways/usuario.gateway';
+import { TOKEN_SIGNER, TokenSigner } from '../token-signer';
 
 export interface JwtPayload {
   sub: string;
@@ -35,7 +38,10 @@ export class LoginUseCase implements UseCase<LoginInput, LoginResult> {
   constructor(
     @Inject(USUARIO_AUTH_GATEWAY)
     private readonly gateway: UsuarioGateway,
-    private readonly jwtService: JwtService,
+    @Inject(PASSWORD_HASHER)
+    private readonly passwordHasher: PasswordHasher,
+    @Inject(TOKEN_SIGNER)
+    private readonly tokenSigner: TokenSigner,
   ) {}
 
   async execute(input: LoginInput): Promise<LoginResult> {
@@ -44,7 +50,10 @@ export class LoginUseCase implements UseCase<LoginInput, LoginResult> {
       throw new InvalidCredentialsError();
     }
 
-    const passwordMatches = await bcrypt.compare(input.senha, usuario.senhaHash);
+    const passwordMatches = await this.passwordHasher.compare(
+      input.senha,
+      usuario.senhaHash,
+    );
     if (!passwordMatches) {
       throw new InvalidCredentialsError();
     }
@@ -55,7 +64,7 @@ export class LoginUseCase implements UseCase<LoginInput, LoginResult> {
       role: usuario.role,
     };
 
-    const accessToken = await this.jwtService.signAsync(payload);
+    const accessToken = await this.tokenSigner.sign(payload);
 
     return {
       accessToken,

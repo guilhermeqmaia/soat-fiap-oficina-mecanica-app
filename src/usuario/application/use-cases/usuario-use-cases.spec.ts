@@ -1,4 +1,3 @@
-import * as bcrypt from 'bcrypt';
 import { CriarUsuarioUseCase } from './criar-usuario.use-case';
 import { BuscarUsuarioPorIdUseCase } from './buscar-usuario-por-id.use-case';
 import { ListarUsuariosUseCase } from './listar-usuarios.use-case';
@@ -10,7 +9,9 @@ import { InvalidRoleError } from '../../domain/errors/invalid-role.error';
 import { Role } from '../../../auth/domain/role.enum';
 import { Usuario } from '../../../auth/domain/usuario.entity';
 
-jest.mock('bcrypt');
+function makeHasher(hashValue = 'hashed_pw') {
+  return { hash: jest.fn().mockResolvedValue(hashValue), compare: jest.fn() };
+}
 
 function fakeUsuario(overrides: Partial<{
   id: string;
@@ -48,7 +49,7 @@ function makeGateway(overrides: Record<string, any> = {}) {
 describe('CriarUsuarioUseCase', () => {
   it('throws InvalidRoleError for invalid role', async () => {
     const gateway = makeGateway();
-    const useCase = new CriarUsuarioUseCase(gateway as any);
+    const useCase = new CriarUsuarioUseCase(gateway as any, makeHasher() as any);
     await expect(
       useCase.execute({ nome: 'João', email: 'j@t.com', senha: '123', role: 'INVALIDO' }),
     ).rejects.toBeInstanceOf(InvalidRoleError);
@@ -57,7 +58,7 @@ describe('CriarUsuarioUseCase', () => {
 
   it('throws EmailAlreadyExistsError when email is taken', async () => {
     const gateway = makeGateway({ findByEmail: jest.fn().mockResolvedValue(fakeUsuario()) });
-    const useCase = new CriarUsuarioUseCase(gateway as any);
+    const useCase = new CriarUsuarioUseCase(gateway as any, makeHasher() as any);
     await expect(
       useCase.execute({ nome: 'João', email: 'joao@test.com', senha: '123', role: 'MECANICO' }),
     ).rejects.toBeInstanceOf(EmailAlreadyExistsError);
@@ -65,16 +66,16 @@ describe('CriarUsuarioUseCase', () => {
   });
 
   it('creates user with hashed password and returns UsuarioOutput', async () => {
-    (bcrypt.hash as jest.Mock).mockResolvedValue('hashed_pw');
+    const hasher = makeHasher('hashed_pw');
     const gateway = makeGateway();
-    const useCase = new CriarUsuarioUseCase(gateway as any);
+    const useCase = new CriarUsuarioUseCase(gateway as any, hasher as any);
     const result = await useCase.execute({
       nome: 'João',
       email: 'joao@test.com',
       senha: 'senha123',
       role: 'MECANICO',
     });
-    expect(bcrypt.hash).toHaveBeenCalledWith('senha123', 10);
+    expect(hasher.hash).toHaveBeenCalledWith('senha123');
     expect(gateway.create).toHaveBeenCalledTimes(1);
     expect(result.nome).toBe('João');
     expect(result.email).toBe('joao@test.com');

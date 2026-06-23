@@ -1,3 +1,5 @@
+import { InvalidStatusError } from '../errors/invalid-status.error';
+
 export enum StatusOS {
   RECEBIDA = 'RECEBIDA',
   EM_DIAGNOSTICO = 'EM_DIAGNOSTICO',
@@ -16,7 +18,7 @@ export class StatusOSVO {
       (s) => s === status,
     );
     if (!statusValue) {
-      throw new Error(`Status de OS invalido: ${status}`);
+      throw new InvalidStatusError(status);
     }
     this.valor = statusValue;
   }
