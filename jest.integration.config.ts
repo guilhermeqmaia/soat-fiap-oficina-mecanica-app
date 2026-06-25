@@ -6,6 +6,7 @@ const config: Config = {
   rootDir: 'src',
   testRegex: '.*\\.(integration|e2e)\\.spec\\.ts$',
   transform: { '^.+\\.ts$': 'ts-jest' },
+  setupFiles: ['<rootDir>/test/jest-setup-env.ts'],
   collectCoverageFrom: [
     '**/infrastructure/prisma-*.repository.ts',
     '!**/generated/**',
