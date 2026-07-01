@@ -49,6 +49,85 @@ docker compose down -v
 
 ---
 
+## Deploy em Kubernetes
+
+Os manifests ficam em `k8s/` e são aplicados com Kustomize. Eles cobrem a aplicação, Service, HPA, ConfigMap, template de Secret da aplicação e Job de migrations. O cluster e o banco de dados são responsabilidade do Terraform da US-F2-06.
+
+### 1. Gere ou publique a imagem da API
+
+Para `kind` local:
+
+```bash
+docker build -t oficina-api:latest .
+kind load docker-image oficina-api:latest --name oficina
+```
+
+Para um registry, publique a imagem e ajuste `k8s/kustomization.yaml`:
+
+```yaml
+images:
+  - name: oficina-api
+    newName: ghcr.io/sua-org/oficina-api
+    newTag: <tag>
+```
+
+### 2. Provisione cluster e banco
+
+Execute a infraestrutura da US-F2-06 antes dos manifests. Ela deve criar o cluster, o banco e o Secret `oficina-db` no namespace `oficina`, contendo `DATABASE_URL`.
+
+```bash
+kubectl get secret oficina-db -n oficina
+```
+
+### 3. Configure o Secret da aplicação
+
+```bash
+cp k8s/secret.yaml.example k8s/secret.yaml
+# edite k8s/secret.yaml e substitua JWT_SECRET, WEBHOOK_APPROVAL_TOKEN e NOTIFICATION_WEBHOOK_SECRET
+```
+
+O arquivo real `k8s/secret.yaml` não deve ser versionado. O `DATABASE_URL` não entra nele; essa variável vem do Secret `oficina-db` criado pela infraestrutura.
+
+### 4. Aplique migrations e suba a API
+
+Use o script de deploy para aplicar o Secret local, recriar o Job de migrations e aplicar os manifests:
+
+```bash
+./k8s/deploy.sh
+```
+
+O Deployment usa um initContainer com permissão mínima de leitura do Job para aguardar `oficina-migrations` completar antes de iniciar a API.
+
+Equivalente manual:
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl delete job oficina-migrations -n oficina --ignore-not-found
+kubectl apply -k k8s/
+kubectl wait --for=condition=complete job/oficina-migrations -n oficina --timeout=300s
+kubectl rollout status deployment/oficina-api -n oficina
+```
+
+O `kubectl delete job` é intencional: Jobs têm template imutável, então o Job de migrations precisa ser recriado em cada deploy para rodar com a imagem configurada em `k8s/kustomization.yaml`.
+
+### 5. Verificações úteis
+
+```bash
+kubectl get pods,svc,hpa -n oficina
+kubectl logs job/oficina-migrations -n oficina
+kubectl port-forward svc/oficina-api 3000:3000 -n oficina
+curl http://localhost:3000/health
+```
+
+Para acompanhar o HPA durante um teste de carga:
+
+```bash
+kubectl get hpa oficina-api -n oficina -w
+```
+
+---
+
 ## Variáveis de ambiente
 
 Copie `.env.example` para `.env` (usado apenas em execução local sem Docker):

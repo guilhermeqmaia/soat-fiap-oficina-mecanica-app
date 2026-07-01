@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oficina-migrations
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: oficina-api
+    app.kubernetes.io/component: migrations
+    app.kubernetes.io/part-of: oficina-mecanica
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oficina-api
+        app.kubernetes.io/component: migrations
+        app.kubernetes.io/part-of: oficina-mecanica
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrations
+          image: oficina-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["npm", "run", "prisma:deploy"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-db
+                  key: DATABASE_URL
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-config
+                  key: NODE_ENV
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

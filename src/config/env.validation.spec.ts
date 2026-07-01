@@ -11,6 +11,23 @@ describe('validateEnv', () => {
     ).toThrow(/placeholder/i);
   });
 
+  it('throws when optional webhook secrets use known placeholders', () => {
+    expect(() =>
+      validateEnv({
+        JWT_SECRET: 'test-secret',
+        WEBHOOK_APPROVAL_TOKEN: 'change-me-to-a-strong-webhook-approval-token',
+      }),
+    ).toThrow(/WEBHOOK_APPROVAL_TOKEN/);
+
+    expect(() =>
+      validateEnv({
+        JWT_SECRET: 'test-secret',
+        NOTIFICATION_WEBHOOK_SECRET:
+          'change-me-to-a-strong-notification-webhook-secret',
+      }),
+    ).toThrow(/NOTIFICATION_WEBHOOK_SECRET/);
+  });
+
   it('rejects a short secret in production', () => {
     expect(() =>
       validateEnv({ JWT_SECRET: 'short-secret', NODE_ENV: 'production' }),

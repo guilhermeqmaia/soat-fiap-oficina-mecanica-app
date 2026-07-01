@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oficina-api
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: oficina-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: oficina-mecanica
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oficina-api
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oficina-api
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: oficina-mecanica
+    spec:
+      serviceAccountName: oficina-api
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-migrations
+          image: bitnami/kubectl:1.32.2
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              until kubectl get job oficina-migrations -n oficina >/dev/null 2>&1; do
+                sleep 2
+              done
+              kubectl wait --for=condition=complete job/oficina-migrations -n oficina --timeout=300s
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: api
+          image: oficina-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-config
+                  key: PORT
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-config
+                  key: NODE_ENV
+            - name: NOTIFICATION_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-config
+                  key: NOTIFICATION_PROVIDER
+            - name: JWT_EXPIRES_IN
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-config
+                  key: JWT_EXPIRES_IN
+            - name: PUBLIC_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-config
+                  key: PUBLIC_BASE_URL
+            - name: WEB_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-config
+                  key: WEB_ORIGINS
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-db
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-app
+                  key: JWT_SECRET
+            - name: WEBHOOK_APPROVAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-app
+                  key: WEBHOOK_APPROVAL_TOKEN
+            - name: NOTIFICATION_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-app
+                  key: NOTIFICATION_WEBHOOK_SECRET
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

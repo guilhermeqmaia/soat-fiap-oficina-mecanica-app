@@ -9,6 +9,7 @@ build/
 .env
 .env.local
 .env.*.local
+k8s/secret.yaml
 
 # Prisma generated client
 /src/generated/prisma

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-config
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: oficina-api
+    app.kubernetes.io/part-of: oficina-mecanica
+data:
+  PORT: "3000"
+  NODE_ENV: production
+  NOTIFICATION_PROVIDER: mock
+  JWT_EXPIRES_IN: 1h
+  PUBLIC_BASE_URL: http://oficina-api.oficina.svc.cluster.local:3000
+  WEB_ORIGINS: http://localhost:8080,http://localhost:8081
