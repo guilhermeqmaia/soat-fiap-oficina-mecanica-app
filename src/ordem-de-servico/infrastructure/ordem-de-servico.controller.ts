@@ -99,6 +99,7 @@ export class OrdemDeServicoController {
       clienteId: dto.clienteId,
       veiculoId: dto.veiculoId,
       descricaoInicial: dto.descricaoInicial,
+      servicos: dto.servicos,
     });
     return OrdemDeServicoPresenter.toResponse(os);
   }

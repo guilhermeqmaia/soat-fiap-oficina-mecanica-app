@@ -14,7 +14,6 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
-  ApiConflictResponse,
   ApiNotFoundResponse,
   ApiBadRequestResponse,
 } from '@nestjs/swagger';
@@ -54,9 +53,9 @@ export class WebhookAprovacaoController {
     description: 'Token de webhook invalido ou ausente',
   })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
-  @ApiBadRequestResponse({ description: 'Transicao de status invalida' })
-  @ApiConflictResponse({
-    description: 'OS nao esta em AGUARDANDO_APROVACAO',
+  @ApiBadRequestResponse({
+    description:
+      'Transicao de status invalida (ex.: OS nao esta em AGUARDANDO_APROVACAO)',
   })
   async aprovacao(
     @Param('id', ParseUUIDPipe) id: string,

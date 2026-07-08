@@ -32,6 +32,16 @@ export class ItemServicoOS {
     if (precoUnitario < 0) {
       throw new InvalidPriceError(precoUnitario);
     }
+    // Invariante: um produto nao pode aparecer duas vezes no mesmo servico.
+    // Garante a unicidade tambem no caminho de construcao direta (abertura da
+    // OS), onde a guarda de adicionarProduto() nao passa.
+    const produtoIds = new Set<string>();
+    for (const p of produtos) {
+      if (produtoIds.has(p.produtoId)) {
+        throw new ProdutoAlreadyAddedError(p.produtoId);
+      }
+      produtoIds.add(p.produtoId);
+    }
     this.servicoId = servicoId;
     this.quantidade = quantidade;
     this.precoUnitario = precoUnitario;

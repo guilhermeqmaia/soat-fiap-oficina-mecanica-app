@@ -1,6 +1,14 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { Type } from "class-transformer";
-import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from "class-validator";
+import { Transform, Type } from "class-transformer";
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from "class-validator";
 
 export class QueryOrdemDeServicoDto {
   @ApiProperty({
@@ -69,7 +77,13 @@ export class QueryOrdemDeServicoDto {
     required: false,
     type: Boolean,
   })
-  @Type(() => Boolean)
+  // `@Type(() => Boolean)` transformaria qualquer string não-vazia em `true`
+  // (inclusive "false"). Coerção explícita: só "true"/true viram `true`.
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === "") return undefined;
+    return value === true || value === "true";
+  })
   @IsOptional()
+  @IsBoolean()
   incluirEncerradas?: boolean;
 }

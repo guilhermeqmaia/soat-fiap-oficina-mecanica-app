@@ -173,7 +173,7 @@ describe("PrismaOrdemDeServicoRepository", () => {
       expect(result.limit).toBe(10);
     });
 
-    it("should exclude FINALIZADA and ENTREGUE status by default", async () => {
+    it("should exclude terminal statuses (FINALIZADA, ENTREGUE, CANCELADA) by default", async () => {
       mockPrisma.ordemDeServico.findMany.mockResolvedValue([]);
       mockPrisma.ordemDeServico.count.mockResolvedValue(0);
 
@@ -182,9 +182,10 @@ describe("PrismaOrdemDeServicoRepository", () => {
       const whereArg =
         mockPrisma.ordemDeServico.findMany.mock.calls[0][0].where;
       expect(whereArg.NOT).toBeDefined();
-      expect(whereArg.NOT).toHaveLength(2);
+      expect(whereArg.NOT).toHaveLength(3);
       expect(whereArg.NOT).toContainEqual({ status: "FINALIZADA" });
       expect(whereArg.NOT).toContainEqual({ status: "ENTREGUE" });
+      expect(whereArg.NOT).toContainEqual({ status: "CANCELADA" });
     });
 
     it("should include FINALIZADA and ENTREGUE when incluirEncerradas is true", async () => {

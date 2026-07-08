@@ -2,7 +2,46 @@
 
 Back-end MVP para sistema integrado de oficina mecânica, focado em gestão de ordens de serviço, clientes, veículos e peças.
 
-**Stack:** NestJS · TypeScript · Prisma · PostgreSQL · Docker · JWT
+**Stack:** NestJS · TypeScript · Prisma · PostgreSQL · Docker · Kubernetes · Terraform · JWT
+
+---
+
+## Fase 2 — Qualidade, Resiliência e Escalabilidade
+
+A Fase 2 evolui o MVP da Fase 1 para **qualidade, resiliência e escalabilidade**,
+incorporando práticas modernas de infraestrutura e automação:
+
+- **Refatoração** do código aplicando **Clean Code** e **Clean Architecture** —
+  camadas Domain/Application/Infrastructure com dependências apontando para o
+  domínio, garantidas por teste automatizado (`src/shared/architecture.spec.ts`).
+- **APIs** de abertura de OS, consulta de status, **listagem ordenada por
+  prioridade de status** e **webhook externo de aprovação/reprovação** de orçamento.
+- **Notificação externa** de mudança de status via **webhook outbound** (HMAC).
+- **Containerização** revisada (Dockerfile multi-stage não-root + docker-compose).
+- **Orquestração Kubernetes** com Deployments, Services, ConfigMaps, Secrets e
+  **HPA** (autoescalonamento por CPU/memória).
+- **Infraestrutura como Código** com **Terraform** provisionando cluster + banco.
+- **CI/CD** que builda, testa, empacota a imagem e faz deploy ponta-a-ponta em um
+  cluster Kubernetes.
+
+### Desenho da arquitetura
+
+Diagramas de **componentes da aplicação**, **infraestrutura provisionada** e
+**fluxo de deploy** (renderizados pelo GitHub):
+
+➡️ **[docs/arquitetura/arquitetura-fase2.md](docs/arquitetura/arquitetura-fase2.md)**
+
+### Entregáveis da Fase 2
+
+| Entregável | Onde |
+|---|---|
+| Desenho da arquitetura | [`docs/arquitetura/arquitetura-fase2.md`](docs/arquitetura/arquitetura-fase2.md) |
+| Manifestos Kubernetes | [`k8s/`](k8s) · [`k8s/README.md`](k8s/README.md) |
+| Scripts Terraform (IaC) | [`infra/terraform/`](infra/terraform) · [`infra/terraform/README.md`](infra/terraform/README.md) |
+| Pipeline CI/CD | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) |
+| Testes de carga / escalabilidade | [`perf/`](perf) · [`perf/README.md`](perf/README.md) |
+| Collection das APIs (Swagger/OpenAPI) | `http://localhost:3000/api` (com a app rodando) — ver [Collection das APIs](#collection-das-apis) |
+| Vídeo demonstrativo (≤15 min) | ⚠️ **TODO:** adicionar link do YouTube/Vimeo antes da entrega |
 
 ---
 
@@ -198,6 +237,90 @@ A documentação Swagger estará em `http://localhost:3000/api`.
 
 ---
 
+## Provisionamento da infraestrutura com Terraform
+
+O Terraform provisiona o **cluster Kubernetes** e o **banco de dados** em dois
+estágios. Detalhes completos e o modo cloud (EKS + RDS) em
+[`infra/terraform/README.md`](infra/terraform/README.md).
+
+```bash
+# Pré-requisitos: terraform >= 1.9, docker e kubectl
+
+# Estágio 1 — cria o cluster kind e escreve o kubeconfig
+cd infra/terraform/01-cluster
+terraform init
+terraform apply            # gera ~/.kube/oficina-mecanica.config
+
+# Estágio 2 — cria o Postgres e o Secret oficina-db (DATABASE_URL)
+cd ../02-app
+terraform init
+terraform apply            # senha do banco gerada via random_password
+```
+
+Recursos criados (resumo): `kind_cluster`, `kubernetes_namespace`, Postgres
+(`PVC` + `Deployment` + `Service`), `random_password` e `kubernetes_secret`
+(`oficina-db`). Ver a tabela completa em
+[docs/arquitetura/arquitetura-fase2.md](docs/arquitetura/arquitetura-fase2.md#recursos-criados-pelo-terraform).
+
+---
+
+## Deploy em Kubernetes
+
+Os manifestos da aplicação estão em [`k8s/`](k8s) (Kustomize). Detalhes em
+[`k8s/README.md`](k8s/README.md).
+
+```bash
+# Aponte o kubectl para o cluster provisionado pelo Terraform
+export KUBECONFIG=$HOME/.kube/oficina-mecanica.config
+
+# Crie o Secret da aplicação a partir do exemplo (JWT + tokens de webhook)
+cp k8s/secret.yaml.example k8s/secret.yaml   # edite os valores
+
+# (kind) carregue a imagem no cluster
+kind load docker-image ghcr.io/<owner>/oficina-mecanica:latest --name oficina-mecanica
+
+# Aplique todos os manifestos (namespace, configmap, secret, migrations, app, service, hpa)
+kubectl apply -k k8s/
+
+# Acompanhe o Job de migrations e o rollout
+kubectl wait --for=condition=complete job/oficina-migrations -n oficina --timeout=180s
+kubectl rollout status deployment/oficina-app -n oficina
+
+# HPA (requer metrics-server no cluster)
+kubectl get hpa -n oficina
+```
+
+O deploy contempla **Deployment** (2 réplicas, probes, requests/limits),
+**Service** (ClusterIP), **ConfigMap** + **Secret**, **Job de migrations**
+(`prisma migrate deploy`) e **HPA** (CPU 70% / memória 80%, min 2 / máx 10).
+
+> O mesmo fluxo (Terraform → imagem → `kubectl apply -k`) roda automaticamente no
+> pipeline [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) contra um
+> cluster kind efêmero, com smoke test em `/health`.
+
+---
+
+## Collection das APIs
+
+A API é documentada via **Swagger/OpenAPI**. Com a aplicação rodando:
+
+- **Swagger UI:** `http://localhost:3000/api`
+- **OpenAPI JSON:** `http://localhost:3000/api-json` (importável no Postman/Insomnia)
+
+Exemplos de `curl` prontos por domínio em [`docs/`](docs):
+[cliente](docs/curls-cliente.md) · [veículo](docs/curls-veiculo.md) ·
+[ordem de serviço](docs/curls-ordem-servico.md) · [usuário](docs/curls-usuario.md).
+
+---
+
+## Vídeo demonstrativo
+
+> ⚠️ **TODO (entrega):** publicar o vídeo (≤15 min) no YouTube/Vimeo demonstrando
+> deploy da aplicação, execução do CI/CD, consumo das APIs e escalabilidade
+> automática (HPA), e substituir este bloco pelo link.
+
+---
+
 ## Testes
 
 ```bash
@@ -245,16 +368,28 @@ src/
 ├── main.ts                   # Bootstrap da aplicação
 ├── app.module.ts             # Módulo raiz
 ├── prisma/                   # PrismaService global
-├── auth/                     # Bounded Context: Autenticação
-│   ├── domain/               # Entidade Usuario, Role, VOs, errors
-│   ├── application/          # AuthService
-│   └── infrastructure/       # Controller, guards, strategies, decorators
-├── servico/                  # Bounded Context: Catálogo (serviços)
-├── produto/                  # Bounded Context: Estoque (produtos)
+├── shared/                   # Base DDD + architecture.spec.ts (regra de dependência)
+├── auth/                     # Bounded Context: Autenticação (Usuario, JWT)
+│   ├── domain/               # Entidade, Role, Value Objects, errors
+│   ├── application/          # Use Cases + ports/gateways
+│   └── infrastructure/       # Controller, guards, strategies, adapters
+├── usuario/                  # Bounded Context: Usuários
+├── cliente/                  # Bounded Context: Atendimento (Cliente)
+├── veiculo/                  # Bounded Context: Atendimento (Veículo)
+├── ordem-de-servico/         # Bounded Context: Atendimento (OrdemDeServico — aggregate root)
+├── servico/                  # Bounded Context: Catálogo (Serviço)
+├── produto/                  # Bounded Context: Estoque (Produto)
+├── notificacao/              # Bounded Context: Notificação (webhook outbound)
+├── health/                   # Health/readiness checks
 └── test/                     # Helpers compartilhados de teste
+
+k8s/                          # Manifestos Kubernetes (Kustomize)
+infra/terraform/              # IaC — cluster (01) + banco (02)
+perf/                         # Testes de carga, estresse e escalabilidade (HPA)
 ```
 
-Cada bounded context segue a estrutura DDD em camadas: **Domain → Application → Infrastructure**.
+Cada bounded context segue a estrutura DDD em camadas: **Domain → Application → Infrastructure**,
+com as dependências apontando para o domínio (Clean Architecture).
 
 ---
 

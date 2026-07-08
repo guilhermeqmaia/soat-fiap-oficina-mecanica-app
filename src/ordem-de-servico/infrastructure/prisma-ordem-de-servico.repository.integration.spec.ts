@@ -4,6 +4,7 @@ import { PrismaOrdemDeServicoRepository } from "./prisma-ordem-de-servico.reposi
 import { OrdemDeServico } from "../domain/ordem-de-servico.entity";
 import { StatusOS } from "../domain/value-objects/status-os.vo";
 import { ItemServicoOS } from "../domain/value-objects/item-servico-os.vo";
+import { ItemProdutoOS } from "../domain/value-objects/item-produto-os.vo";
 import {
   startTestDatabase,
   stopTestDatabase,
@@ -130,6 +131,42 @@ describe("PrismaOrdemDeServicoRepository (integration)", () => {
       const os2 = await repository.create(buildOs());
 
       expect(os1.numero).not.toBe(os2.numero);
+    });
+
+    it("should persist itensServico with nested produtos on create (abertura com itens)", async () => {
+      const produto = await prisma.produto.create({
+        data: {
+          nome: "Filtro de oleo",
+          precoUnitario: 30,
+          quantidadeEstoque: 10,
+          estoqueMinimo: 1,
+        },
+      });
+
+      const os = OrdemDeServico.create({
+        clienteId,
+        veiculoId,
+        descricaoInicial: "Abertura ja com servico e peca",
+        itensServico: [
+          new ItemServicoOS(servicoId, 1, 150, "PENDENTE", null, null, null, [
+            new ItemProdutoOS(produto.id, 2, 30),
+          ]),
+        ],
+      });
+
+      const created = await repository.create(os);
+      const reloaded = await repository.findById(created.id!);
+
+      expect(reloaded).not.toBeNull();
+      expect(reloaded!.itensServico).toHaveLength(1);
+      expect(reloaded!.itensServico[0].servicoId).toBe(servicoId);
+      expect(reloaded!.itensServico[0].produtos).toHaveLength(1);
+      expect(reloaded!.itensServico[0].produtos[0].produtoId).toBe(produto.id);
+      expect(reloaded!.itensServico[0].produtos[0].quantidade).toBe(2);
+
+      // limpeza: remove a OS (cascata nos itens) e o produto criado aqui
+      await clearOrdens();
+      await prisma.produto.deleteMany();
     });
   });
 
@@ -348,6 +385,55 @@ describe("PrismaOrdemDeServicoRepository (integration)", () => {
         expect(currentIndex).toBeGreaterThanOrEqual(lastIndex);
         lastIndex = currentIndex;
       }
+    });
+
+    it("should keep status-priority order ACROSS pages (not only within a page)", async () => {
+      await clearOrdens();
+
+      // Uma OS por status, criadas fora da ordem de prioridade.
+      const osRecebida = await repository.create(buildOs());
+      expect(osRecebida.status).toBe(StatusOS.RECEBIDA);
+
+      const osDiag = await repository.create(buildOs());
+      osDiag.atribuirMecanico(usuarioId);
+      await repository.update(osDiag);
+
+      const osAguardando = await repository.create(buildOs());
+      osAguardando.atribuirMecanico(usuarioId);
+      osAguardando.completarDiagnostico("Problema identificado");
+      await repository.update(osAguardando);
+
+      const osExecucao = await repository.create(buildOs());
+      osExecucao.atribuirMecanico(usuarioId);
+      osExecucao.completarDiagnostico("Problema identificado");
+      osExecucao.aprovar();
+      await repository.update(osExecucao);
+
+      // Paginando de 2 em 2, a ordem global de prioridade deve ser respeitada.
+      // Antes da correção, a página vinha de um recorte não-ordenado do banco.
+      const page1 = await repository.findAll({
+        page: 1,
+        limit: 2,
+        incluirEncerradas: true,
+      });
+      const page2 = await repository.findAll({
+        page: 2,
+        limit: 2,
+        incluirEncerradas: true,
+      });
+
+      expect(page1.total).toBe(4);
+      expect(page2.total).toBe(4);
+
+      const orderedStatuses = [...page1.data, ...page2.data].map(
+        (os) => os.status,
+      );
+      expect(orderedStatuses).toEqual([
+        StatusOS.EM_EXECUCAO,
+        StatusOS.AGUARDANDO_APROVACAO,
+        StatusOS.EM_DIAGNOSTICO,
+        StatusOS.RECEBIDA,
+      ]);
     });
   });
 

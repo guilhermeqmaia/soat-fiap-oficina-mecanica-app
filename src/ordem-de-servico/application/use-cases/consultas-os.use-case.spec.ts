@@ -230,13 +230,23 @@ describe('OS query use cases', () => {
       expect(g.update).toHaveBeenCalled();
     });
 
+    function estoqueMock() {
+      return {
+        reservar: jest.fn().mockResolvedValue(undefined),
+        baixar: jest.fn().mockResolvedValue(undefined),
+        liberar: jest.fn().mockResolvedValue(undefined),
+      };
+    }
+
     it('AdicionarProduto throws when produto not in catalog', async () => {
       const os = { adicionarProdutoAoServico: jest.fn() };
       const produtoGateway = { findById: jest.fn().mockResolvedValue(null) };
+      const estoque = estoqueMock();
       await expect(
         new AdicionarProdutoAoServicoUseCase(
           gatewayWith(os) as any,
           produtoGateway as any,
+          estoque as any,
         ).execute({
           id: 'os-1',
           servicoId: 's1',
@@ -244,23 +254,54 @@ describe('OS query use cases', () => {
           quantidade: 1,
         }),
       ).rejects.toBeInstanceOf(ProdutoNotFoundInCatalogError);
+      expect(estoque.reservar).not.toHaveBeenCalled();
     });
 
-    it('AdicionarProduto adds the item with catalog price', async () => {
+    it('AdicionarProduto adds the item, reserves stock and persists', async () => {
       const os = { adicionarProdutoAoServico: jest.fn() };
       const g = gatewayWith(os);
       const produtoGateway = {
         findById: jest.fn().mockResolvedValue({ precoUnitario: { value: 15 } }),
       };
+      const estoque = estoqueMock();
       await new AdicionarProdutoAoServicoUseCase(
         g as any,
         produtoGateway as any,
+        estoque as any,
       ).execute({ id: 'os-1', servicoId: 's1', produtoId: 'p1', quantidade: 3 });
       expect(os.adicionarProdutoAoServico).toHaveBeenCalledWith(
         's1',
         expect.anything(),
       );
+      expect(estoque.reservar).toHaveBeenCalledWith(
+        'p1',
+        3,
+        expect.objectContaining({ motivo: expect.any(String) }),
+      );
       expect(g.update).toHaveBeenCalled();
+    });
+
+    it('AdicionarProduto compensates the reservation when persisting the OS fails', async () => {
+      const os = { adicionarProdutoAoServico: jest.fn() };
+      const g = {
+        findById: jest.fn().mockResolvedValue(os),
+        update: jest.fn().mockRejectedValue(new Error('db down')),
+      };
+      const produtoGateway = {
+        findById: jest.fn().mockResolvedValue({ precoUnitario: { value: 15 } }),
+      };
+      const estoque = estoqueMock();
+
+      await expect(
+        new AdicionarProdutoAoServicoUseCase(
+          g as any,
+          produtoGateway as any,
+          estoque as any,
+        ).execute({ id: 'os-1', servicoId: 's1', produtoId: 'p1', quantidade: 3 }),
+      ).rejects.toThrow('db down');
+
+      expect(estoque.reservar).toHaveBeenCalledWith('p1', 3, expect.any(Object));
+      expect(estoque.liberar).toHaveBeenCalledWith('p1', 3, expect.any(Object));
     });
   });
 });

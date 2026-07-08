@@ -34,6 +34,26 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
         descricaoInicial: os.descricaoInicial,
         diagnostico: os.diagnostico,
         status: os.status,
+        // OS aberta ja com servicos/pecas (US abertura): grava os itens
+        // aninhados junto do cabecalho, espelhando o nested-write do update().
+        itensServico: {
+          create: os.itensServico.map((item) => ({
+            servicoId: item.servicoId,
+            quantidade: item.quantidade,
+            precoUnitario: item.precoUnitario,
+            statusExecucao: item.statusExecucao,
+            inicioExecucao: item.inicioExecucao,
+            fimExecucao: item.fimExecucao,
+            horasTrabalhadas: item.horasTrabalhadas,
+            produtos: {
+              create: item.produtos.map((p) => ({
+                produtoId: p.produtoId,
+                quantidade: p.quantidade,
+                precoUnitario: p.precoUnitario,
+              })),
+            },
+          })),
+        },
       },
       include: INCLUDE_ITENS,
     });
@@ -51,7 +71,9 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
   async findAll(
     params: FindAllParams,
   ): Promise<PaginatedResult<OrdemDeServico>> {
-    const skip = ((params.page ?? 1) - 1) * (params.limit ?? 10);
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 10;
+    const skip = (page - 1) * limit;
 
     const where: any = {};
     if (params.clienteId) where.clienteId = params.clienteId;
@@ -59,25 +81,36 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
     if (params.numero)
       where.numero = { contains: params.numero, mode: "insensitive" };
 
-    // Excluir OS com status FINALIZADA ou ENTREGUE por padrão
+    // Excluir OS encerradas (estados terminais) por padrão. CANCELADA também é
+    // terminal e acumula indefinidamente, então entra na exclusão junto com
+    // FINALIZADA/ENTREGUE — do contrário o working set carregado em memória
+    // (ver abaixo) cresceria sem limite.
     if (!params.incluirEncerradas) {
-      where.NOT = [{ status: "FINALIZADA" }, { status: "ENTREGUE" }];
+      where.NOT = [
+        { status: "FINALIZADA" },
+        { status: "ENTREGUE" },
+        { status: "CANCELADA" },
+      ];
     }
 
-    // Buscar dados sem ordenação inicial para aplicar lógica customizada
+    // A ordenação exigida é por PRIORIDADE de status (EM_EXECUCAO >
+    // AGUARDANDO_APROVACAO > EM_DIAGNOSTICO > RECEBIDA) e, dentro do mesmo
+    // status, mais antigas primeiro. Essa prioridade não é o mesmo que a ordem
+    // do enum no banco, então não é expressável via `orderBy` do Prisma.
+    // Buscamos todas as OS que casam com o filtro, ordenamos em memória e só
+    // então recortamos a página — garantindo ordem correta ENTRE páginas
+    // (paginar antes de ordenar deixaria cada página com um conjunto arbitrário).
+    // O working set é naturalmente limitado: por padrão as OS em estado
+    // terminal (FINALIZADA/ENTREGUE/CANCELADA) — os conjuntos que crescem
+    // indefinidamente — ficam de fora, restando apenas as OS ativas da oficina.
     const [data, total] = await Promise.all([
       this.prisma.ordemDeServico.findMany({
         where,
-        skip,
-        take: params.limit ?? 10,
         include: INCLUDE_ITENS,
       }),
       this.prisma.ordemDeServico.count({ where }),
     ]);
 
-    // Ordenação customizada por status:
-    // EM_EXECUCAO > AGUARDANDO_APROVACAO > EM_DIAGNOSTICO > RECEBIDA
-    // Dentro do mesmo status, mais antigas primeiro (createdAt asc)
     const statusPriority: { [key: string]: number } = {
       EM_EXECUCAO: 0,
       AGUARDANDO_APROVACAO: 1,
@@ -88,7 +121,7 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
       ENTREGUE: 6,
     };
 
-    const sortedData = data.sort((a, b) => {
+    const sortedData = [...data].sort((a, b) => {
       const priorityA = statusPriority[a.status] ?? 999;
       const priorityB = statusPriority[b.status] ?? 999;
 
@@ -100,11 +133,14 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
       return a.createdAt.getTime() - b.createdAt.getTime();
     });
 
+    // Paginação aplicada APÓS a ordenação global.
+    const pageData = sortedData.slice(skip, skip + limit);
+
     return {
-      data: sortedData.map((d) => this.toDomain(d)),
+      data: pageData.map((d) => this.toDomain(d)),
       total,
-      page: params.page ?? 1,
-      limit: params.limit ?? 10,
+      page,
+      limit,
     };
   }
 

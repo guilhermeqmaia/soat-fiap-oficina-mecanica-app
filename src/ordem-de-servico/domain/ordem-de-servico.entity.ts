@@ -12,6 +12,12 @@ export interface CreateOrdemDeServicoProps {
   clienteId: string;
   veiculoId: string;
   descricaoInicial: string;
+  /**
+   * Itens (servicos e pecas) opcionalmente declarados ja na abertura da OS.
+   * O atendente pode abrir a OS com servicos/pecas conhecidos; caso contrario,
+   * ficam para o diagnostico do mecanico.
+   */
+  itensServico?: ItemServicoOS[];
 }
 
 export interface ReconstituteOrdemDeServicoProps {
@@ -72,6 +78,9 @@ export class OrdemDeServico {
   static create(props: CreateOrdemDeServicoProps): OrdemDeServico {
     OrdemDeServico.validateDescricaoInicial(props.descricaoInicial);
 
+    const itensServico = props.itensServico ?? [];
+    OrdemDeServico.validarServicosUnicos(itensServico);
+
     const numero = this.gerarNumeroOS();
 
     return new OrdemDeServico({
@@ -82,7 +91,18 @@ export class OrdemDeServico {
       descricaoInicial: props.descricaoInicial,
       diagnostico: null,
       status: StatusOSVO.create(StatusOS.RECEBIDA),
+      itensServico,
     });
+  }
+
+  private static validarServicosUnicos(itens: ItemServicoOS[]): void {
+    const vistos = new Set<string>();
+    for (const item of itens) {
+      if (vistos.has(item.servicoId)) {
+        throw new ServicoAlreadyAddedError(item.servicoId);
+      }
+      vistos.add(item.servicoId);
+    }
   }
 
   static reconstitute(props: ReconstituteOrdemDeServicoProps): OrdemDeServico {
