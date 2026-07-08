@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UseCase } from '../../../shared/application/use-case';
 import { Produto } from '../../domain/produto.entity';
-import { ProdutoNotFoundError } from '../../domain/errors/produto-not-found.error';
 import { InsufficientStockError } from '../../domain/errors/insufficient-stock.error';
 import { TipoMovimentacaoEstoque } from '../../domain/value-objects/tipo-movimentacao-estoque.vo';
 import { EstoqueBaixoEvent } from '../../domain/events/estoque-baixo.event';
@@ -14,11 +13,6 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../../../shared/application/domain-event-publisher';
-import {
-  PRODUTO_GATEWAY,
-  ProdutoGateway,
-} from '../gateways/produto.gateway';
-import { persistirComMovimentacao } from './persistir-com-movimentacao';
 
 export interface RemoverEstoqueInput {
   id: string;
@@ -31,8 +25,6 @@ export class RemoverEstoqueUseCase
   implements UseCase<RemoverEstoqueInput, Produto>
 {
   constructor(
-    @Inject(PRODUTO_GATEWAY)
-    private readonly gateway: ProdutoGateway,
     @Inject(ESTOQUE_UNIT_OF_WORK)
     private readonly uow: EstoqueUnitOfWork,
     @Inject(DOMAIN_EVENT_PUBLISHER)
@@ -40,28 +32,23 @@ export class RemoverEstoqueUseCase
   ) {}
 
   async execute(input: RemoverEstoqueInput): Promise<Produto> {
-    const produto = await this.gateway.findById(input.id);
-    if (!produto) {
-      throw new ProdutoNotFoundError(input.id);
-    }
-
-    if (input.quantidade > produto.quantidadeDisponivel) {
-      throw new InsufficientStockError(
-        produto.nome,
-        input.quantidade,
-        produto.quantidadeDisponivel,
-      );
-    }
-
-    produto.deduct(input.quantidade);
-
-    const updated = await persistirComMovimentacao(
-      this.uow,
-      produto,
-      TipoMovimentacaoEstoque.SAIDA,
-      input.quantidade,
-      input.ctx ?? {},
-    );
+    const updated = await this.uow.mutarComMovimentacao({
+      produtoId: input.id,
+      tipo: TipoMovimentacaoEstoque.SAIDA,
+      quantidade: input.quantidade,
+      ctx: input.ctx ?? {},
+      // Checagem de disponibilidade roda com a linha travada.
+      aplicar: (produto) => {
+        if (input.quantidade > produto.quantidadeDisponivel) {
+          throw new InsufficientStockError(
+            produto.nome,
+            input.quantidade,
+            produto.quantidadeDisponivel,
+          );
+        }
+        produto.deduct(input.quantidade);
+      },
+    });
 
     if (updated.isLowStock()) {
       this.events.publish(

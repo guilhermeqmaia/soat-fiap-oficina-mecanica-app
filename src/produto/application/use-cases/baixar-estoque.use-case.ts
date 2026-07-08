@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UseCase } from '../../../shared/application/use-case';
 import { Produto } from '../../domain/produto.entity';
-import { ProdutoNotFoundError } from '../../domain/errors/produto-not-found.error';
 import { TipoMovimentacaoEstoque } from '../../domain/value-objects/tipo-movimentacao-estoque.vo';
 import { EstoqueBaixoEvent } from '../../domain/events/estoque-baixo.event';
 import {
@@ -13,11 +12,6 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../../../shared/application/domain-event-publisher';
-import {
-  PRODUTO_GATEWAY,
-  ProdutoGateway,
-} from '../gateways/produto.gateway';
-import { persistirComMovimentacao } from './persistir-com-movimentacao';
 
 export interface BaixarEstoqueInput {
   id: string;
@@ -30,8 +24,6 @@ export class BaixarEstoqueUseCase
   implements UseCase<BaixarEstoqueInput, Produto>
 {
   constructor(
-    @Inject(PRODUTO_GATEWAY)
-    private readonly gateway: ProdutoGateway,
     @Inject(ESTOQUE_UNIT_OF_WORK)
     private readonly uow: EstoqueUnitOfWork,
     @Inject(DOMAIN_EVENT_PUBLISHER)
@@ -39,20 +31,13 @@ export class BaixarEstoqueUseCase
   ) {}
 
   async execute(input: BaixarEstoqueInput): Promise<Produto> {
-    const produto = await this.gateway.findById(input.id);
-    if (!produto) {
-      throw new ProdutoNotFoundError(input.id);
-    }
-
-    produto.deduct(input.quantidade);
-
-    const updated = await persistirComMovimentacao(
-      this.uow,
-      produto,
-      TipoMovimentacaoEstoque.BAIXA,
-      input.quantidade,
-      input.ctx ?? {},
-    );
+    const updated = await this.uow.mutarComMovimentacao({
+      produtoId: input.id,
+      tipo: TipoMovimentacaoEstoque.BAIXA,
+      quantidade: input.quantidade,
+      ctx: input.ctx ?? {},
+      aplicar: (produto) => produto.deduct(input.quantidade),
+    });
 
     if (updated.isLowStock()) {
       this.events.publish(

@@ -1,32 +1,72 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Produto } from '../domain/produto.entity';
 import { MovimentacaoEstoque } from '../domain/movimentacao-estoque.entity';
-import { EstoqueUnitOfWork } from '../domain/estoque-unit-of-work';
-import { TipoMovimentacaoEstoque } from '../domain/value-objects/tipo-movimentacao-estoque.vo';
+import { ProdutoNotFoundError } from '../domain/errors/produto-not-found.error';
+import {
+  AplicarMovimentacaoEstoqueParams,
+  EstoqueUnitOfWork,
+} from '../domain/estoque-unit-of-work';
 
 @Injectable()
 export class PrismaEstoqueUnitOfWork implements EstoqueUnitOfWork {
   constructor(private readonly prisma: PrismaService) {}
 
-  async persistirAtualizacaoComMovimentacao(
-    produto: Produto,
-    movimentacao: MovimentacaoEstoque,
-  ): Promise<{ produto: Produto; movimentacao: MovimentacaoEstoque }> {
-    const [produtoRecord, movRecord] = await this.prisma.$transaction([
-      this.prisma.produto.update({
-        where: { id: produto.id },
+  async mutarComMovimentacao({
+    produtoId,
+    tipo,
+    quantidade,
+    ctx,
+    aplicar,
+  }: AplicarMovimentacaoEstoqueParams): Promise<Produto> {
+    return this.prisma.$transaction(async (tx) => {
+      // Trava pessimista na linha do produto: reservas/baixas concorrentes do
+      // mesmo produto sao serializadas, evitando overselling (lost update).
+      const travado = await tx.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT id FROM produto WHERE id = ${produtoId} FOR UPDATE`,
+      );
+      if (travado.length === 0) {
+        throw new ProdutoNotFoundError(produtoId);
+      }
+
+      const record = await tx.produto.findUniqueOrThrow({
+        where: { id: produtoId },
+      });
+      const produto = Produto.reconstitute({
+        id: record.id,
+        nome: record.nome,
+        descricao: record.descricao,
+        precoUnitario: Number(record.precoUnitario),
+        quantidadeEstoque: record.quantidadeEstoque,
+        quantidadeReservada: record.quantidadeReservada,
+        estoqueMinimo: record.estoqueMinimo,
+        ativo: record.ativo,
+      });
+
+      // Aplica a operacao de dominio ja com a linha travada. Invariantes (ex.:
+      // estoque insuficiente) sao checadas contra o estado atual e, se falharem,
+      // abortam a transacao (rollback) sem persistir nada.
+      aplicar(produto);
+
+      await tx.produto.update({
+        where: { id: produtoId },
         data: {
-          nome: produto.nome,
-          descricao: produto.descricao ?? null,
-          precoUnitario: produto.precoUnitario.value,
           quantidadeEstoque: produto.quantidadeEstoque,
           quantidadeReservada: produto.quantidadeReservada,
-          estoqueMinimo: produto.estoqueMinimo,
-          ativo: produto.ativo,
         },
-      }),
-      this.prisma.movimentacaoEstoque.create({
+      });
+
+      const movimentacao = MovimentacaoEstoque.create({
+        produtoId,
+        tipo,
+        quantidade,
+        estoqueResultante: produto.quantidadeEstoque,
+        ordemDeServicoId: ctx.ordemDeServicoId,
+        motivo: ctx.motivo,
+        usuarioId: ctx.usuarioId,
+      });
+      await tx.movimentacaoEstoque.create({
         data: {
           produtoId: movimentacao.produtoId,
           tipo: movimentacao.tipo,
@@ -36,31 +76,9 @@ export class PrismaEstoqueUnitOfWork implements EstoqueUnitOfWork {
           motivo: movimentacao.motivo,
           usuarioId: movimentacao.usuarioId,
         },
-      }),
-    ]);
+      });
 
-    return {
-      produto: Produto.reconstitute({
-        id: produtoRecord.id,
-        nome: produtoRecord.nome,
-        descricao: produtoRecord.descricao,
-        precoUnitario: Number(produtoRecord.precoUnitario),
-        quantidadeEstoque: produtoRecord.quantidadeEstoque,
-        quantidadeReservada: produtoRecord.quantidadeReservada,
-        estoqueMinimo: produtoRecord.estoqueMinimo,
-        ativo: produtoRecord.ativo,
-      }),
-      movimentacao: MovimentacaoEstoque.reconstitute({
-        id: movRecord.id,
-        produtoId: movRecord.produtoId,
-        tipo: movRecord.tipo as TipoMovimentacaoEstoque,
-        quantidade: movRecord.quantidade,
-        estoqueResultante: movRecord.estoqueResultante,
-        ordemDeServicoId: movRecord.ordemDeServicoId,
-        motivo: movRecord.motivo,
-        usuarioId: movRecord.usuarioId,
-        createdAt: movRecord.createdAt,
-      }),
-    };
+      return produto;
+    });
   }
 }
