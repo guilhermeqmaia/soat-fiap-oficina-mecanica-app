@@ -95,7 +95,7 @@ export function OrdensServicoListPage() {
     queryKey: ['veiculos', 'all'],
     queryFn: () =>
       apiRequest<Paginated<Veiculo>>('/veiculos', {
-        query: { page: 1, limit: 200 },
+        query: { page: 1, limit: 100 },
       }),
   });
 
@@ -111,7 +111,7 @@ export function OrdensServicoListPage() {
     queryKey: ['produtos', 'all'],
     queryFn: () =>
       apiRequest<Paginated<Produto>>('/produtos', {
-        query: { page: 1, limit: 200 },
+        query: { page: 1, limit: 100 },
       }),
   });
 

@@ -115,7 +115,7 @@ export function OrdemServicoDetailPage() {
     queryKey: ['produtos', 'all'],
     queryFn: () =>
       apiRequest<Paginated<Produto>>('/produtos', {
-        query: { page: 1, limit: 200 },
+        query: { page: 1, limit: 100 },
       }),
   });
 

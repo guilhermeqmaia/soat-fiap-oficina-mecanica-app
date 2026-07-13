@@ -27,7 +27,7 @@ export function DashboardPage() {
       // incluirEncerradas para que os cards FINALIZADA/ENTREGUE/CANCELADA
       // (excluidos por padrao) tambem sejam contados.
       apiRequest<Paginated<OrdemDeServico>>('/ordens-servico', {
-        query: { page: 1, limit: 200, incluirEncerradas: 'true' },
+        query: { page: 1, limit: 100, incluirEncerradas: 'true' },
       }),
   });
 

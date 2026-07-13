@@ -36,7 +36,7 @@ export function OrdensServicoMetricasPage() {
     queryKey: ['servicos', 'all'],
     queryFn: () =>
       apiRequest<Paginated<Servico>>('/servicos', {
-        query: { page: 1, limit: 200 },
+        query: { page: 1, limit: 100 },
       }),
   });
 
