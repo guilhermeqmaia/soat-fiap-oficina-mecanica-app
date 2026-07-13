@@ -158,7 +158,7 @@ npx jest produto --verbose
 npx jest integration --verbose
 
 # Run with coverage
-npm run test:cov
+npm run test:all:cov
 
 # Start the app for manual testing
 docker compose up -d

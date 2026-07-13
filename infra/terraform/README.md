@@ -37,6 +37,10 @@ O Postgres **não** está nos manifestos `k8s/` (US-F2-05) de propósito: a sepa
 
 ## Como aplicar
 
+> **Atalho:** `bash scripts/local-k8s-up.sh` (na raiz do repo) roda estes dois
+> stages e ainda faz build + `kind load` das imagens, `kubectl apply -k k8s/`,
+> migrations e seeds em um único comando. Os passos abaixo mostram o fluxo manual.
+
 Sempre na ordem **01 → 02** (o stage 02 lê o estado do 01).
 
 ```bash

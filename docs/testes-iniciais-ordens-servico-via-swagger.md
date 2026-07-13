@@ -12,7 +12,7 @@ RECEBIDA → EM_DIAGNOSTICO → AGUARDANDO_APROVACAO → EM_EXECUCAO → FINALIZ
 
 **Endpoint:** `POST /auth/login`
 
-1. Abra o Swagger em `http://localhost:3000/api/docs`
+1. Abra o Swagger em `http://localhost:3000/api`
 2. Localize a seção **Auth**
 3. Clique em **POST /auth/login**
 4. Clique em **Try it out**
@@ -66,7 +66,7 @@ Agora todos os endpoints estarão autenticados com seu token.
 ```json
 {
   "nome": "João Silva",
-  "cpfCnpj": "12345678901",
+  "cpfCnpj": "52998224725",
   "telefone": "11999999999",
   "email": "joao@email.com"
 }
@@ -80,7 +80,7 @@ Resposta esperada:
 {
   "id": "abc-123-def",
   "nome": "João Silva",
-  "cpfCnpj": "12345678901",
+  "cpfCnpj": "52998224725",
   "telefone": "11999999999",
   "email": "joao@email.com"
 }
@@ -90,25 +90,25 @@ Resposta esperada:
 
 ## Passo 4: Criar um Veículo para o Cliente
 
-**Endpoint:** `POST /clientes/{clienteId}/veiculos`
+**Endpoint:** `POST /veiculos`
 
-1. Localize a seção **Clientes**
-2. Clique em **POST /clientes/{clienteId}/veiculos**
+1. Localize a seção **Veiculos**
+2. Clique em **POST /veiculos**
 3. Clique em **Try it out**
-4. No campo `clienteId`, cole o ID do cliente criado no **Passo 3**
-5. Preencha o body:
+4. Preencha o body (informe o `clienteId` do cliente criado no **Passo 3**):
 
 ```json
 {
   "placa": "ABC-1234",
   "marca": "Toyota",
   "modelo": "Corolla",
-  "ano": 2020
+  "ano": 2020,
+  "clienteId": "abc-123-def"
 }
 ```
 
-6. Clique em **Execute**
-7. **Copie o `id` do veículo** da resposta
+5. Clique em **Execute**
+6. **Copie o `id` do veículo** da resposta
 
 Resposta esperada:
 ```json
@@ -233,17 +233,18 @@ Resposta esperada:
 
 ---
 
-## Passo 8: Adicionar Produto à OS
+## Passo 8: Adicionar Produto a um Serviço da OS
 
-**Endpoint:** `POST /ordens-servico/{id}/produtos`
+**Endpoint:** `POST /ordens-servico/{id}/servicos/{servicoId}/produtos`
 
-> **Importante:** A OS precisa estar no status `EM_DIAGNOSTICO` para adicionar produtos.
+> **Importante:** A OS precisa estar no status `EM_DIAGNOSTICO` e o serviço já deve ter sido adicionado à OS (use `POST /ordens-servico/{id}/servicos` — o `servicoId` da resposta é usado aqui). O produto é vinculado a um serviço da OS.
 
 1. Localize a seção **Ordens de Servico**
-2. Clique em **POST /ordens-servico/{id}/produtos**
+2. Clique em **POST /ordens-servico/{id}/servicos/{servicoId}/produtos**
 3. Clique em **Try it out**
 4. No campo `id`, cole o ID da OS criada no **Passo 5**
-5. Preencha o body:
+5. No campo `servicoId`, cole o ID do serviço adicionado à OS
+6. Preencha o body:
 
 ```json
 {
@@ -252,20 +253,26 @@ Resposta esperada:
 }
 ```
 
-6. Clique em **Execute**
+7. Clique em **Execute**
 
-Resposta esperada — a OS retornará com o produto nos `itensProduto`:
+Resposta esperada — a OS retornará com o produto aninhado dentro do serviço, em `itensServico[].produtos`:
 ```json
 {
   "id": "os-123-456",
   "numero": "OS-001",
   "status": "EM_DIAGNOSTICO",
-  "itensProduto": [
+  "itensServico": [
     {
-      "produtoId": "produto-123-xyz",
-      "quantidade": 2,
-      "precoUnitario": 45.90,
-      "subtotal": 91.80
+      "servicoId": "servico-123-xyz",
+      "quantidade": 1,
+      "produtos": [
+        {
+          "produtoId": "produto-123-xyz",
+          "quantidade": 2,
+          "precoUnitario": 45.90,
+          "subtotal": 91.80
+        }
+      ]
     }
   ],
   "valorTotalProdutos": 91.80,
@@ -275,17 +282,18 @@ Resposta esperada — a OS retornará com o produto nos `itensProduto`:
 
 ---
 
-## Passo 8.1 (Opcional): Remover Produto da OS
+## Passo 8.1 (Opcional): Remover Produto de um Serviço da OS
 
-**Endpoint:** `DELETE /ordens-servico/{id}/produtos/{produtoId}`
+**Endpoint:** `DELETE /ordens-servico/{id}/servicos/{servicoId}/produtos/{produtoId}`
 
 > Caso queira remover um produto adicionado por engano.
 
-1. Clique em **DELETE /ordens-servico/{id}/produtos/{produtoId}**
+1. Clique em **DELETE /ordens-servico/{id}/servicos/{servicoId}/produtos/{produtoId}**
 2. Clique em **Try it out**
 3. No campo `id`, cole o ID da OS
-4. No campo `produtoId`, cole o ID do produto a remover
-5. Clique em **Execute**
+4. No campo `servicoId`, cole o ID do serviço da OS
+5. No campo `produtoId`, cole o ID do produto a remover
+6. Clique em **Execute**
 
 Resposta esperada: **204 No Content** (sem body)
 
@@ -390,12 +398,12 @@ Resposta esperada — **status mudará para `ENTREGUE`** ✅:
 |-------|----------|--------|---------------|
 | 1 | `/auth/login` | POST | — (autentica) |
 | 2 | `/clientes` | POST | — (cria cliente) |
-| 3 | `/clientes/{id}/veiculos` | POST | — (cria veículo) |
+| 3 | `/veiculos` | POST | — (cria veículo) |
 | 4 | `/ordens-servico` | POST | **RECEBIDA** |
 | 5 | `/ordens-servico/{id}/atribuir-mecanico` | POST | **EM_DIAGNOSTICO** |
 | 6 | `/ordens-servico/{id}/servicos` | POST | — (adiciona serviço) |
 | 7 | `/produtos` | POST | — (cria produto) |
-| 8 | `/ordens-servico/{id}/produtos` | POST | — (adiciona produto) |
+| 8 | `/ordens-servico/{id}/servicos/{servicoId}/produtos` | POST | — (adiciona produto ao serviço) |
 | 9 | `/ordens-servico/{id}/completar-diagnostico` | POST | **AGUARDANDO_APROVACAO** |
 | 10 | `/ordens-servico/{id}/aprovar-orcamento` | POST | **EM_EXECUCAO** |
 | 11 | `/ordens-servico/{id}/finalizar-execucao` | POST | **FINALIZADA** |

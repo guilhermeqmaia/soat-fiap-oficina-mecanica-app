@@ -45,6 +45,11 @@ Cada dono escreve só o seu Secret, evitando disputa entre Terraform e Kustomize
 
 ## Deploy passo a passo
 
+> **Atalho:** `bash scripts/local-k8s-up.sh` sobe tudo de uma vez (terraform →
+> build → `kind load` → `kubectl apply -k` → migrations → seeds → metrics-server)
+> e `bash scripts/local-k8s-forward.sh` abre os port-forwards (API 3000, admin
+> 8080, cliente 8081). O passo a passo abaixo faz o mesmo manualmente.
+
 Ordem: **(1) terraform apply → (2) build + load da imagem → (3) kubectl apply -k k8s/**
 
 ```bash

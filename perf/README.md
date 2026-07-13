@@ -94,14 +94,17 @@ O HPA por CPU precisa do `metrics-server`; no `kind` ele **não** vem instalado 
 exige `--kubelet-insecure-tls`.
 
 ```bash
-# 1. Suba o cluster + app + HPA (ver .github/workflows/perf-test.yml job hpa-scale
-#    para um exemplo self-contained, ou os manifestos da US-F2-05 quando existirem)
+# 1. Suba o cluster + app + HPA. Atalho: `bash scripts/local-k8s-up.sh` sobe tudo
+#    (cluster kind, imagens, k8s apply -k, migrations, seeds E o metrics-server).
+#    Manual: os manifestos ficam em `k8s/` (app/deployment.yaml, app/hpa.yaml);
+#    ver tambem .github/workflows/perf-test.yml job hpa-scale para um exemplo de CI.
 # 2. Instale o metrics-server e aguarde o HPA sair de <unknown>
-K8S_NAMESPACE=oficina K8S_HPA=app bash perf/scripts/install-metrics-server.sh
+#    (ja incluso no local-k8s-up.sh; rode o passo abaixo so no fluxo manual)
+K8S_NAMESPACE=oficina K8S_HPA=oficina-app bash perf/scripts/install-metrics-server.sh
 
 # 3. Port-forward e rode o teste de escalabilidade
-kubectl port-forward -n oficina svc/app 8080:3000 &
-BASE_URL=http://localhost:8080 K8S_NAMESPACE=oficina K8S_DEPLOYMENT=app K8S_HPA=app \
+kubectl port-forward -n oficina svc/oficina-app 8080:3000 &
+BASE_URL=http://localhost:8080 K8S_NAMESPACE=oficina K8S_DEPLOYMENT=oficina-app K8S_HPA=oficina-app \
   HPA_MIN_SCALE=2 bash perf/scripts/hpa-scale-test.sh
 ```
 

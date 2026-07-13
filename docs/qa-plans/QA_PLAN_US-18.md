@@ -102,7 +102,7 @@ curl -s -X POST $API/produtos/$PRODUTO_ID/saida \
   -d '{"quantidade": 9999}' -w "\nHTTP %{http_code}\n"
 ```
 
-**Esperado:** HTTP `404` com mensagem "Quantidade ... excede o disponivel ...". O estoque **nao** muda.
+**Esperado:** HTTP `409` (ConflictException) com mensagem "Estoque insuficiente para ...: solicitado ..., disponivel ...". O estoque **nao** muda.
 
 ### 4.3 — Confirmar que estoque continua intacto
 
@@ -346,7 +346,7 @@ rm -f /tmp/estoque.log
 - [ ] `docker compose up -d --build` sobe os 4 containers (db, app, web-admin, web-cliente) sem erro
 - [ ] Migration `20260427200000_add_movimentacao_estoque` aplicada
 - [ ] Cenario 3: entrada com motivo persistida em `movimentacao_estoque` com tipo `ENTRADA`
-- [ ] Cenario 4: saida que excede disponivel rejeita com 404 e nao altera estoque
+- [ ] Cenario 4: saida que excede disponivel rejeita com 409 e nao altera estoque
 - [ ] Cenario 5: reserva/liberar geram tipos distintos (`RESERVA` / `ESTORNO_RESERVA`) e nao mexem em `quantidadeEstoque`
 - [ ] Cenario 6: alerta de estoque baixo aparece em `/produtos/estoque-baixo` e some quando estoque eh reposto
 - [ ] Cenario 7: filtros de tipo na listagem de movimentacoes funcionam

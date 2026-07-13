@@ -168,7 +168,7 @@ npx jest servico --verbose
 npx jest integration --verbose
 
 # Run with coverage
-npm run test:cov
+npm run test:all:cov
 
 # Start the app for manual testing
 npm run start:dev

@@ -13,14 +13,19 @@
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@admin.com",
+    "email": "admin@oficina.com",
     "senha": "admin123"
   }'
 
 # Resposta:
 # {
-#   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-#   "token_type": "Bearer"
+#   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+#   "usuario": {
+#     "id": "550e8400-e29b-41d4-a716-446655440000",
+#     "nome": "Admin Oficina",
+#     "email": "admin@oficina.com",
+#     "role": "ADMIN"
+#   }
 # }
 ```
 
@@ -265,9 +270,9 @@ curl -X DELETE "http://localhost:3000/usuario/550e8400-e29b-41d4-a716-4466554400
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@admin.com",
+    "email": "admin@oficina.com",
     "senha": "admin123"
-  }' | jq -r '.access_token' > token.txt
+  }' | jq -r '.accessToken' > token.txt
 
 TOKEN=$(cat token.txt)
 ```
@@ -329,7 +334,7 @@ curl -X DELETE "http://localhost:3000/usuario/$USUARIO_ID" \
 1. Importe este arquivo no Insomnia
 2. Crie uma Environment com variável `token` (deixe em branco)
 3. Execute Login primeiro
-4. Copie o `access_token` da resposta
+4. Copie o `accessToken` da resposta
 5. Defina `token` na Environment
 6. Use `{{ token }}` nos headers Authorization nos demais requests
 
@@ -379,6 +384,6 @@ O usuário com role **MECANICO** pode ser atribuído a uma Ordem de Serviço:
 
 ```bash
 # Depois de criar um usuário MECANICO, você pode usá-lo em:
-# POST /ordem-de-servico/atribuir-mecanico
+# POST /ordens-servico/:id/atribuir-mecanico
 # Com usuarioId = id do usuário criado
 ```

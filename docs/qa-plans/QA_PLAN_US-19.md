@@ -172,7 +172,7 @@ npx jest e2e --verbose
 npx jest integration --verbose
 
 # Run with coverage
-npm run test:cov
+npm run test:all:cov
 
 # Seed database with test users
 npm run seed

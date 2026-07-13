@@ -237,6 +237,35 @@ A documentação Swagger estará em `http://localhost:3000/api`.
 
 ---
 
+## Subir tudo localmente (kind) com um comando
+
+Para desenvolvimento/demonstração, um script executa **todo o fluxo de ponta a
+ponta** em um cluster [kind](https://kind.sigs.k8s.io/) local: provisiona
+**cluster + banco** (Terraform), **builda** as imagens da API e das duas UIs,
+carrega no cluster, aplica os **manifestos**, roda as **migrations**, aplica os
+**seeds** de demonstração e instala o **metrics-server** (necessário para o HPA).
+
+```bash
+# Pré-requisitos: docker, kubectl e terraform (o kind é instalado via Homebrew se faltar)
+bash scripts/local-k8s-up.sh
+```
+
+Em outro terminal, abra os acessos (mantém os `port-forward` ativos):
+
+```bash
+bash scripts/local-k8s-forward.sh
+# API:     http://localhost:3000   (Swagger em /api quando NODE_ENV != production)
+# Admin:   http://localhost:8080
+# Cliente: http://localhost:8081
+```
+
+> Para usar o `kubectl` manualmente neste cluster:
+> `export KUBECONFIG=$HOME/.kube/oficina-mecanica.config` (contexto
+> `kind-oficina-local`). As duas seções a seguir detalham **o mesmo fluxo passo a
+> passo** — úteis para entender o que o script faz ou para rodar de forma manual.
+
+---
+
 ## Provisionamento da infraestrutura com Terraform
 
 O Terraform provisiona o **cluster Kubernetes** e o **banco de dados** em dois
@@ -269,6 +298,11 @@ Recursos criados (resumo): `kind_cluster`, `kubernetes_namespace`, Postgres
 Os manifestos da aplicação estão em [`k8s/`](k8s) (Kustomize). Detalhes em
 [`k8s/README.md`](k8s/README.md).
 
+> Para rodar todo este fluxo de uma vez em um cluster kind local, use
+> `bash scripts/local-k8s-up.sh` (ver [Subir tudo localmente (kind) com um
+> comando](#subir-tudo-localmente-kind-com-um-comando)). Os passos abaixo são o
+> mesmo fluxo, manual.
+
 ```bash
 # Aponte o kubectl para o cluster provisionado pelo Terraform
 export KUBECONFIG=$HOME/.kube/oficina-mecanica.config
@@ -276,8 +310,8 @@ export KUBECONFIG=$HOME/.kube/oficina-mecanica.config
 # Crie o Secret da aplicação a partir do exemplo (JWT + tokens de webhook)
 cp k8s/secret.yaml.example k8s/secret.yaml   # edite os valores
 
-# (kind) carregue a imagem no cluster
-kind load docker-image ghcr.io/<owner>/oficina-mecanica:latest --name oficina-mecanica
+# (kind) carregue a imagem no cluster (nome do cluster: oficina-local)
+kind load docker-image oficina-mecanica-app:latest --name oficina-local
 
 # Aplique todos os manifestos (namespace, configmap, secret, migrations, app, service, hpa)
 kubectl apply -k k8s/

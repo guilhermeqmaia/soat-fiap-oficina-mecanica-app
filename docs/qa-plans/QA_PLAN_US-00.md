@@ -134,7 +134,7 @@ Validates that Prisma ORM is correctly configured with PostgreSQL, the PrismaSer
 npm test
 
 # Run tests with coverage
-npm run test:cov
+npm run test:all:cov
 
 # Start only PostgreSQL
 docker compose up -d postgres

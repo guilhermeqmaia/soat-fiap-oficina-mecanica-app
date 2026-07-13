@@ -340,7 +340,7 @@ docker compose down -v         # remove volume (zera banco)
 
 ## Checklist de validacao
 
-- [ ] `docker compose up -d --build` sobe os 2 containers sem erro
+- [ ] `docker compose up -d --build` sobe os 4 containers (db, app, web-admin, web-cliente) sem erro
 - [ ] Migration `20260427000000_add_execucao_item_servico` foi aplicada (verificavel no log do app)
 - [ ] Cenario 4: fluxo completo funciona; `statusExecucao` evolui `PENDENTE -> EM_EXECUCAO -> CONCLUIDO`
 - [ ] Cenario 4.10: apos ultimo servico concluido, `status` da OS muda para `FINALIZADA` automaticamente

@@ -4,6 +4,8 @@
 >
 > Copie e cole diretamente no Insomnia (suporta import de cURL).
 > Substitua os UUIDs de exemplo pelos IDs reais retornados pela API.
+>
+> **Autenticação:** todos os endpoints exigem `Authorization: Bearer <token>` (papéis ADMIN/ATENDENTE/MECANICO; DELETE só ADMIN). Faça login primeiro (ver [`curls-usuario.md`](curls-usuario.md)) e inclua o header nas chamadas — os exemplos abaixo omitem o header por brevidade.
 
 ---
 

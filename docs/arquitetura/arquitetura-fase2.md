@@ -67,9 +67,13 @@ anti-corrupção (`application/gateways/consulta.gateways.ts`).
 ## 2. Infraestrutura provisionada (Terraform + Kubernetes)
 
 O provisionamento é feito em **dois estágios de Terraform**. O estágio `01-cluster`
-cria o cluster Kubernetes (kind, local) e o `02-app` cria o banco de dados e o
-Secret com a `DATABASE_URL` (senha gerada por `random_password`). Os manifestos da
-aplicação são aplicados via `kubectl apply -k k8s/`.
+cria o cluster Kubernetes (kind, local — nome `oficina-local`) e o `02-app` cria o
+banco de dados e o Secret com a `DATABASE_URL` (senha gerada por `random_password`).
+Os manifestos da aplicação são aplicados via `kubectl apply -k k8s/`.
+
+> Para subir todo esse fluxo local em um comando (terraform → build → `kind load`
+> → `kubectl apply -k k8s/` → migrations → seeds → metrics-server), use o atalho
+> [`scripts/local-k8s-up.sh`](../../scripts/local-k8s-up.sh).
 
 ```mermaid
 flowchart TB
@@ -89,7 +93,7 @@ flowchart TB
             DEP["Deployment: oficina-app<br/>2 replicas · probes · requests/limits"]
             SVC["Service (ClusterIP)<br/>oficina-app :3000"]
             HPA["HPA v2<br/>CPU 70% / Mem 80%<br/>min 2 · max 10"]
-            PG[("Postgres<br/>(Service oficina-db)")]
+            PG[("Postgres<br/>(Service oficina-mecanica-postgres)")]
         end
     end
 

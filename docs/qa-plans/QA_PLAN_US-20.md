@@ -22,7 +22,7 @@ A partir da raiz do projeto:
 docker compose up -d --build
 ```
 
-O compose sobe dois containers:
+O compose sobe os containers do sistema (db, app, web-admin, web-cliente); os relevantes para este teste sao:
 - `oficina_mecanica_db` — Postgres 16 (porta `5432`)
 - `oficina_mecanica_app` — API Nest (porta `3000`)
 
@@ -342,7 +342,7 @@ docker compose down -v         # remove volume (zera o banco)
 
 ## Checklist de validacao
 
-- [ ] `docker compose up -d --build` sobe os 2 containers sem erro
+- [ ] `docker compose up -d --build` sobe os 4 containers (db, app, web-admin, web-cliente) sem erro
 - [ ] Migration `20260426170000_add_notificacao` foi aplicada (verificavel no log do app no boot)
 - [ ] Cenario 3: notificacao `ORCAMENTO_PRONTO` aparece nos logs e no `GET /notificacoes`
 - [ ] Cenario 4: notificacao `OS_FINALIZADA` aparece nos logs e no `GET /notificacoes`
