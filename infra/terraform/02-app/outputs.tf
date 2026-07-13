@@ -6,7 +6,7 @@ output "app_namespace" {
 }
 
 output "database_endpoint" {
-  description = "host:port do banco (Service DNS no local, endpoint RDS no aws)."
+  description = "host:port do banco (Service DNS do Postgres no cluster kind)."
   value       = local.database_endpoint
 }
 

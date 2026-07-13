@@ -12,7 +12,7 @@ Tomar antes de começar — afetam o escopo das ondas seguintes.
 
 | # | Decisão | Recomendação | Por quê |
 |---|---|---|---|
-| 1 | Onde rodará o cluster K8s **e o banco** | `kind` (local) com Postgres via Helm dentro do cluster — modo AWS (EKS + RDS) suportado via flag no Terraform | PDF exige Terraform para cluster **e DB**. Local roda sem custo; cloud demonstrável sem ficar ligado |
+| 1 | Onde rodará o cluster K8s **e o banco** | `kind` (local) com Postgres provisionado via Terraform (manifests `kubernetes_*`) dentro do cluster | PDF exige Terraform para cluster **e DB**. Roda 100% local, sem custo de cloud |
 | 2 | Container registry | GHCR (`ghcr.io`) | Já vem com GitHub Actions, sem credenciais extras |
 | 3 | Mecanismo de notificação externa | Webhook outbound (HTTP POST para serviço externo tipo webhook.site) | Professor confirmou que webhook atende o requisito; evita acoplar a app a SMTP/Mailhog |
 | 4 | Arquitetura escolhida no refactor | Manter DDD em camadas (já está) + documentar como Clean Architecture | O código já respeita as dependências, só precisa formalizar na documentação |
@@ -90,12 +90,11 @@ A app consome `DATABASE_URL` do Secret — funciona tanto com Postgres dentro do
 
 Dependência: nenhuma. Roda em paralelo com Ondas 1 e 2 e **precede** a Onda 3.
 
-**PDF exige Terraform para cluster K8s E banco de dados** — não é opcional. Dois modos selecionados por variável `cloud_provider`:
+**PDF exige Terraform para cluster K8s E banco de dados** — não é opcional. O provisionamento roda **100% local** (sem cloud):
 
 | Modo | Cluster | Banco |
 |---|---|---|
-| **local** (default) | `kind` via provider `tehcyx/kind` | PostgreSQL via Helm `bitnami/postgresql` dentro do cluster |
-| **aws** | EKS via módulo `terraform-aws-modules/eks` | RDS PostgreSQL (`aws_db_instance`) |
+| **local** | `kind` via provider `tehcyx/kind` | PostgreSQL via Terraform (`kubernetes_deployment`/`service`/`pvc`) dentro do cluster |
 
 Estrutura:
 

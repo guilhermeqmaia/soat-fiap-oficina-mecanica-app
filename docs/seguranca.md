@@ -4,41 +4,32 @@ Este documento descreve a esteira de análise de qualidade e segurança do proje
 
 ## 1. Arquitetura da esteira
 
+Os scans de segurança/qualidade rodam **localmente / sob demanda** (via CLI), e seus resultados crus ficam versionados em [`docs/scans/raw/`](./scans/raw/). O único pipeline em **GitHub Actions** ([`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd.yml)) é o de **build/teste/deploy** — ele garante que a aplicação **builda e passa nos testes**, mas **não** contém jobs de segurança nem gate de vulnerabilidade.
+
 ```
-GitHub Actions (.github/workflows/security.yml)
-│
-├── Job test           → npm run test:unit:cov (gate Jest 80%)
-│                        artifact: coverage-lcov
-│
-├── Job security       → Semgrep p/owasp-top-ten
-│                      → npm audit --audit-level=high
-│                      → Trivy fs (vuln + secret + misconfig)
-│                        falha em HIGH/CRITICAL
-│
-├── Job sonar          → SonarQube Community (service container efêmero)
-│   (needs: test)        sonar-scanner-action
-│                        artifact: sonar-report/{owasp-issues.json, measures.json}
-│
-└── Job dependency-review (só em PR)
-    └── Bloqueia PR que introduz dep vulnerável (HIGH+)
+Local / sob demanda (CLI)                        →  docs/scans/raw/
+├── Semgrep  p/owasp-top-ten                     →  semgrep-owasp-top10.json
+├── npm audit --audit-level=high                 →  npm-audit.json
+├── Trivy fs (vuln + secret + misconfig)         →  trivy-fs.json
+└── SonarQube Community (dashboard local :9000)  →  npm run sonar:up / sonar:local
+
+GitHub Actions — .github/workflows/ci-cd.yml (build / teste / deploy)
+├── Testes: unit + integração (testcontainers) + gate de cobertura 80%
+├── Build da aplicação (NestJS)
+├── Build + push da imagem Docker (GHCR)
+└── Provisionamento (Terraform) + deploy em kind + smoke test /health
 ```
 
-**Gates que fazem o PR falhar:**
-- Cobertura < 80% (unit tests)
-- Semgrep encontra padrão OWASP Top 10 (ERROR/WARNING)
-- `npm audit` com vuln HIGH ou CRITICAL
-- Trivy com vuln/secret/misconfig HIGH ou CRITICAL
-- Dependency Review detecta dep nova vulnerável (HIGH+)
+**Gate automatizado (CI de testes):** cobertura de testes **< 80%** reprova o pipeline. **Não há** gate de segurança bloqueando PRs — os findings de Semgrep / Trivy / npm audit / SonarQube são avaliados manualmente e consolidados no [relatório de vulnerabilidades](./scans/RELATORIO_VULNERABILIDADES.md).
 
 ## 2. Ferramentas
 
-| Camada | Tool | Cobertura | Local de execução |
+| Camada | Tool | Cobertura | Execução |
 |---|---|---|---|
-| SAST (OWASP Top 10) | Semgrep + ruleset `p/owasp-top-ten` | Injeção, XSS, auth/session, crypto, SSRF, IDOR, etc. | CI |
-| Quality + SAST agregado | SonarQube Community | Bugs, vulnerabilities, security hotspots, code smells, duplicação, coverage | CI (ephemeral) + local (dashboard histórico) |
-| Dependências npm | `npm audit` | CVEs em pacotes transitivos e diretos | CI |
-| Filesystem (deps + secrets + misconfig) | Trivy fs | CVEs, secrets hardcoded, misconfig Docker | CI |
-| PR gatekeeper | GitHub `dependency-review-action` | Bloqueia dep vulnerável no PR | CI |
+| SAST (OWASP Top 10) | Semgrep + ruleset `p/owasp-top-ten` | Injeção, XSS, auth/session, crypto, SSRF, IDOR, etc. | Local / sob demanda (CLI) → `docs/scans/raw/` |
+| Quality + SAST agregado | SonarQube Community | Bugs, vulnerabilities, security hotspots, code smells, duplicação, coverage | Local (dashboard `:9000`) |
+| Dependências npm | `npm audit` | CVEs em pacotes transitivos e diretos | Local / sob demanda (CLI) |
+| Filesystem (deps + secrets + misconfig) | Trivy fs | CVEs, secrets hardcoded, misconfig Docker | Local / sob demanda (CLI) |
 
 ## 3. SonarQube local (análise profunda)
 
@@ -59,13 +50,12 @@ npm run sonar:local
 
 Detalhes em [infra/sonar/README.md](../infra/sonar/README.md).
 
-## 4. Como ler os resultados do CI
+## 4. Como ler os resultados dos scans
 
-- **Tab Actions** → workflow `Security & Quality` → job quiser inspecionar.
-- **Job `sonar`** produz artifact `sonar-report` com:
-  - `owasp-issues.json` — issues marcadas com tag `owasp-top10`
-  - `measures.json` — bugs, vulnerabilidades, hotspots, coverage, duplicação
-- **Job `security`** mostra logs do Semgrep, npm audit e Trivy. Se falhar, o output no log aponta arquivo+linha.
+- **Outputs crus** em [`docs/scans/raw/`](./scans/raw/): `semgrep-owasp-top10.json`, `npm-audit.json`, `trivy-fs.json`.
+- **Relatório consolidado** em [`docs/scans/RELATORIO_VULNERABILIDADES.md`](./scans/RELATORIO_VULNERABILIDADES.md) (findings + severidade + decisão).
+- **SonarQube**: dashboard local em `http://localhost:9000` após `npm run sonar:up` e `npm run sonar:local` (bugs, vulnerabilities, security hotspots, coverage, duplicação).
+- **CI de testes** ([`ci-cd.yml`](../.github/workflows/ci-cd.yml)): a aba **Actions** mostra os passos de build/teste/deploy; o artifact `coverage-lcov` traz a cobertura usada no gate de 80%.
 
 ---
 

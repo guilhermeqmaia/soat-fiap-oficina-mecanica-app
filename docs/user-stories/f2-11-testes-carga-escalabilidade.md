@@ -4,9 +4,11 @@
 
 **Prioridade:** Media
 **Story Points:** 8
-**Status:** To Do
+**Status:** Concluída
 **DDD Domain:** Infraestrutura (Qualidade/Testes)
 **DDD Layer:** Infrastructure (Testes/CI)
+
+> **Nota de implementação (concluída):** a suíte `perf/` (k6: `smoke/load/stress/spike/soak/hpa/throttler`) foi criada; o hook `THROTTLER_DISABLED` existe (`src/config/throttler.config.ts`, usado no `skipIf` de `src/app.module.ts`); os manifestos estão em `k8s/` com Deployment/Service/HPA **`oficina-app`** (namespace `oficina`, HPA CPU 70% / mem 80%, min 2 / max 10), aplicados via `kubectl apply -k k8s/` — inclusive no [`ci-cd.yml`](../../.github/workflows/ci-cd.yml). O `metrics-server` é instalado por `perf/scripts/install-metrics-server.sh` (ainda **não** pelo Terraform). Onde os critérios abaixo citam o nome `app` ou a convenção `mecanica`/`mecanica-app`, o nome real do recurso é **`oficina-app`**.
 
 ## Contexto
 
@@ -16,7 +18,7 @@ A Fase 2 introduz Kubernetes com HPA por CPU 70% (min=2, max=10) e por memoria (
 
 **Restricoes e riscos ja mapeados:**
 
-- **Rate limiting global.** Ha um `ThrottlerModule.forRoot` global (`ttl: 60000`, `limit: 100` req/60s) aplicado como `APP_GUARD` para toda a app (`src/app.module.ts` — `ThrottlerModule.forRoot` + `APP_GUARD` com `ThrottlerGuard`), com overrides por rota: `POST /auth/login` = 5 req/60s (`src/auth/infrastructure/auth.controller.ts`, decorator `@Throttle`) e `GET /ordens-servico/numero/:numero/status` = 30 req/60s. Um teste que martela a API **mede o throttler (HTTP 429), nao a app**. O throttler ja tem `skipIf` que o desativa quando `NODE_ENV === 'test'` ou `JEST_WORKER_ID` esta setado (`src/app.module.ts`) — gancho pronto, mas acoplar perf a `test` mistura semanticas. **Um hook dedicado `THROTTLER_DISABLED` ainda NAO existe** e precisa ser criado (ver secao de criterios do throttler).
+- **Rate limiting global.** Ha um `ThrottlerModule.forRoot` global (`ttl: 60000`, `limit: 100` req/60s) aplicado como `APP_GUARD` para toda a app (`src/app.module.ts` — `ThrottlerModule.forRoot` + `APP_GUARD` com `ThrottlerGuard`), com overrides por rota: `POST /auth/login` = 5 req/60s (`src/auth/infrastructure/auth.controller.ts`, decorator `@Throttle`) e `GET /ordens-servico/numero/:numero/status` = 30 req/60s. Um teste que martela a API **mede o throttler (HTTP 429), nao a app**. O throttler ja tem `skipIf` que o desativa quando `NODE_ENV === 'test'` ou `JEST_WORKER_ID` esta setado (`src/app.module.ts`) — gancho pronto, mas acoplar perf a `test` mistura semanticas. O hook dedicado `THROTTLER_DISABLED` **foi implementado** (`src/config/throttler.config.ts` — `shouldSkipThrottling` — usado no `skipIf` de `src/app.module.ts`).
 - **`/health` e `/health/ready` tem `@SkipThrottle()` e `@Public()`** (`src/health/health.controller.ts`): sao alvos neutros para baseline/spike/soak (sem 429, sem JWT). `/health/ready` faz `SELECT 1` no Postgres, exercitando o pool. Ja `GET /ordens-servico` e `POST /ordens-servico` **NAO tem** `@SkipThrottle` — herdam o limite global de 100 req/60s e saturam em ~2s sob dezenas de VUs, virando medicao de 429 se o throttler nao for desativado.
 - **HPA em `kind` exige `metrics-server`.** O `kind` nao instala `metrics-server` por padrao; sem ele o HPA fica com `TARGETS <unknown>/70%` e nunca escala. E preciso instala-lo com `--kubelet-insecure-tls` (certs self-signed do kubelet no kind) e **aguardar ele ficar `Available` + o HPA parar de reportar `<unknown>`** antes de qualquer teste de escalabilidade.
 - **Divergencia de nomes entre os manifestos canonicos e a CI atual.** Os asserts de HPA desta US assumem a convencao **canonica da [US-F2-05](f2-05-manifestos-kubernetes.md)** (namespace `oficina`, deployment `app`, HPA `app` min=2/max=10, aplicados via `kubectl apply -k k8s/`). Porem o `k8s/` **ainda nao existe** (US-F2-05 To Do) e o unico deploy real hoje e o job do `.github/workflows/ci-cd.yml`, que aplica manifestos **inline via heredoc** usando namespace `mecanica`, deployment `mecanica-app`, HPA `mecanica-app-hpa` (min=1/max=3). Ou seja: divergem **namespace** (`oficina` vs `mecanica`), **nome de deployment** (`app` vs `mecanica-app`) **e** min/max do HPA. Rodar os comandos `kubectl` desta US contra a CI atual falharia por objeto inexistente. A reconciliacao e uma dependencia dura (ver secao Escalabilidade).
