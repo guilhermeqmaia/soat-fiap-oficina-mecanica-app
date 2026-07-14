@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   CLIENTE_REPOSITORY,
@@ -13,6 +12,7 @@ import { CanalNotificacao } from '../../domain/value-objects/canal-notificacao.v
 import { TipoNotificacao } from '../../domain/value-objects/tipo-notificacao.vo';
 import { EnviarNotificacaoUseCase } from '../use-cases/enviar-notificacao.use-case';
 import { PUBLIC_BASE_URL } from '../ports/public-base-url';
+import { APPROVAL_LINK_TOKEN } from '../ports/approval-link-token';
 
 /**
  * Transicoes que ja disparam uma notificacao dedicada e mais rica
@@ -37,13 +37,11 @@ export class OrdemDeServicoNotificacaoListener {
     private readonly clienteRepository: ClienteRepository,
     @Inject(PUBLIC_BASE_URL)
     baseUrl: string,
-    private readonly configService: ConfigService,
+    @Inject(APPROVAL_LINK_TOKEN)
+    approvalToken: string,
   ) {
     this.baseUrl = baseUrl;
-    this.approvalToken = this.configService.get<string>(
-      'WEBHOOK_APPROVAL_TOKEN',
-      '',
-    );
+    this.approvalToken = approvalToken;
   }
 
   @OnEvent(OrcamentoProntoEvent.EVENT_NAME)

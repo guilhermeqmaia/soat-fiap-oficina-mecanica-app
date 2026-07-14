@@ -3,8 +3,8 @@ import {
   CLIENTE_REPOSITORY,
   ClienteRepository,
 } from '../../../cliente/domain/cliente.repository';
-import { ConfigService } from '@nestjs/config';
 import { PUBLIC_BASE_URL } from '../ports/public-base-url';
+import { APPROVAL_LINK_TOKEN } from '../ports/approval-link-token';
 import { Cliente } from '../../../cliente/domain/cliente.entity';
 import { OrcamentoProntoEvent } from '../../../shared/domain/events/orcamento-pronto.event';
 import { OsFinalizadaEvent } from '../../../shared/domain/events/os-finalizada.event';
@@ -48,14 +48,7 @@ describe('OrdemDeServicoNotificacaoListener', () => {
         { provide: EnviarNotificacaoUseCase, useValue: enviarNotificacao },
         { provide: CLIENTE_REPOSITORY, useValue: clienteRepository },
         { provide: PUBLIC_BASE_URL, useValue: 'http://localhost:3000' },
-        {
-          provide: ConfigService,
-          useValue: {
-            get: jest.fn((key: string, fallback?: string) =>
-              key === 'WEBHOOK_APPROVAL_TOKEN' ? 'email-token' : fallback,
-            ),
-          },
-        },
+        { provide: APPROVAL_LINK_TOKEN, useValue: 'email-token' },
       ],
     }).compile();
 

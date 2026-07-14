@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { CLIENTE_REPOSITORY } from '../cliente/domain/cliente.repository';
 import { OrdemDeServicoNotificacaoListener } from './application/listeners/ordem-de-servico.listener';
 import { PUBLIC_BASE_URL } from './application/ports/public-base-url';
+import { APPROVAL_LINK_TOKEN } from './application/ports/approval-link-token';
 import { NOTIFICADOR } from './application/ports/notificador.port';
 import { NOTIFICACAO_GATEWAY } from './application/gateways/notificacao.gateway';
 import { CLIENTE_CONSULTA_GATEWAY } from './application/gateways/cliente-consulta.gateway';
@@ -40,6 +41,12 @@ const logger = new Logger('NotificacaoModule');
         config
           .get<string>('PUBLIC_BASE_URL', 'http://localhost:3000')
           .replace(/\/+$/, ''),
+      inject: [ConfigService],
+    },
+    {
+      provide: APPROVAL_LINK_TOKEN,
+      useFactory: (config: ConfigService) =>
+        config.get<string>('WEBHOOK_APPROVAL_TOKEN', ''),
       inject: [ConfigService],
     },
     // Notificadores
