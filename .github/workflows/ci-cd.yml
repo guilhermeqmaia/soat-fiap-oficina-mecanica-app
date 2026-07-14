@@ -53,13 +53,6 @@ jobs:
           fi
           echo "✅ Coverage $COVERAGE% meets gate 80%"
 
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: coverage-lcov
-          path: coverage/unit/lcov.info
-          retention-days: 7
-
   # ---------------------------------------------------------------------------
   # Passo 2: Build da aplicação
   # ---------------------------------------------------------------------------
@@ -84,13 +77,6 @@ jobs:
       - name: Build NestJS application
         run: npm run build
 
-      - name: Upload built application
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: app-build
-          path: dist/
-          retention-days: 1
-
   # ---------------------------------------------------------------------------
   # Passo 3: Build da imagem Docker
   # ---------------------------------------------------------------------------
@@ -103,12 +89,6 @@ jobs:
       packages: write # publicar a imagem no GHCR
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Download built application
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: app-build
-          path: dist/
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -127,7 +107,7 @@ jobs:
 
       # Publica a imagem no GitHub Container Registry. Nao roda em pull_request
       # (o GITHUB_TOKEN de forks nao tem packages:write e nao queremos publicar
-      # em PR). A imagem continua salva como tarball abaixo para o deploy no kind.
+      # em PR). O deploy em kind reconstrói a imagem para evitar artifacts.
       - name: Login no GHCR
         if: github.event_name != 'pull_request'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
@@ -138,19 +118,6 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           echo "✅ Imagem publicada no GHCR"
-
-      - name: Save Docker image to tarball
-        run: |
-          mkdir -p /tmp/docker-image
-          docker save ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} -o /tmp/docker-image/image.tar
-          echo "✅ Docker image saved to artifact"
-
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: docker-image
-          path: /tmp/docker-image/image.tar
-          retention-days: 1
 
   # ---------------------------------------------------------------------------
   # Passo 4: Provisionamento (Terraform) + Deploy dos manifestos (kubectl -k)
@@ -193,12 +160,6 @@ jobs:
           chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
           kind version
 
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: docker-image
-          path: /tmp/docker-image
-
       # --- Stage 01: cluster kind via Terraform (US-F2-06) -------------------
       - name: Terraform apply — cluster (01-cluster)
         working-directory: infra/terraform/01-cluster
@@ -210,11 +171,13 @@ jobs:
       - name: Sanity — cluster acessível
         run: kubectl cluster-info --context "kind-${KIND_CLUSTER}"
 
-      # --- Carrega a imagem construída no passo 3 dentro do cluster ----------
-      - name: Load app image into kind
+      # --- Constrói e carrega a imagem dentro do cluster ---------------------
+      # Evita depender de artifacts do GitHub Actions; algumas contas free podem
+      # bater quota de artifact storage e quebrar a pipeline apesar dos testes
+      # terem passado.
+      - name: Build and load app image into kind
         run: |
-          docker load -i /tmp/docker-image/image.tar
-          docker tag "${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" "${APP_IMAGE}"
+          docker build -t "${APP_IMAGE}" .
           kind load docker-image "${APP_IMAGE}" --name "${KIND_CLUSTER}"
 
       # --- Stage 02: Postgres + Secret oficina-db via Terraform (US-F2-06) ---
