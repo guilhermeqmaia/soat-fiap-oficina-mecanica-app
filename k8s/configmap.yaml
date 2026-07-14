@@ -13,11 +13,22 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3000"
-  # Notificacoes: `mock` nao exige URL/secret externos — ideal para o demo em kind.
-  # Troque para `webhook` e preencha NOTIFICATION_WEBHOOK_URL para enviar de verdade.
-  NOTIFICATION_PROVIDER: "mock"
+  # Notificacoes ao cliente por e-mail via Brevo (SMTP, free tier).
+  # Enquanto SMTP_USER/SMTP_PASS estiverem vazios, o adapter usa uma conta de
+  # teste Ethereal (loga link de preview; nao entrega em caixas reais). Preencha
+  # com a SMTP key do Brevo para enviar de verdade. Alternativas: `mock` (so loga)
+  # ou `webhook` (POST assinado, requer NOTIFICATION_WEBHOOK_URL).
+  NOTIFICATION_PROVIDER: "email"
   NOTIFICATION_WEBHOOK_URL: ""
   NOTIFICATION_WEBHOOK_TIMEOUT_MS: "5000"
+  # Gmail SMTP para demo. Defina SMTP_PASS no Secret `oficina-app` com uma
+  # App Password de 16 digitos. Sem senha, o adapter cai no Ethereal.
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+  SMTP_SECURE: "false"
+  SMTP_USER: "guilherme.q.maia@gmail.com"
+  SMTP_PASS: ""
+  EMAIL_FROM: "Oficina Mecanica <guilherme.q.maia@gmail.com>"
   JWT_EXPIRES_IN: "1h"
   # Origens permitidas no CORS. Sem ingress no MVP, as UIs do cluster sao
   # acessadas via `kubectl port-forward` -> localhost:8080 (admin) e :8081

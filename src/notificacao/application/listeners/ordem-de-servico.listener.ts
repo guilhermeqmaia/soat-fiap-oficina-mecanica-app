@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   CLIENTE_REPOSITORY,
@@ -28,6 +29,7 @@ const STATUS_COM_NOTIFICACAO_DEDICADA: ReadonlySet<StatusOS> = new Set([
 export class OrdemDeServicoNotificacaoListener {
   private readonly logger = new Logger(OrdemDeServicoNotificacaoListener.name);
   private readonly baseUrl: string;
+  private readonly approvalToken: string;
 
   constructor(
     private readonly enviarNotificacao: EnviarNotificacaoUseCase,
@@ -35,8 +37,13 @@ export class OrdemDeServicoNotificacaoListener {
     private readonly clienteRepository: ClienteRepository,
     @Inject(PUBLIC_BASE_URL)
     baseUrl: string,
+    private readonly configService: ConfigService,
   ) {
     this.baseUrl = baseUrl;
+    this.approvalToken = this.configService.get<string>(
+      'WEBHOOK_APPROVAL_TOKEN',
+      '',
+    );
   }
 
   @OnEvent(OrcamentoProntoEvent.EVENT_NAME)
@@ -55,16 +62,21 @@ export class OrdemDeServicoNotificacaoListener {
         currency: 'BRL',
       });
 
-      const aprovarUrl = `${this.baseUrl}/ordens-servico/${event.ordemDeServicoId}/aprovar-orcamento`;
-      const rejeitarUrl = `${this.baseUrl}/ordens-servico/${event.ordemDeServicoId}/rejeitar-orcamento`;
+      const tokenQuery = encodeURIComponent(this.approvalToken);
+      const aprovarUrl =
+        `${this.baseUrl}/webhooks/ordens-servico/${event.ordemDeServicoId}` +
+        `/aprovar?token=${tokenQuery}`;
+      const rejeitarUrl =
+        `${this.baseUrl}/webhooks/ordens-servico/${event.ordemDeServicoId}` +
+        `/rejeitar?token=${tokenQuery}`;
 
       const mensagem =
         `Ola ${cliente.nome},\n\n` +
         `O orcamento da sua Ordem de Servico ${event.numero} esta pronto.\n\n` +
         `Diagnostico: ${event.diagnostico}\n` +
         `Valor total estimado: ${valorFormatado}\n\n` +
-        `Para aprovar: POST ${aprovarUrl}\n` +
-        `Para rejeitar: POST ${rejeitarUrl}\n`;
+        `Para aprovar, clique aqui:\n${aprovarUrl}\n\n` +
+        `Para rejeitar, clique aqui:\n${rejeitarUrl}\n`;
 
       await this.enviarNotificacao.execute({
         clienteId: event.clienteId,
