@@ -107,6 +107,7 @@ cp .env.example .env
 | `NOTIFICATION_WEBHOOK_URL` | URL de destino do POST outbound de notificação. Para demo, use uma URL de `https://webhook.site/` ou RequestBin | — |
 | `NOTIFICATION_WEBHOOK_SECRET` | Segredo usado para gerar o header `X-Signature: sha256=<hmac>` com HMAC-SHA256 do body | — |
 | `NOTIFICATION_WEBHOOK_TIMEOUT_MS` | Timeout do POST outbound | `5000` |
+| `LOG_LEVEL` | Nivel do logger estruturado: `fatal`\|`error`\|`warn`\|`info`\|`debug`\|`trace`\|`silent` | `debug` fora de producao, `info` em producao |
 
 > **Importante:** `JWT_SECRET` é obrigatória. Antes de subir os containers, copie `.env.example` para `.env` ou defina a variável no seu shell. Exemplo:
 >
@@ -129,7 +130,41 @@ NOTIFICATION_WEBHOOK_SECRET=segredo-usado-no-video
 NOTIFICATION_WEBHOOK_TIMEOUT_MS=5000
 ```
 
-Quando a OS mudar de status, a API envia `POST` com `Content-Type: application/json` e `X-Signature: sha256=<hmac>`. O body contém `ordemId`, `clienteId`, `statusAnterior`, `statusAtual`, `timestamp` e `tipoNotificacao`. Falhas de entrega, timeout e respostas 4xx/5xx são registradas em log e não bloqueiam o fluxo principal da OS.
+Quando a OS mudar de status, a API envia `POST` com `Content-Type: application/json` e `X-Signature: sha256=<hmac>`. O body contém `ordemId`, `clienteId`, `statusAnterior`, `statusAtual`, `timestamp` e `tipoNotificacao`. Falhas de entrega, timeout e respostas 4xx/5xx são registradas em log e não bloqueiam o fluxo principal da OS. O POST outbound propaga o `X-Correlation-Id` da requisição de origem, para correlacionar a notificação recebida pelo webhook com a requisição que a disparou.
+
+---
+
+## Logs estruturados e correlação (US-F3-09)
+
+A aplicação usa [`nestjs-pino`](https://github.com/iamolegga/nestjs-pino) e emite **JSON** em todos os ambientes (`stdout`), pronto para ingestão por qualquer backend de logs (CloudWatch, Loki, ELK etc. — ver [US-F3-10](docs/user-stories/f3-10-observabilidade-apm.md)).
+
+Cada linha de log de requisição tem o formato:
+
+```json
+{
+  "level": 30,
+  "time": 1732300800000,
+  "correlationId": "9f1c9e2a-...",
+  "traceId": "9f1c9e2a-...",
+  "method": "POST",
+  "path": "/ordens-servico",
+  "statusCode": 201,
+  "latencyMs": 42,
+  "userId": "usr_123",
+  "role": "ATENDENTE",
+  "msg": "POST /ordens-servico -> 201"
+}
+```
+
+- **Correlation ID por requisição**: resolvido a partir do primeiro header presente, em ordem — `X-Correlation-Id` → `X-Request-Id` (padrão de proxies/API Gateway) → trace-id do header `traceparent` (W3C Trace Context) → gera um UUID v4 novo. Devolvido no header de resposta `X-Correlation-Id` e propagado para todo log emitido durante a requisição (services, listeners de eventos de domínio) via `AsyncLocalStorage`, além de para chamadas outbound (webhook de notificação) via header `X-Correlation-Id`.
+- **traceId**: extraído do `traceparent` (para correlação com o APM — [US-F3-10](docs/user-stories/f3-10-observabilidade-apm.md)); na ausência de trace externo, usa o próprio correlationId.
+- **Nível por ambiente**: `debug` fora de produção, `info` em produção — sobrescrevível via `LOG_LEVEL`. Em `NODE_ENV=test` o logger fica silencioso.
+- **Sem dados sensíveis**: `authorization`, `cookie` e chaves como `password`/`senha`/`token`/`secret` são redigidos (`[REDACTED]`) em qualquer objeto logado; mensagens de erro de domínio que interpolam CPF/CNPJ (ex.: `DuplicateCpfCnpjError`) são mascaradas automaticamente (`529******25`) antes de irem para o log.
+- **Erros logados com contexto**: `DomainError` (`src/shared/infrastructure/domain-exception.filter.ts`) e exceções não tratadas são logados com `correlationId`, `kind`/tipo e path — insumo para o alerta de falha de OS ([US-F3-11](docs/user-stories/f3-11-dashboards-alertas.md)).
+
+**Como consultar por correlationId**: pegue o valor do header `X-Correlation-Id` na resposta (ou do log do cliente) e filtre o backend de logs por `correlationId:"<valor>"` — todas as linhas da mesma requisição, em qualquer camada, carregam o mesmo valor.
+
+Código-fonte: `src/shared/infrastructure/logging/` (contexto de correlação, resolução do ID, configuração do pino) e `src/shared/infrastructure/correlation-id.middleware.ts`.
 
 ---
 

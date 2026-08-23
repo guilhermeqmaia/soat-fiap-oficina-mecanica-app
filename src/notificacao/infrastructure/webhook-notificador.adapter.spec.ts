@@ -2,6 +2,7 @@ import { createHmac } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { CanalNotificacao } from '../domain/value-objects/canal-notificacao.vo';
 import { WebhookNotificador } from './webhook-notificador.adapter';
+import { runWithCorrelation } from '../../shared/infrastructure/logging/correlation-context';
 
 describe('WebhookNotificador', () => {
   const originalFetch = global.fetch;
@@ -102,5 +103,17 @@ describe('WebhookNotificador', () => {
       'Webhook retornou status 500',
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('propaga o correlationId da requisicao no header X-Correlation-Id', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 204 });
+    const adapter = makeAdapter();
+
+    await runWithCorrelation({ correlationId: 'cid-outbound', traceId: 'cid-outbound' }, () =>
+      adapter.enviar(mensagem),
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers).toMatchObject({ 'X-Correlation-Id': 'cid-outbound' });
   });
 });

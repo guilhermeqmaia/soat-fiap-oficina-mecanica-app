@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/env.validation';
 import {
@@ -20,11 +20,13 @@ import { VeiculoModule } from './veiculo/veiculo.module';
 import { OrdemDeServicoModule } from './ordem-de-servico/ordem-de-servico.module';
 import { UsuarioModule } from './usuario/usuario.module';
 import { NotificacaoModule } from './notificacao/notificacao.module';
-import { CorrelationIdInterceptor } from './shared/infrastructure/correlation-id.interceptor';
+import { LoggerModule } from './shared/infrastructure/logging/logger.module';
+import { CorrelationIdMiddleware } from './shared/infrastructure/correlation-id.middleware';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    LoggerModule,
     EventEmitterModule.forRoot(),
     // Rate limiting global (anti brute-force/DoS). Desabilitado sob jest
     // (JEST_WORKER_ID) para nao introduzir flakiness por 429 nos testes e2e, e
@@ -46,9 +48,10 @@ import { CorrelationIdInterceptor } from './shared/infrastructure/correlation-id
     OrdemDeServicoModule,
     NotificacaoModule,
   ],
-  providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_INTERCEPTOR, useClass: CorrelationIdInterceptor },
-  ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}

@@ -6,6 +6,7 @@ import {
   MensagemNotificacao,
   Notificador,
 } from '../application/ports/notificador.port';
+import { getCorrelationId } from '../../shared/infrastructure/logging/correlation-context';
 
 interface WebhookPayload {
   ordemId: string | null;
@@ -42,9 +43,11 @@ export class WebhookNotificador implements Notificador {
       .update(body)
       .digest('hex');
 
-    const headers = {
+    const correlationId = getCorrelationId();
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Signature': `sha256=${signature}`,
+      ...(correlationId ? { 'X-Correlation-Id': correlationId } : {}),
     };
 
     let lastError: unknown;
