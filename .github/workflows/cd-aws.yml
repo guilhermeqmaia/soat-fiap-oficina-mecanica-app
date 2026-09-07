@@ -94,14 +94,13 @@ jobs:
         if: steps.guard.outputs.configured == 'true'
         run: docker build -t "$registry/$ECR_REPOSITORY:$IMAGE_TAG" -t "$registry/$ECR_REPOSITORY:${{ needs.resolve.outputs.tag_suffix }}" .
 
-      - name: Scan de vulnerabilidades (Trivy)
+      - name: Scan de vulnerabilidades (Trivy — bloqueia CRITICAL)
         if: steps.guard.outputs.configured == 'true'
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: '${{ env.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}'
-          severity: CRITICAL
-          exit-code: '1'
-          ignore-unfixed: true
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            "$registry/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Push no ECR (tag por commit + alias do ambiente)
         if: steps.guard.outputs.configured == 'true'
