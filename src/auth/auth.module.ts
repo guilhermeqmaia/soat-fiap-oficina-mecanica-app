@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './infrastructure/auth.controller';
 import { JwtStrategy } from './infrastructure/strategies/jwt.strategy';
@@ -9,44 +7,20 @@ import { PrismaUsuarioRepository } from './infrastructure/prisma-usuario.reposit
 import { USUARIO_REPOSITORY } from './domain/usuario.repository';
 import { JwtAuthGuard } from './infrastructure/guards/jwt-auth.guard';
 import { RolesGuard } from './infrastructure/guards/roles.guard';
-import { LoginUseCase } from './application/use-cases/login.use-case';
-import { ValidarUsuarioPorIdUseCase } from './application/use-cases/validar-usuario-por-id.use-case';
-import { USUARIO_AUTH_GATEWAY } from './application/gateways/usuario.gateway';
-import { TOKEN_SIGNER } from './application/token-signer';
-import { JwtTokenSigner } from './infrastructure/jwt-token-signer';
 
+/**
+ * Resource server (US-F3-03): sem emissao de token, sem JwtModule de
+ * assinatura — apenas a strategy de VALIDACAO (segredo + iss + exp) e os
+ * guards globais. O repositorio de Usuario permanece exportado para o CRUD
+ * de usuarios (modulo usuario) e demais consumidores de dominio.
+ */
 @Module({
-  imports: [
-    PassportModule,
-    JwtModule.registerAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const secret = configService.get<string>('JWT_SECRET');
-        /* istanbul ignore next */
-        if (!secret) {
-          throw new Error(
-            'JWT_SECRET is required. Set it in your environment before starting the app.',
-          );
-        }
-        return {
-          secret,
-          signOptions: {
-            expiresIn: /* istanbul ignore next */ (configService.get<string>('JWT_EXPIRES_IN') ?? '1h') as any,
-          },
-        };
-      },
-    }),
-  ],
+  imports: [PassportModule],
   controllers: [AuthController],
   providers: [
-    LoginUseCase,
-    ValidarUsuarioPorIdUseCase,
     JwtStrategy,
-    JwtTokenSigner,
-    { provide: TOKEN_SIGNER, useExisting: JwtTokenSigner },
     PrismaUsuarioRepository,
     { provide: USUARIO_REPOSITORY, useExisting: PrismaUsuarioRepository },
-    { provide: USUARIO_AUTH_GATEWAY, useExisting: PrismaUsuarioRepository },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

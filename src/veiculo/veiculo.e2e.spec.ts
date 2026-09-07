@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AppModule } from '../app.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../auth/domain/role.enum';
+import { mintToken } from '../auth/testing/token-factory';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 
 jest.setTimeout(120000);
@@ -24,7 +24,6 @@ describe('Veiculo (e2e)', () => {
   beforeAll(async () => {
     const databaseUrl = await startTestDatabase();
     process.env.DATABASE_URL = databaseUrl;
-    process.env.JWT_SECRET = 'test-secret';
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -42,27 +41,11 @@ describe('Veiculo (e2e)', () => {
     await prisma.cliente.deleteMany();
     await prisma.usuario.deleteMany();
 
-    const users = [
-      { nome: 'Admin',     email: 'admin.vei@oficina.com',   senha: 'admin123', role: Role.ADMIN },
-      { nome: 'Atendente', email: 'atend.vei@oficina.com',   senha: 'atend123', role: Role.ATENDENTE },
-      { nome: 'Mecanico',  email: 'mec.vei@oficina.com',     senha: 'mec123',   role: Role.MECANICO },
-      { nome: 'Cliente',   email: 'cliente.vei@oficina.com', senha: 'cli123',   role: Role.CLIENTE },
-    ];
-
-    for (const u of users) {
-      const senhaHash = await bcrypt.hash(u.senha, 10);
-      await prisma.usuario.create({ data: { nome: u.nome, email: u.email, senhaHash, role: u.role, ativo: true } });
-    }
-
-    const login = async (email: string, senha: string) => {
-      const res = await request(app.getHttpServer()).post('/auth/login').send({ email, senha });
-      return res.body.accessToken as string;
-    };
-
-    adminToken     = await login('admin.vei@oficina.com',   'admin123');
-    atendenteToken = await login('atend.vei@oficina.com',   'atend123');
-    mecanicoToken  = await login('mec.vei@oficina.com',     'mec123');
-    clienteToken   = await login('cliente.vei@oficina.com', 'cli123');
+    // Resource server (US-F3-03): tokens minted directly, no login endpoint
+    adminToken     = mintToken({ sub: 'admin-vei',     nome: 'Admin',     role: Role.ADMIN });
+    atendenteToken = mintToken({ sub: 'atendente-vei', nome: 'Atendente', role: Role.ATENDENTE });
+    mecanicoToken  = mintToken({ sub: 'mecanico-vei',  nome: 'Mecanico',  role: Role.MECANICO });
+    clienteToken   = mintToken({ sub: 'cliente-vei',   nome: 'Cliente',   role: Role.CLIENTE });
 
     const c1 = await prisma.cliente.create({ data: { nome: 'Dono', cpfCnpj: '52998224725', telefone: '11111111111' } });
     clienteId = c1.id;

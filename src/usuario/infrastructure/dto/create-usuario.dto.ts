@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 enum RoleEnum {
   ADMIN = 'ADMIN',
@@ -26,6 +26,18 @@ export class CreateUsuarioDto {
   @IsEmail()
   @IsNotEmpty()
   email: string;
+
+  @ApiProperty({
+    description:
+      'CPF do usuário (11 dígitos, com ou sem máscara) — chave do login de staff na Lambda de autenticação (Fase 3)',
+    example: '529.982.247-25',
+    required: false,
+  })
+  @IsOptional()
+  @Matches(/^(\d{3}\.?\d{3}\.?\d{3}-?\d{2})$/, {
+    message: 'cpf deve ter 11 dígitos (com ou sem máscara)',
+  })
+  cpf?: string;
 
   @ApiProperty({
     description: 'Senha do usuário',

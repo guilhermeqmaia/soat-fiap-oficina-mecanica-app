@@ -1,30 +1,25 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AppModule } from '../app.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from './domain/role.enum';
+import { mintToken } from './testing/token-factory';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 
 jest.setTimeout(120000);
 
-interface TestUser {
-  nome: string;
-  email: string;
-  senha: string;
-  role: Role;
-}
-
-const USERS: Record<string, TestUser> = {
-  admin:      { nome: 'Admin',      email: 'admin.rbac@oficina.com',      senha: 'admin123',      role: Role.ADMIN },
-  atendente:  { nome: 'Atendente',  email: 'atendente.rbac@oficina.com',  senha: 'atendente123',  role: Role.ATENDENTE },
-  mecanico:   { nome: 'Mecanico',   email: 'mecanico.rbac@oficina.com',   senha: 'mecanico123',   role: Role.MECANICO },
-  estoquista: { nome: 'Estoquista', email: 'estoquista.rbac@oficina.com', senha: 'estoquista123', role: Role.ESTOQUISTA },
-  cliente:    { nome: 'Cliente',    email: 'cliente.rbac@oficina.com',    senha: 'cliente123',    role: Role.CLIENTE },
+// Resource server (US-F3-03): tokens are minted directly (as the Lambda would),
+// no usuario rows are needed for authentication.
+const ROLES: Record<string, Role> = {
+  admin:      Role.ADMIN,
+  atendente:  Role.ATENDENTE,
+  mecanico:   Role.MECANICO,
+  estoquista: Role.ESTOQUISTA,
+  cliente:    Role.CLIENTE,
 };
 
-const ALL_ROLES = Object.keys(USERS);
+const ALL_ROLES = Object.keys(ROLES);
 
 describe('Role-based access control (e2e) — business modules', () => {
   let app: INestApplication;
@@ -39,7 +34,6 @@ describe('Role-based access control (e2e) — business modules', () => {
   beforeAll(async () => {
     const databaseUrl = await startTestDatabase();
     process.env.DATABASE_URL = databaseUrl;
-    process.env.JWT_SECRET = 'test-secret';
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -58,28 +52,9 @@ describe('Role-based access control (e2e) — business modules', () => {
     await prisma.servico.deleteMany();
     await prisma.usuario.deleteMany();
 
-    // Seed users
-    for (const user of Object.values(USERS)) {
-      const senhaHash = await bcrypt.hash(user.senha, 10);
-      await prisma.usuario.create({
-        data: {
-          nome: user.nome,
-          email: user.email,
-          senhaHash,
-          role: user.role,
-          ativo: true,
-        },
-      });
-    }
-
-    // Login all users
-    for (const [key, user] of Object.entries(USERS)) {
-      const res = await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ email: user.email, senha: user.senha });
-      expect(res.status).toBe(200);
-      expect(res.body.accessToken).toBeDefined();
-      tokens[key] = res.body.accessToken;
+    // Mint one token per role, mirroring the Lambda's token contract
+    for (const [key, role] of Object.entries(ROLES)) {
+      tokens[key] = mintToken({ sub: `rbac-${key}`, nome: key, role });
     }
 
     // Create seed records using admin token
@@ -172,6 +147,52 @@ describe('Role-based access control (e2e) — business modules', () => {
     const noTokenRes = await noTokenReq;
     expect(noTokenRes.status).toBe(401);
   };
+
+  // ---------------- Token validation (resource server) ----------------
+  // Replaces the former /auth/login behavior tests: the endpoint was removed
+  // in US-F3-03, so we assert the JwtStrategy rejects malformed tokens instead.
+  describe('Token validation (resource server)', () => {
+    it('rejects a token with an unknown role claim (401)', async () => {
+      const token = mintToken({ sub: 'rbac-x', role: 'SUPER_ADMIN' });
+      const res = await request(app.getHttpServer())
+        .get('/servicos')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a token signed with the wrong secret (401)', async () => {
+      const token = mintToken(
+        { sub: 'rbac-x', role: Role.ADMIN },
+        { secret: 'wrong-secret' },
+      );
+      const res = await request(app.getHttpServer())
+        .get('/servicos')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a token from an unexpected issuer (401)', async () => {
+      const token = mintToken(
+        { sub: 'rbac-x', role: Role.ADMIN },
+        { issuer: 'some-other-issuer' },
+      );
+      const res = await request(app.getHttpServer())
+        .get('/servicos')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects an expired token (401)', async () => {
+      const token = mintToken(
+        { sub: 'rbac-x', role: Role.ADMIN },
+        { expiresIn: -60 },
+      );
+      const res = await request(app.getHttpServer())
+        .get('/servicos')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(401);
+    });
+  });
 
   // ---------------- Servico ----------------
   describe('Servico module', () => {

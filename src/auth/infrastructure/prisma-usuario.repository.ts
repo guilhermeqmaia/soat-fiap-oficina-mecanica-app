@@ -27,6 +27,7 @@ export class PrismaUsuarioRepository implements UsuarioRepository {
       data: {
         nome: usuario.nome,
         email: usuario.email.value,
+        cpf: usuario.cpf,
         senhaHash: usuario.senhaHash,
         role: usuario.role,
         ativo: usuario.ativo,
@@ -39,6 +40,7 @@ export class PrismaUsuarioRepository implements UsuarioRepository {
     id: string;
     nome: string;
     email: string;
+    cpf?: string | null;
     senhaHash: string;
     role: string;
     ativo: boolean;
@@ -47,6 +49,7 @@ export class PrismaUsuarioRepository implements UsuarioRepository {
       id: record.id,
       nome: record.nome,
       email: record.email,
+      cpf: record.cpf,
       senhaHash: record.senhaHash,
       role: record.role as Role,
       ativo: record.ativo,

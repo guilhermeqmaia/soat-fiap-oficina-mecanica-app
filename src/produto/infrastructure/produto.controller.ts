@@ -32,7 +32,7 @@ import { QueryMovimentacoesDto } from './dto/query-movimentacoes.dto';
 import { MovimentacaoEstoqueResponseDto } from './dto/movimentacao-response.dto';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
-import { Usuario } from '../../auth/domain/usuario.entity';
+import { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { Role } from '../../auth/domain/role.enum';
 import { CriarProdutoUseCase } from '../application/use-cases/criar-produto.use-case';
 import { ListarProdutosUseCase } from '../application/use-cases/listar-produtos.use-case';
@@ -137,7 +137,7 @@ export class ProdutoController {
   async addStock(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddStockDto,
-    @CurrentUser() usuario: Usuario,
+    @CurrentUser() usuario: AuthenticatedUser,
   ) {
     const produto = await this.adicionarEstoque.execute({
       id,
@@ -157,7 +157,7 @@ export class ProdutoController {
   async entradaEstoque(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: EntradaEstoqueDto,
-    @CurrentUser() usuario: Usuario,
+    @CurrentUser() usuario: AuthenticatedUser,
   ) {
     const produto = await this.adicionarEstoque.execute({
       id,
@@ -180,7 +180,7 @@ export class ProdutoController {
   async saidaEstoque(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SaidaEstoqueDto,
-    @CurrentUser() usuario: Usuario,
+    @CurrentUser() usuario: AuthenticatedUser,
   ) {
     const produto = await this.removerEstoque.execute({
       id,

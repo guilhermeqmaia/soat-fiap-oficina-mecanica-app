@@ -56,7 +56,7 @@ import { Public } from "../../auth/infrastructure/decorators/public.decorator";
 import { Roles } from "../../auth/infrastructure/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/infrastructure/decorators/current-user.decorator";
 import { Role } from "../../auth/domain/role.enum";
-import { Usuario } from "../../auth/domain/usuario.entity";
+import { AuthenticatedUser } from "../../auth/domain/authenticated-user";
 
 @ApiTags("Ordens de Servico")
 @ApiBearerAuth()
@@ -231,12 +231,12 @@ export class OrdemDeServicoController {
   @ApiBadRequestResponse({ description: "Transicao de status invalida" })
   async aprovarOrcamento(
     @Param("id", ParseUUIDPipe) id: string,
-    @CurrentUser() usuario: Usuario,
+    @CurrentUser() usuario: AuthenticatedUser,
   ) {
     const os = await this.aprovarOrcamentoUseCase.execute({
       id,
-      emailClienteAutenticado:
-        usuario?.role === Role.CLIENTE ? usuario.email.value : undefined,
+      cpfCnpjClienteAutenticado:
+        usuario?.role === Role.CLIENTE ? (usuario.cpf ?? "") : undefined,
     });
     return OrdemDeServicoPresenter.toResponse(os);
   }
@@ -249,12 +249,12 @@ export class OrdemDeServicoController {
   @ApiBadRequestResponse({ description: "Transicao de status invalida" })
   async rejeitarOrcamento(
     @Param("id", ParseUUIDPipe) id: string,
-    @CurrentUser() usuario: Usuario,
+    @CurrentUser() usuario: AuthenticatedUser,
   ) {
     const os = await this.rejeitarOrcamentoUseCase.execute({
       id,
-      emailClienteAutenticado:
-        usuario?.role === Role.CLIENTE ? usuario.email.value : undefined,
+      cpfCnpjClienteAutenticado:
+        usuario?.role === Role.CLIENTE ? (usuario.cpf ?? "") : undefined,
     });
     return OrdemDeServicoPresenter.toResponse(os);
   }

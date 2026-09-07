@@ -7,6 +7,7 @@ export interface UsuarioOutput {
   id: string;
   nome: string;
   email: string;
+  cpf?: string | null;
   role: string;
   ativo: boolean;
   createdAt?: Date;

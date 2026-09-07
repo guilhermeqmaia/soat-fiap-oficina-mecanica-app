@@ -14,6 +14,7 @@ import { UsuarioOutput } from '../usuario-output';
 export interface CriarUsuarioInput {
   nome: string;
   email: string;
+  cpf?: string;
   senha: string;
   role: string;
 }
@@ -44,6 +45,7 @@ export class CriarUsuarioUseCase
     const usuario = Usuario.create({
       nome: input.nome,
       email: input.email,
+      cpf: input.cpf ?? null,
       senhaHash,
       role: input.role as Role,
     });
@@ -53,6 +55,7 @@ export class CriarUsuarioUseCase
       id: created.id,
       nome: created.nome,
       email: created.email.value,
+      cpf: created.cpf,
       role: created.role,
       ativo: created.ativo,
     };
