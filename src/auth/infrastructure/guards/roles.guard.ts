@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { Role } from '../../domain/role.enum';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { Usuario } from '../../domain/usuario.entity';
+import { AuthenticatedUser } from '../../domain/authenticated-user';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -19,7 +19,7 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const usuario = request.user as Usuario | undefined;
+    const usuario = request.user as AuthenticatedUser | undefined;
 
     if (!usuario || !usuario.hasAnyRole(requiredRoles)) {
       throw new ForbiddenException('Acesso negado: role insuficiente');

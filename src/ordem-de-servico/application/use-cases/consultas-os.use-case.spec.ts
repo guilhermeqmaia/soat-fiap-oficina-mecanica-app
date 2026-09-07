@@ -7,7 +7,6 @@ import { AdicionarServicoUseCase } from './adicionar-servico.use-case';
 import { AdicionarProdutoAoServicoUseCase } from './adicionar-produto-ao-servico.use-case';
 import { OrdemDeServicoNotFoundError } from '../../domain/errors/ordem-de-servico-not-found.error';
 import { ClienteNotFoundError } from '../../domain/errors/cliente-not-found.error';
-import { ClienteNotOwnedByUsuarioError } from '../../domain/errors/cliente-not-owned-by-usuario.error';
 import { ServicoNotFoundInCatalogError } from '../../domain/errors/servico-not-found-in-catalog.error';
 import { ProdutoNotFoundInCatalogError } from '../../domain/errors/produto-not-found-in-catalog.error';
 
@@ -138,9 +137,9 @@ describe('OS query use cases', () => {
   });
 
   describe('ListarHistoricoPorCpfCnpj', () => {
+    // Posse (claim cpf x cpfCnpj) agora e checada no controller (US-F3-03).
     const base = {
       cpfCnpj: '12345678901',
-      emailClienteAutenticado: 'dono@x.com',
     };
 
     it('throws NOT_FOUND when cliente is unknown', async () => {
@@ -155,23 +154,11 @@ describe('OS query use cases', () => {
       ).rejects.toBeInstanceOf(ClienteNotFoundError);
     });
 
-    it('throws FORBIDDEN when email does not match', async () => {
-      const clienteGateway = {
-        findByCpfCnpj: jest.fn().mockResolvedValue({ email: 'outro@x.com' }),
-      };
-      await expect(
-        new ListarHistoricoPorCpfCnpjUseCase(
-          {} as any,
-          clienteGateway as any,
-        ).execute(base),
-      ).rejects.toBeInstanceOf(ClienteNotOwnedByUsuarioError);
-    });
-
     it('returns mapped history when owned', async () => {
       const clienteGateway = {
         findByCpfCnpj: jest
           .fn()
-          .mockResolvedValue({ id: 'cli-1', email: 'dono@x.com' }),
+          .mockResolvedValue({ id: 'cli-1' }),
       };
       const gateway = {
         findAll: jest.fn().mockResolvedValue({

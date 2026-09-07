@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { AppModule } from '../app.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../auth/domain/role.enum';
+import { mintToken } from '../auth/testing/token-factory';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 
 jest.setTimeout(120000);
@@ -22,7 +23,6 @@ describe('Usuario (e2e)', () => {
   beforeAll(async () => {
     const databaseUrl = await startTestDatabase();
     process.env.DATABASE_URL = databaseUrl;
-    process.env.JWT_SECRET = 'test-secret';
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -56,14 +56,11 @@ describe('Usuario (e2e)', () => {
       data: { nome: 'Mecanico', email: 'mec.usr@oficina.com', senhaHash: mecanicoHash, role: Role.MECANICO, ativo: true },
     });
 
-    const login = async (email: string, senha: string) => {
-      const res = await request(app.getHttpServer()).post('/auth/login').send({ email, senha });
-      return res.body.accessToken as string;
-    };
-
-    adminToken     = await login('admin.usr@oficina.com', 'admin123');
-    atendenteToken = await login('atend.usr@oficina.com', 'atend123');
-    mecanicoToken  = await login('mec.usr@oficina.com',   'mec123');
+    // Resource server (US-F3-03): tokens minted directly, no login endpoint.
+    // The seeded rows above remain because GET /usuario tests reference them.
+    adminToken     = mintToken({ sub: adminId,        nome: 'Admin',     role: Role.ADMIN });
+    atendenteToken = mintToken({ sub: 'atendente-usr', nome: 'Atendente', role: Role.ATENDENTE });
+    mecanicoToken  = mintToken({ sub: 'mecanico-usr',  nome: 'Mecanico',  role: Role.MECANICO });
   });
 
   afterAll(async () => {

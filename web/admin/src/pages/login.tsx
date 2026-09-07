@@ -7,14 +7,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardBody } from '@/components/ui/card';
 
+/**
+ * Login do staff por CPF + senha (Fase 3 — US-F3-03/RFC-0003): o POST /auth e
+ * atendido pela Lambda de autenticacao atras do API Gateway (VITE_API_URL
+ * deve apontar para o gateway). A aplicacao nao emite mais tokens.
+ */
 interface LoginResponse {
   accessToken: string;
-  usuario: AuthUser;
+  tokenType: 'Bearer';
+  expiresAt: string;
+  usuario: { id: string; nome: string; cpf: string; role: AuthUser['role'] };
 }
 
 export function LoginPage() {
-  const [email, setEmail] = useState('admin@oficina.com');
-  const [senha, setSenha] = useState('admin123');
+  const [cpf, setCpf] = useState('');
+  const [senha, setSenha] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -25,9 +32,9 @@ export function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const data = await apiRequest<LoginResponse>('/auth/login', {
+      const data = await apiRequest<LoginResponse>('/auth', {
         method: 'POST',
-        body: { email, senha },
+        body: { cpf, senha },
         skipAuth: true,
       });
       if (data.usuario.role === 'CLIENTE') {
@@ -36,7 +43,15 @@ export function LoginPage() {
         );
         return;
       }
-      setAuth({ token: data.accessToken, user: data.usuario });
+      setAuth({
+        token: data.accessToken,
+        user: {
+          id: data.usuario.id,
+          nome: data.usuario.nome,
+          cpf: data.usuario.cpf,
+          role: data.usuario.role,
+        },
+      });
       navigate('/', { replace: true });
     } catch (err) {
       setError(
@@ -55,17 +70,19 @@ export function LoginPage() {
             Painel Administrativo
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Acesso para equipe da oficina
+            Acesso para equipe da oficina (CPF + senha)
           </p>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div>
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="cpf">CPF</Label>
               <Input
-                id="email"
-                type="email"
+                id="cpf"
+                type="text"
+                inputMode="numeric"
                 autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                placeholder="000.000.000-00"
+                value={cpf}
+                onChange={(e) => setCpf(e.target.value)}
                 required
               />
             </div>
@@ -81,24 +98,14 @@ export function LoginPage() {
               />
             </div>
             {error && (
-              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
                 {error}
-              </div>
+              </p>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Entrando...' : 'Entrar'}
             </Button>
           </form>
-          <p className="mt-6 text-center text-xs text-slate-400">
-            Cliente? Acesse o{' '}
-            <a
-              className="text-brand-600 underline"
-              href="http://localhost:5174"
-            >
-              portal do cliente
-            </a>
-            .
-          </p>
         </CardBody>
       </Card>
     </div>

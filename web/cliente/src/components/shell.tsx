@@ -84,7 +84,7 @@ export function ClienteShell() {
           <div className="flex items-center gap-3 text-sm">
             <div className="text-right">
               <div className="font-medium text-slate-900">{user?.nome}</div>
-              <div className="text-xs text-slate-500">{user?.email}</div>
+              <div className="text-xs text-slate-500">{user?.cpf}</div>
             </div>
             <button
               type="button"

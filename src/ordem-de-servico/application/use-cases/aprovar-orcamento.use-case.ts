@@ -19,8 +19,8 @@ import { publicarMudancaDeStatus } from './publicar-mudanca-de-status';
 
 export interface AprovarOrcamentoInput {
   id: string;
-  /** Quando a acao parte do proprio cliente, valida posse da OS. */
-  emailClienteAutenticado?: string;
+  /** CPF/CNPJ da claim do token quando a acao parte do proprio cliente. */
+  cpfCnpjClienteAutenticado?: string;
 }
 
 @Injectable()
@@ -37,12 +37,12 @@ export class AprovarOrcamentoUseCase
   ) {}
 
   async execute(input: AprovarOrcamentoInput): Promise<OrdemDeServico> {
-    if (input.emailClienteAutenticado) {
+    if (input.cpfCnpjClienteAutenticado) {
       await assertOsPertenceAoCliente(
         this.gateway,
         this.clienteGateway,
         input.id,
-        input.emailClienteAutenticado,
+        input.cpfCnpjClienteAutenticado,
       );
     }
     const ordem = await carregarOrdemOuFalhar(this.gateway, input.id);

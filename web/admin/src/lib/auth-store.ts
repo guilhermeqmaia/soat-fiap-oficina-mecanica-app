@@ -11,7 +11,8 @@ export type Role =
 export interface AuthUser {
   id: string;
   nome: string;
-  email: string;
+  /** CPF mascarado devolvido pela Lambda de autenticacao (Fase 3). */
+  cpf?: string | null;
   role: Role;
 }
 

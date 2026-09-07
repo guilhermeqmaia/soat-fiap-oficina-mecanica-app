@@ -12,6 +12,7 @@ export class UsuarioPresenter {
       id: usuario.id,
       nome: usuario.nome,
       email: usuario.email.value,
+      cpf: usuario.cpf,
       role: usuario.role,
       ativo: usuario.ativo,
     };

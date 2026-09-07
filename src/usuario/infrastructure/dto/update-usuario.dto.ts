@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 enum RoleEnum {
   ADMIN = 'ADMIN',
@@ -10,6 +10,17 @@ enum RoleEnum {
 }
 
 export class UpdateUsuarioDto {
+  @ApiProperty({
+    description: 'CPF do usuário (11 dígitos) — chave do login de staff (Fase 3)',
+    example: '529.982.247-25',
+    required: false,
+  })
+  @IsOptional()
+  @Matches(/^(\d{3}\.?\d{3}\.?\d{3}-?\d{2})$/, {
+    message: 'cpf deve ter 11 dígitos (com ou sem máscara)',
+  })
+  cpf?: string;
+
   @ApiProperty({
     description: 'Nome completo do usuário',
     example: 'João Silva Atualizado',

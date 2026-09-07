@@ -2,10 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AppModule } from '../app.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../auth/domain/role.enum';
+import { mintToken } from '../auth/testing/token-factory';
 import { StatusOS } from './domain/value-objects/status-os.vo';
 import {
   startTestDatabase,
@@ -29,7 +29,8 @@ describe('Webhook Aprovacao (e2e)', () => {
   beforeAll(async () => {
     const databaseUrl = await startTestDatabase();
     process.env.DATABASE_URL = databaseUrl;
-    process.env.JWT_SECRET = 'test-secret';
+    // JWT_SECRET vem de src/test/jest-setup-env.ts — o mesmo valor que o
+    // ConfigModule ja validou no import do AppModule e que o mintToken usa.
     process.env.WEBHOOK_APPROVAL_TOKEN ??= 'e2e-webhook-secret-token';
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -54,37 +55,23 @@ describe('Webhook Aprovacao (e2e)', () => {
     await prisma.servico.deleteMany();
     await prisma.usuario.deleteMany();
 
-    const users = [
-      { nome: 'Admin', email: 'admin.wh@oficina.com', senha: 'admin123', role: Role.ADMIN },
-      { nome: 'Atendente', email: 'atendente.wh@oficina.com', senha: 'atend123', role: Role.ATENDENTE },
-      { nome: 'Mecanico', email: 'mecanico.wh@oficina.com', senha: 'mec123', role: Role.MECANICO },
-      { nome: 'Cliente', email: 'cliente.wh@oficina.com', senha: 'cli123', role: Role.CLIENTE },
-    ];
+    // O mecanico ainda precisa existir no banco: atribuir-mecanico valida o
+    // usuarioId informado no body. Senha nunca e verificada (login removido).
+    const mecanico = await prisma.usuario.create({
+      data: {
+        nome: 'Mecanico',
+        email: 'mecanico.wh@oficina.com',
+        senhaHash: 'nao-usado-nos-testes',
+        role: Role.MECANICO,
+        ativo: true,
+      },
+    });
+    mecanicoUserId = mecanico.id;
 
-    const userIds: Record<string, string> = {};
-
-    for (const user of users) {
-      const senhaHash = await bcrypt.hash(user.senha, 10);
-      const created = await prisma.usuario.create({
-        data: {
-          nome: user.nome,
-          email: user.email,
-          senhaHash,
-          role: user.role,
-          ativo: true,
-        },
-      });
-      userIds[user.role] = created.id;
-    }
-    mecanicoUserId = userIds[Role.MECANICO];
-
-    for (const user of users) {
-      const res = await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ email: user.email, senha: user.senha });
-      expect(res.status).toBe(200);
-      tokens[user.role.toLowerCase()] = res.body.accessToken;
-    }
+    // Resource server (US-F3-03): tokens emitidos direto nos testes com o
+    // contrato da Lambda de CPF (sem POST /auth/login).
+    tokens.admin = mintToken({ sub: 'admin-wh', nome: 'Admin', role: Role.ADMIN });
+    tokens.mecanico = mintToken({ sub: mecanicoUserId, nome: 'Mecanico', role: Role.MECANICO });
 
     const clienteRes = await request(app.getHttpServer())
       .post('/clientes')

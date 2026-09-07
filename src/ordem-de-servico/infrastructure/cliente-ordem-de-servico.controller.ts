@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Query,
@@ -19,7 +20,7 @@ import { ListarHistoricoPorCpfCnpjUseCase } from '../application/use-cases/lista
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
 import { Role } from '../../auth/domain/role.enum';
-import { Usuario } from '../../auth/domain/usuario.entity';
+import { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 
 const CPF_CNPJ_DIGITS_REGEX = /^\d{11}(\d{3})?$/;
 
@@ -43,17 +44,21 @@ export class ClienteOrdemDeServicoController {
   async findByCpfCnpj(
     @Param('cpfCnpj') cpfCnpj: string,
     @Query() query: QueryOrdemDeServicoDto,
-    @CurrentUser() usuario: Usuario,
+    @CurrentUser() usuario: AuthenticatedUser,
   ) {
     if (!CPF_CNPJ_DIGITS_REGEX.test(cpfCnpj)) {
       throw new BadRequestException(
         'CPF/CNPJ deve conter apenas digitos (11 para CPF ou 14 para CNPJ)',
       );
     }
+    // Resource server (US-F3-03): a posse e provada pela claim `cpf` do token
+    // emitido pela Lambda — o cliente so consulta o proprio documento.
+    if (!usuario.possuiDocumento(cpfCnpj)) {
+      throw new ForbiddenException('CPF/CNPJ nao pertence ao usuario autenticado');
+    }
 
     return this.listarHistoricoPorCpfCnpj.execute({
       cpfCnpj,
-      emailClienteAutenticado: usuario.email.value,
       page: query.page ?? 1,
       limit: query.limit ?? 10,
     });

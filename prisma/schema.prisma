@@ -11,6 +11,8 @@ model Usuario {
   id        String   @id @default(uuid())
   nome      String
   email     String   @unique
+  /// CPF normalizado (so digitos) — chave do login staff na Lambda (US-F3-03/RFC-0003)
+  cpf       String?  @unique
   senhaHash String   @map("senha_hash")
   role      Role
   ativo     Boolean  @default(true)

@@ -3,15 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { apiRequest, ApiError } from '@/lib/api-client';
 import { useAuthStore, type AuthUser } from '@/lib/auth-store';
 
+/**
+ * Login por CPF (Fase 3 — US-F3-03): o POST /auth e atendido pela Lambda de
+ * autenticacao atras do API Gateway (VITE_API_URL deve apontar para o
+ * gateway). A aplicacao nao emite mais tokens.
+ */
 interface LoginResponse {
   accessToken: string;
-  usuario: AuthUser;
+  tokenType: 'Bearer';
+  expiresAt: string;
+  cliente: { id: string; nome: string; cpf: string; role: AuthUser['role'] };
 }
 
 export function LoginPage() {
-  const [email, setEmail] = useState('cliente@oficina.com');
-  const [senha, setSenha] = useState('cliente123');
-  const [cpfCnpj, setCpfCnpj] = useState('39053344705');
+  const [cpf, setCpfInput] = useState('390.533.447-05');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -23,17 +28,21 @@ export function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const data = await apiRequest<LoginResponse>('/auth/login', {
+      const data = await apiRequest<LoginResponse>('/auth', {
         method: 'POST',
-        body: { email, senha },
+        body: { cpf },
         skipAuth: true,
       });
-      if (data.usuario.role !== 'CLIENTE') {
-        setError('Esta conta nao e de cliente. Use o painel administrativo.');
-        return;
-      }
-      setAuth({ token: data.accessToken, user: data.usuario });
-      setCpf(cpfCnpj.replace(/\D/g, ''));
+      setAuth({
+        token: data.accessToken,
+        user: {
+          id: data.cliente.id,
+          nome: data.cliente.nome,
+          cpf: data.cliente.cpf,
+          role: data.cliente.role,
+        },
+      });
+      setCpf(cpf.replace(/\D/g, ''));
       navigate('/', { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao autenticar');
@@ -49,69 +58,37 @@ export function LoginPage() {
           Portal do Cliente
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Acompanhe suas ordens de servico
+          Informe seu CPF para acompanhar suas ordens de servico
         </p>
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Email
-            </label>
-            <input
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Senha
-            </label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              required
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              CPF/CNPJ (apenas digitos)
+              CPF
             </label>
             <input
               type="text"
-              value={cpfCnpj}
-              onChange={(e) => setCpfCnpj(e.target.value)}
+              inputMode="numeric"
+              autoComplete="username"
+              placeholder="000.000.000-00"
+              value={cpf}
+              onChange={(e) => setCpfInput(e.target.value)}
               required
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
-            <p className="mt-1 text-xs text-slate-500">
-              Necessario para listar suas ordens de servico
-            </p>
           </div>
           {error && (
-            <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
-            </div>
+            </p>
           )}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-brand-600 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-brand-600/50"
+            className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
-        <p className="mt-6 text-center text-xs text-slate-400">
-          Equipe da oficina? Acesse o{' '}
-          <a className="text-brand-600 underline" href="http://localhost:5173">
-            painel administrativo
-          </a>
-        </p>
       </div>
     </div>
   );

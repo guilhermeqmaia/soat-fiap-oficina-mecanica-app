@@ -101,7 +101,7 @@ cp .env.example .env
 | `DATABASE_URL` | String de conexão PostgreSQL | `postgresql://postgres:postgres@localhost:5432/oficina_mecanica?schema=public` |
 | `PORT` | Porta da API | `3000` |
 | `JWT_SECRET` | **Obrigatória.** Chave secreta do JWT | — (a app falha em iniciar sem esta variável) |
-| `JWT_EXPIRES_IN` | Expiração do token | `1h` |
+| `JWT_ISSUER` | Claim `iss` aceita nos tokens (emissor = Lambda de CPF) | `oficina-auth-lambda` |
 | `PUBLIC_BASE_URL` | URL pública usada nos links enviados em notificações | `http://localhost:3000` |
 | `NOTIFICATION_PROVIDER` | Adapter de notificação: `mock` ou `webhook`. Sem valor, usa `mock` em desenvolvimento e `webhook` em produção | `mock` em dev, `webhook` em prod |
 | `NOTIFICATION_WEBHOOK_URL` | URL de destino do POST outbound de notificação. Para demo, use uma URL de `https://webhook.site/` ou RequestBin | — |
@@ -150,34 +150,34 @@ A API usa JWT para proteger endpoints administrativos. Endpoints marcados com `@
 >
 > Em produção, crie o administrador inicial por um canal seguro/manual.
 
-| Role | Email | Senha (dev) |
+| Role | CPF (dev) | Senha (dev) |
 |---|---|---|
-| ADMIN | `admin@oficina.com` | `admin123` |
-| ATENDENTE | `atendente@oficina.com` | `atendente123` |
-| MECANICO | `mecanico@oficina.com` | `mecanico123` |
-| ESTOQUISTA | `estoquista@oficina.com` | `estoquista123` |
-| CLIENTE | `cliente@oficina.com` | `cliente123` |
+| ADMIN | `529.982.247-25` | `admin123` |
+| ATENDENTE | `111.444.777-35` | `atendente123` |
+| MECANICO | `168.995.350-09` | `mecanico123` |
+| ESTOQUISTA | `746.824.883-41` | `estoquista123` |
+| CLIENTE | `390.533.447-05` | — (cliente autentica só com CPF) |
 
-### Fazendo login
+### Fazendo login (Fase 3 — resource server)
+
+**A aplicação não emite mais tokens** ([US-F3-03](docs/user-stories/f3-03-app-resource-server.md)):
+o login é por **CPF** na Lambda atrás do API Gateway
+(repo [soat-fiap-oficina-auth-lambda](https://github.com/guilhermeqmaia/soat-fiap-oficina-auth-lambda)).
 
 ```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@oficina.com","senha":"admin123"}'
+# Cliente (só CPF) / Staff (CPF + senha) — na URL pública do gateway:
+curl -X POST "$GATEWAY_URL/auth" -H "Content-Type: application/json" \
+  -d '{"cpf":"529.982.247-25","senha":"admin123"}'
 ```
 
-Resposta:
+**Desenvolvimento local** (sem gateway): gere um token com o mesmo `JWT_SECRET`:
 
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-  "usuario": {
-    "id": "uuid",
-    "nome": "Admin Oficina",
-    "email": "admin@oficina.com",
-    "role": "ADMIN"
-  }
-}
+```bash
+node -e "console.log(require('jsonwebtoken').sign(
+  { cpf: '52998224725', nome: 'Admin', role: 'ADMIN' },
+  process.env.JWT_SECRET,
+  { algorithm: 'HS256', subject: 'dev-admin', issuer: 'oficina-auth-lambda', expiresIn: 3600 }
+))"
 ```
 
 ### Usando o token
