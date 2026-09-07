@@ -38,7 +38,8 @@ Diagramas de **componentes da aplicação**, **infraestrutura provisionada** e
 | Desenho da arquitetura | [`docs/arquitetura/arquitetura-fase2.md`](docs/arquitetura/arquitetura-fase2.md) |
 | Manifestos Kubernetes | [`k8s/`](k8s) · [`k8s/README.md`](k8s/README.md) |
 | Scripts Terraform (IaC) | [`infra/terraform/`](infra/terraform) · [`infra/terraform/README.md`](infra/terraform/README.md) |
-| Pipeline CI/CD | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) |
+| Pipeline CI/CD (Fase 2 — kind) | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) |
+| Pipeline CD AWS (Fase 3 — ECR + EKS) | [`.github/workflows/cd-aws.yml`](.github/workflows/cd-aws.yml) |
 | Testes de carga / escalabilidade | [`perf/`](perf) · [`perf/README.md`](perf/README.md) |
 | Collection das APIs (Swagger/OpenAPI) | `http://localhost:3000/api` (com a app rodando) — ver [Collection das APIs](#collection-das-apis) |
 | Vídeo demonstrativo (≤15 min) | https://drive.google.com/file/d/1K5Qihz4IGKitT791J9-3o77F8kg_ujvd/view |
@@ -426,6 +427,30 @@ Cada bounded context segue a estrutura DDD em camadas: **Domain → Application 
 com as dependências apontando para o domínio (Clean Architecture).
 
 ---
+
+## CI/CD na AWS (Fase 3 — US-F3-08)
+
+O [`ci-cd.yml`](.github/workflows/ci-cd.yml) da Fase 2 segue como **CI**
+(testes com gate de 80% + build + prova de deploy em kind efêmero). O
+[`cd-aws.yml`](.github/workflows/cd-aws.yml) faz o **deploy automático na
+nuvem**: push em `homolog` → homologação, push em `main` → produção.
+
+Etapas: build da imagem → **scan Trivy** (bloqueia CRITICAL) → push no **ECR**
+(tag por commit + alias do ambiente) → `kustomize set image` + `kubectl apply`
+no **EKS** → job de migrations → `rollout status` → smoke test
+(`/health` + `/health/ready`). Cada etapa é guardada: sem credenciais o run
+avisa e não falha; sem `EKS_CLUSTER_NAME` para no push do ECR (a chave liga na
+US-F3-06).
+
+**Secrets** (por ambiente): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_SESSION_TOKEN` (AWS Academy — renovar por sessão do lab) ou `AWS_ROLE_ARN`
+(OIDC em conta própria).
+**Vars**: `AWS_REGION` (default `us-east-1`), `ECR_REPOSITORY` (default
+`oficina-mecanica-app`), `EKS_CLUSTER_NAME` (output do repo
+[soat-fiap-oficina-infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s)).
+
+**Deploy ativo:** URL pública = API Gateway (repo infra-k8s, output
+`api_base_url`). <!-- atualizar com a URL após o primeiro apply -->
 
 ## Documentação
 
