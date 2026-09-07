@@ -13,6 +13,7 @@ const config: Config = {
     '!main.ts',
     '!**/*.module.ts',
     '!**/test/**',
+    '!**/testing/**', // fabrica de tokens p/ testes/dev — nao e codigo de producao
     '!**/*.spec.ts',
   ],
   coverageDirectory: '../coverage/unit',
