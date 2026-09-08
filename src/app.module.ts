@@ -21,9 +21,11 @@ import { OrdemDeServicoModule } from './ordem-de-servico/ordem-de-servico.module
 import { UsuarioModule } from './usuario/usuario.module';
 import { NotificacaoModule } from './notificacao/notificacao.module';
 import { CorrelationIdInterceptor } from './shared/infrastructure/correlation-id.interceptor';
+import { ObservabilidadeModule } from './observabilidade/observabilidade.module';
 
 @Module({
   imports: [
+    ObservabilidadeModule,
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     EventEmitterModule.forRoot(),
     // Rate limiting global (anti brute-force/DoS). Desabilitado sob jest

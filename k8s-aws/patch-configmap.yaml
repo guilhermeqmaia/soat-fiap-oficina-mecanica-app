@@ -16,3 +16,8 @@ data:
   WEB_ORIGINS: "__GATEWAY_URL__,http://localhost:5173,http://localhost:5174"
   # Emissor aceito nos tokens — a Lambda de CPF (US-F3-01/03).
   JWT_ISSUER: "oficina-auth-lambda"
+  # APM (US-F3-10): o agente do Datadog roda no cluster (repo infra-k8s,
+  # observability/). Fora do EKS estas vars nao existem e o tracing fica off.
+  DD_TRACE_ENABLED: "true"
+  DD_SERVICE: "oficina-mecanica-app"
+  DD_ENV: "producao"

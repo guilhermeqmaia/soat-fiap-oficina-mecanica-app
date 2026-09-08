@@ -2,6 +2,7 @@ import { createHmac } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CanalNotificacao } from '../domain/value-objects/canal-notificacao.vo';
+import { integracaoResultados } from '../../observabilidade/metrics.registry';
 import {
   MensagemNotificacao,
   Notificador,
@@ -51,6 +52,8 @@ export class WebhookNotificador implements Notificador {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         await this.post(body, headers);
+        // Sinal de integracao para os dashboards/alertas (US-F3-10/11).
+        integracaoResultados.inc({ integracao: 'webhook-notificacao', resultado: 'sucesso' });
         return;
       } catch (err) {
         lastError = err;
@@ -65,6 +68,7 @@ export class WebhookNotificador implements Notificador {
       }
     }
 
+    integracaoResultados.inc({ integracao: 'webhook-notificacao', resultado: 'falha' });
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 

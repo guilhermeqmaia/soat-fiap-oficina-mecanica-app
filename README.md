@@ -429,6 +429,32 @@ com as dependências apontando para o domínio (Clean Architecture).
 
 ---
 
+## Observabilidade (Fase 3 — US-F3-10)
+
+A aplicação é instrumentada de forma **agnóstica de fornecedor** (ADR-0004):
+
+| Sinal | Onde |
+|---|---|
+| **Latência por rota** (p50/p95/p99) | `oficina_http_request_duration_seconds` em `GET /metrics` |
+| **CPU/memória/event loop do processo** | métricas padrão do `prom-client` (prefixo `oficina_`) |
+| **Volume de OS por transição de status** | `oficina_os_transicoes_total{de,para}` |
+| **Erros de integração** (notificação/webhook) | `oficina_integracoes_total{integracao,resultado}` |
+| **Traces (APM)** correlacionados aos logs | `dd-trace` com `logInjection`, ativado por `DD_TRACE_ENABLED=true` |
+| **Correlação de requisições** | header `x-correlation-id` (US-F3-09) |
+
+```bash
+curl -s localhost:3000/metrics | grep oficina_http_request_duration_seconds_count
+```
+
+O `/metrics` é `@Public()` porque quem faz scrape é o **agente dentro do
+cluster**; como não está na lista de rotas públicas do API Gateway, continua
+inalcançável pela internet. O tracing é **opcional**: sem `DD_TRACE_ENABLED` a
+dependência do APM nem é carregada — a app roda igual em dev e no CI.
+
+Coletores (agente Datadog, alternativa Prometheus/Grafana e monitores de
+uptime) ficam em
+[soat-fiap-oficina-infra-k8s/observability](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s/tree/main/observability).
+
 ## CI/CD na AWS (Fase 3 — US-F3-08)
 
 O [`ci-cd.yml`](.github/workflows/ci-cd.yml) da Fase 2 segue como **CI**
