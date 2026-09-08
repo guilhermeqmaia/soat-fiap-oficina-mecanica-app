@@ -1,0 +1,63 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay de AWS (US-F3-06): mesma base da Fase 2, ajustada para EKS + RDS +
+# ECR + API Gateway.
+#
+#   kubectl apply -k k8s/            -> kind/local (Fase 2)
+#   kubectl apply -k k8s-aws/ -> EKS (Fase 3)
+#
+# Pre-requisitos criados FORA do kustomize (contrato single-writer-per-Secret):
+#   Secret oficina-db  -> DATABASE_URL/DB_HOST/DB_PORT do RDS (Secrets Manager)
+#   Secret oficina-app -> JWT_SECRET e demais segredos da app
+# O CD (.github/workflows/cd-aws.yml) sincroniza os dois do Secrets Manager
+# antes do apply.
+
+namespace: oficina
+
+resources:
+  - ../k8s
+  - pdb.yaml
+
+patches:
+  # API exposta por NLB INTERNO — o unico caminho publico e o API Gateway
+  # (VPC Link -> NLB), conforme ADR-0005.
+  - path: patch-service-nlb.yaml
+  # URLs publicas (gateway) e origens de CORS.
+  - path: patch-configmap.yaml
+  # Rollout sem downtime + imagem sempre puxada do ECR.
+  - path: patch-deployment.yaml
+
+  # As SPAs admin/cliente NAO vao para o EKS nesta fase: elas consomem o
+  # gateway (unico endpoint publico) e nao teriam rota de entrada propria —
+  # subi-las aqui seria peso morto no node group. Escopo registrado na
+  # US-F3-06.
+  - patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: oficina-web-admin
+  - patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: oficina-web-cliente
+  - patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: oficina-web-admin
+  - patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: oficina-web-cliente
+
+images:
+  - name: oficina-mecanica-app
+    newName: oficina-mecanica-app # o CD faz `kustomize edit set image` com o ECR
+    newTag: latest

@@ -1,0 +1,15 @@
+# Garante capacidade durante drain de node (upgrade do node group, spot, etc.).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: oficina-app
+  labels:
+    app.kubernetes.io/name: oficina-app
+    app.kubernetes.io/part-of: oficina-mecanica
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oficina-app
+      app.kubernetes.io/component: api

@@ -1,0 +1,18 @@
+# Service da API como NLB INTERNO (provider in-tree do AWS Cloud Controller,
+# ja presente no EKS). Escolha deliberada: o AWS Load Balancer Controller
+# exigiria IRSA/OIDC, que o AWS Academy nao permite criar (ver README do
+# cluster no repo soat-fiap-oficina-infra-k8s).
+#
+# O listener deste NLB e a entrada `backend_listener_arn` do stage `gateway/`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: oficina-app
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  # Preserva o IP de origem e evita saltos extras entre nodes.
+  externalTrafficPolicy: Local

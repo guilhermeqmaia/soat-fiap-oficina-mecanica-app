@@ -1,0 +1,28 @@
+# Rollout sem downtime e imagem versionada do ECR.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oficina-app
+spec:
+  # Alinhado ao minReplicas do HPA (2) — o HPA assume a partir daqui.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0 # nenhuma reducao de capacidade durante o deploy
+      maxSurge: 1
+  template:
+    spec:
+      # Espalha as replicas entre AZs (node group multi-AZ da US-F3-05).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: oficina-app
+              app.kubernetes.io/component: api
+      containers:
+        - name: app
+          # Tag por commit (imutavel) — Always garante o pull no rollout.
+          imagePullPolicy: Always

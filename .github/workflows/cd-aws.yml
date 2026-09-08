@@ -113,15 +113,84 @@ jobs:
         if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
         run: aws eks update-kubeconfig --region "$AWS_REGION" --name "${{ vars.EKS_CLUSTER_NAME }}"
 
+      - name: Instalar kustomize
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          curl -sfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+            | bash -s -- 5.4.3 /usr/local/bin
+
+      # Contrato single-writer-per-Secret (US-F2-05): o Secrets Manager e a
+      # fonte de verdade; o cluster so recebe uma copia sincronizada aqui.
+      - name: Sincronizar Secrets (Secrets Manager -> cluster)
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        env:
+          DB_SECRET_ID: ${{ vars.DB_SECRET_ID }}
+          JWT_SECRET_ID: ${{ vars.JWT_SECRET_ID }}
+        run: |
+          set -euo pipefail
+          kubectl get namespace oficina >/dev/null 2>&1 || kubectl create namespace oficina
+
+          # --- oficina-db: DATABASE_URL do RDS (repo soat-fiap-oficina-infra-db)
+          if [ -z "${DB_SECRET_ID}" ]; then
+            echo "::error::Defina a var DB_SECRET_ID (secret do RDS no Secrets Manager)."; exit 1
+          fi
+          DB_JSON=$(aws secretsmanager get-secret-value --secret-id "$DB_SECRET_ID" \
+                      --query SecretString --output text)
+          DATABASE_URL=$(printf '%s' "$DB_JSON" | jq -r '.DATABASE_URL // empty')
+          if [ -z "$DATABASE_URL" ]; then
+            # Secret gerenciado pelo RDS (username/password/host/port/dbname).
+            DATABASE_URL=$(printf '%s' "$DB_JSON" | jq -r '
+              "postgresql://\(.username):\(.password|@uri)@\(.host):\(.port // 5432)/\(.dbname // "oficina_mecanica")?schema=public"')
+          fi
+          DB_HOST=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*@([^:/]+).*|\1|')
+          DB_PORT=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*:([0-9]+)/.*|\1|')
+          kubectl -n oficina create secret generic oficina-db \
+            --from-literal=DATABASE_URL="$DATABASE_URL" \
+            --from-literal=DB_HOST="$DB_HOST" \
+            --from-literal=DB_PORT="${DB_PORT:-5432}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # --- oficina-app: JWT compartilhado com a Lambda + tokens de webhook
+          JWT_SECRET=$(aws secretsmanager get-secret-value --secret-id "${JWT_SECRET_ID:-$DB_SECRET_ID}" \
+                        --query SecretString --output text \
+                        | jq -r 'if type=="object" then (.JWT_SECRET // empty) else . end')
+          if [ -z "$JWT_SECRET" ]; then
+            echo "::error::JWT_SECRET_ID nao resolveu um segredo — a app nao valida os tokens da Lambda."; exit 1
+          fi
+          # O kustomize da base referencia k8s/secret.yaml (nao versionado).
+          cat > k8s/secret.yaml <<YAML
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: oficina-app
+          type: Opaque
+          stringData:
+            JWT_SECRET: "${JWT_SECRET}"
+            WEBHOOK_APPROVAL_TOKEN: "${{ secrets.WEBHOOK_APPROVAL_TOKEN || 'gerado-no-deploy' }}"
+            NOTIFICATION_WEBHOOK_SECRET: "${{ secrets.NOTIFICATION_WEBHOOK_SECRET || 'gerado-no-deploy' }}"
+          YAML
+          sed -i 's/^          //' k8s/secret.yaml
+
+      - name: URLs publicas (gateway) no overlay
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          if [ -n "${{ vars.GATEWAY_URL }}" ]; then
+            sed -i "s|__GATEWAY_URL__|${{ vars.GATEWAY_URL }}|g" k8s-aws/patch-configmap.yaml
+          else
+            echo "::warning::var GATEWAY_URL ausente — links de aprovacao por e-mail ficarao sem endereco publico (output api_base_url do stage gateway/)."
+            sed -i "s|__GATEWAY_URL__|http://localhost:3000|g" k8s-aws/patch-configmap.yaml
+          fi
+
       - name: Deploy (kustomize) + migrations
         if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
         run: |
-          cd k8s
+          set -euo pipefail
+          cd k8s-aws
           kustomize edit set image "oficina-mecanica-app=$registry/$ECR_REPOSITORY:$IMAGE_TAG"
           kubectl apply -k .
-          # migrations-job e imutavel: recria a cada deploy
+          # migrations-job e imutavel: recria a cada deploy e roda ANTES do rollout
           kubectl -n oficina delete job oficina-migrations --ignore-not-found
-          kubectl -n oficina apply -f migrations-job.yaml
+          kubectl -n oficina apply -f ../k8s/migrations-job.yaml
           kubectl -n oficina wait --for=condition=complete job/oficina-migrations --timeout=300s
           kubectl -n oficina rollout status deployment/oficina-app --timeout=300s
 
@@ -131,3 +200,20 @@ jobs:
           kubectl -n oficina run smoke-${{ github.run_id }} --rm -i --restart=Never \
             --image=curlimages/curl:8.10.1 -- \
             sh -c 'curl -fsS http://oficina-app:3000/health && curl -fsS http://oficina-app:3000/health/ready'
+
+      # Fecha o contrato com o stage `gateway/`: o listener do NLB interno e a
+      # entrada `backend_listener_arn` la (repo soat-fiap-oficina-infra-k8s).
+      - name: Publicar endpoint interno para o API Gateway
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          NLB_DNS=$(kubectl -n oficina get svc oficina-app \
+                     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "### Backend interno (entrada do stage gateway/)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- NLB: \`${NLB_DNS:-pendente}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$NLB_DNS" ]; then
+            LB_ARN=$(aws elbv2 describe-load-balancers \
+                      --query "LoadBalancers[?DNSName=='${NLB_DNS}'].LoadBalancerArn" --output text)
+            LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$LB_ARN" \
+                            --query 'Listeners[0].ListenerArn' --output text 2>/dev/null || true)
+            echo "- \`backend_listener_arn\` = \`${LISTENER_ARN}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
