@@ -12,6 +12,10 @@ A separação provisioning (IaC) ↔ application deploy é exigência da Fase 2.
 | `namespace.yaml` | Namespace `oficina` |
 | `configmap.yaml` | `oficina-app-config` — env não sensíveis (`PORT`, `NODE_ENV`, `NOTIFICATION_PROVIDER`, …) |
 | `secret.yaml.example` | Template do Secret `oficina-app` — copie para `secret.yaml` (não commitado) |
+
+> **Deploy na AWS (Fase 3):** estes manifestos são a **base**; o overlay de
+> EKS (NLB interno, URLs do gateway, PDB, rollout sem downtime) vive em
+> [`k8s-aws/`](../k8s-aws/README.md) — `kubectl apply -k k8s-aws/`.
 | `migrations-job.yaml` | Job `oficina-migrations` — roda `prisma migrate deploy` |
 | `app/deployment.yaml` | Deployment `oficina-app` — 2 réplicas, probes, resources |
 | `app/service.yaml` | Service ClusterIP `oficina-app` (porta 3000) |

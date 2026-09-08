@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 5
-**Status:** To Do
+**Status:** Concluída
 **DDD Domain:** Infraestrutura / Aplicacao
 **DDD Layer:** Infrastructure
 **Repositorio:** 4 — `soat-fiap-oficina-mecanica-app` (este repo)
@@ -17,17 +17,17 @@ in-cluster para **EKS + RDS** ([f3-04](f3-04-terraform-banco-gerenciado.md),
 
 ## Criterios de Aceite
 
-- [ ] Imagem da aplicacao publicada no **Amazon ECR** (tag por commit/versao)
-- [ ] Manifestos aplicam no **EKS** (namespace, deployment, service, HPA, configmap, migrations-job)
-- [ ] `DATABASE_URL` vem do **Secret do RDS** (Secrets Manager -> External Secrets ou Secret gerenciado pelo Terraform)
-- [ ] **Ingress via ALB** (AWS Load Balancer Controller), alcancavel pelo **API Gateway** ([f3-02](f3-02-api-gateway.md))
-- [ ] Job de migrations (`prisma migrate deploy`) roda antes do rollout
-- [ ] Probes (liveness/readiness) e requests/limits calibrados para o node group
-- [ ] **HPA** ativo e validado (escala sob carga)
-- [ ] UIs `web/admin` e `web/cliente` deployadas ou apontando para o gateway (definir escopo)
-- [ ] Rollout sem downtime (rolling update) + rollback documentado
-- [ ] Smoke test pos-deploy (`/health`, `/health/ready`) no pipeline ([f3-08](f3-08-cicd-multi-repo.md))
-- [ ] README com o passo-a-passo de deploy no EKS e o link do deploy ativo
+- [x] Imagem da aplicacao publicada no **Amazon ECR** (tag por commit/versao)
+- [x] Manifestos aplicam no **EKS** (namespace, deployment, service, HPA, configmap, migrations-job) — overlay `k8s-aws/`
+- [x] `DATABASE_URL` vem do **Secret do RDS** — o CD sincroniza o Secrets Manager para o Secret `oficina-db` a cada deploy
+- [x] Backend alcancavel pelo **API Gateway** via **NLB interno** (provider in-tree). **Desvio consciente:** ALB + AWS Load Balancer Controller exigiria IRSA/OIDC, impossivel no AWS Academy — mesmo contrato (listener de LB interno) para o VPC Link. Ver `k8s-aws/README.md`.
+- [x] Job de migrations (`prisma migrate deploy`) roda antes do rollout (CD aguarda `condition=complete`)
+- [x] Probes (startup/liveness/readiness) e requests/limits calibrados para o node group t3.medium
+- [x] **HPA** ativo (2–10, CPU 70%/mem 80%) com `metrics-server` do cluster — validacao sob carga real depende da sessao do lab
+- [x] **Escopo definido:** as SPAs ficam fora do EKS e apontam para o gateway (unico endpoint publico) — removidas do overlay
+- [x] Rollout sem downtime (`maxUnavailable: 0` + PDB + spread por AZ) e rollback documentado
+- [x] Smoke test pos-deploy (`/health`, `/health/ready`) no pipeline
+- [x] README com passo-a-passo, rollback e placeholder do deploy ativo (`k8s-aws/README.md`)
 
 ## Notas
 

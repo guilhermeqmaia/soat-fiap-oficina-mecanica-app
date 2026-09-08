@@ -40,6 +40,7 @@ Diagramas de **componentes da aplicação**, **infraestrutura provisionada** e
 | Scripts Terraform (IaC) | [`infra/terraform/`](infra/terraform) · [`infra/terraform/README.md`](infra/terraform/README.md) |
 | Pipeline CI/CD (Fase 2 — kind) | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) |
 | Pipeline CD AWS (Fase 3 — ECR + EKS) | [`.github/workflows/cd-aws.yml`](.github/workflows/cd-aws.yml) |
+| Manifestos de deploy no EKS (Fase 3) | [`k8s-aws/`](k8s-aws/README.md) |
 | Testes de carga / escalabilidade | [`perf/`](perf) · [`perf/README.md`](perf/README.md) |
 | Collection das APIs (Swagger/OpenAPI) | `http://localhost:3000/api` (com a app rodando) — ver [Collection das APIs](#collection-das-apis) |
 | Vídeo demonstrativo (≤15 min) | https://drive.google.com/file/d/1K5Qihz4IGKitT791J9-3o77F8kg_ujvd/view |
@@ -436,7 +437,8 @@ O [`ci-cd.yml`](.github/workflows/ci-cd.yml) da Fase 2 segue como **CI**
 nuvem**: push em `homolog` → homologação, push em `main` → produção.
 
 Etapas: build da imagem → **scan Trivy** (bloqueia CRITICAL) → push no **ECR**
-(tag por commit + alias do ambiente) → `kustomize set image` + `kubectl apply`
+(tag por commit + alias do ambiente) → sincroniza os Secrets do **Secrets
+Manager** → `kustomize set image` + `kubectl apply -k` [`k8s-aws/`](k8s-aws/README.md)
 no **EKS** → job de migrations → `rollout status` → smoke test
 (`/health` + `/health/ready`). Cada etapa é guardada: sem credenciais o run
 avisa e não falha; sem `EKS_CLUSTER_NAME` para no push do ECR (a chave liga na
@@ -446,7 +448,8 @@ US-F3-06).
 `AWS_SESSION_TOKEN` (AWS Academy — renovar por sessão do lab) ou `AWS_ROLE_ARN`
 (OIDC em conta própria).
 **Vars**: `AWS_REGION` (default `us-east-1`), `ECR_REPOSITORY` (default
-`oficina-mecanica-app`), `EKS_CLUSTER_NAME` (output do repo
+`oficina-mecanica-app`), `DB_SECRET_ID` e `JWT_SECRET_ID` (Secrets Manager),
+`GATEWAY_URL` (output `api_base_url` do gateway), `EKS_CLUSTER_NAME` (output do repo
 [soat-fiap-oficina-infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s)).
 
 **Deploy ativo:** URL pública = API Gateway (repo infra-k8s, output
