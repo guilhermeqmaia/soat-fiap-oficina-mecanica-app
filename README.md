@@ -155,7 +155,7 @@ A API usa JWT para proteger endpoints administrativos. Endpoints marcados com `@
 | Role | CPF (dev) | Senha (dev) |
 |---|---|---|
 | ADMIN | `529.982.247-25` | `admin123` |
-| ATENDENTE | `111.444.777-35` | `atendente123` |
+| ATENDENTE | `248.301.457-73` | `atendente123` |
 | MECANICO | `168.995.350-09` | `mecanico123` |
 | ESTOQUISTA | `746.824.883-41` | `estoquista123` |
 | CLIENTE | `390.533.447-05` | — (cliente autentica só com CPF) |
