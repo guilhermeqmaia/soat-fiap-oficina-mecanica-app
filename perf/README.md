@@ -17,15 +17,28 @@ Ver a User Story completa em
 
 ## O throttler (rate limiting) — leia antes de medir
 
-A app tem um rate limit global (`@nestjs/throttler`, 100 req/60s, com `/auth/login`
-a 5/60s). Se você martelar a API com o throttler **ligado**, o k6 mede os HTTP
-429 do throttler, **não** a app. Por isso os cenários de performance exigem a app
+A app tem um rate limit global (`@nestjs/throttler`, 100 req/60s) e um limite
+próprio na rota pública de status de OS (30/60s). Se você martelar a API com o
+throttler **ligado**, o k6 mede os HTTP 429 do throttler, **não** a app. Por isso os cenários de performance exigem a app
 subida com `THROTTLER_DISABLED=true` (hook em
 [`src/config/throttler.config.ts`](../src/config/throttler.config.ts)).
 
 Todo cenário de performance roda um **passo de sanidade anti-429** no `setup()`:
-uma rajada em `/auth/login` que **falha o teste** se aparecer qualquer 429 (sinal
-de que o throttler ficou ligado e os números estariam contaminados).
+uma rajada em `GET /ordens-servico/numero/:numero/status` (pública, 30/60s) que
+**falha o teste** se aparecer qualquer 429 (sinal de que o throttler ficou ligado
+e os números estariam contaminados).
+
+### Autenticação da suite (Fase 3)
+
+Com a app como **resource server** ([US-F3-03](../docs/user-stories/f3-03-app-resource-server.md))
+o `POST /auth/login` não existe mais. O `setup()` **assina o próprio JWT** (HS256,
+`k6/crypto`) com o mesmo segredo/issuer que a app-alvo valida — assim a suite
+mede a aplicação sem depender do gateway/Lambda:
+
+```bash
+k6 run perf/load.js -e BASE_URL=http://localhost:3000 -e JWT_SECRET="$JWT_SECRET"
+# opcionais: -e JWT_ISSUER=... -e AUTH_ROLE=ATENDENTE -e AUTH_SUB=perf-runner
+```
 
 > Exceção: `perf/throttler.js` é o teste **anti-DoS** do próprio throttler — esse
 > roda com o throttler **LIGADO** e exige que o 429 dispare.
