@@ -1,3 +1,7 @@
+// Tracing precisa ser inicializado antes de qualquer outro import (US-F3-10).
+import { iniciarTracing } from './observabilidade/tracing';
+iniciarTracing();
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
