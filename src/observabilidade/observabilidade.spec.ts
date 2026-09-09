@@ -8,6 +8,10 @@ import { OsStatusAlteradoEvent } from '../ordem-de-servico/domain/events/os-stat
 import { StatusOS } from '../ordem-de-servico/domain/value-objects/status-os.vo';
 import { registry, httpDuration, osTransicoes, integracaoResultados } from './metrics.registry';
 import { iniciarTracing } from './tracing';
+import {
+  getActiveTraceIds,
+  resetTracerBridge,
+} from '../shared/infrastructure/tracing/tracer-bridge';
 
 /** Resposta fake que emite `finish` como o Express faz ao encerrar a request. */
 class FakeResponse extends EventEmitter {
@@ -111,10 +115,25 @@ describe('OsMetricsListener', () => {
 });
 
 describe('tracing', () => {
-  afterEach(() => delete process.env.DD_TRACE_ENABLED);
+  afterEach(() => {
+    delete process.env.DD_TRACE_ENABLED;
+    resetTracerBridge();
+  });
 
   it('nao carrega o APM quando DD_TRACE_ENABLED nao esta ligado', () => {
     delete process.env.DD_TRACE_ENABLED;
     expect(() => iniciarTracing()).not.toThrow(); // no-op, sem exigir a dependencia
+    expect(getActiveTraceIds()).toBeUndefined();
+  });
+
+  it('nao derruba a app quando DD_TRACE_ENABLED=true mas dd-trace nao esta instalado', () => {
+    process.env.DD_TRACE_ENABLED = 'true';
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    expect(() => iniciarTracing()).not.toThrow();
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('[tracing] APM desabilitado'));
+    expect(getActiveTraceIds()).toBeUndefined(); // tracer nao foi registrado
+
+    stderr.mockRestore();
   });
 });

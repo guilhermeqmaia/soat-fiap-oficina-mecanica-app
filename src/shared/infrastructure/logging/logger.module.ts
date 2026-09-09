@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getCorrelationContext } from './correlation-context';
 import { REDACT_PATHS } from './redact-paths';
 import { resolveCorrelationId } from './resolve-correlation-id';
+import { getActiveTraceIds } from '../tracing/tracer-bridge';
 
 interface RequestWithUser extends IncomingMessage {
   correlationId?: string;
@@ -39,9 +40,26 @@ export function buildPinoHttpOptions(config: ConfigService): Options {
     // Todo log emitido durante uma requisicao (incluindo `new Logger().log()`
     // em services/listeners fora do pino-http) herda correlationId/traceId
     // do AsyncLocalStorage — nao apenas a linha automatica de request/response.
+    //
+    // Com APM ativo (`dd-trace`), o `traceId` vem do span REAL do tracer e os
+    // campos `dd.trace_id`/`dd.span_id` (formato que o pipeline do Datadog
+    // casa automaticamente com o trace) sao emitidos aqui — em vez de delegar
+    // ao `logInjection` do dd-trace, que dependeria dele conseguir dar patch
+    // no pino instanciado pelo nestjs-pino. Uma unica fonte de verdade.
     mixin() {
       const ctx = getCorrelationContext();
-      return ctx ? { correlationId: ctx.correlationId, traceId: ctx.traceId } : {};
+      if (!ctx) return {};
+
+      const active = getActiveTraceIds();
+      if (!active) {
+        return { correlationId: ctx.correlationId, traceId: ctx.traceId };
+      }
+
+      return {
+        correlationId: ctx.correlationId,
+        traceId: active.traceId,
+        dd: { trace_id: active.traceId, span_id: active.spanId },
+      };
     },
     // Campos padrao da US-F3-09 (method/path/statusCode/userId/role) em vez
     // dos objetos `req`/`res` verbosos default do pino-http. Usa

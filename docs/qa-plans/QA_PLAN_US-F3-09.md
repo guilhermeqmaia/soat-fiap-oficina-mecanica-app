@@ -57,6 +57,7 @@ Codigo-fonte relevante: `src/shared/infrastructure/logging/` (contexto de correl
   1. `curl -s -D- -H "traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" http://localhost:3000/health -o /dev/null | grep -i x-correlation-id`
   2. Conferir no `stdout` do servidor a linha de log dessa requisicao
 - **Expected result:** `x-correlation-id: 4bf92f3577b34da6a3ce929d0e0e4736` (trace-id extraido do `traceparent`); a linha de log da requisicao tem `"traceId":"4bf92f3577b34da6a3ce929d0e0e4736"` igual ao `correlationId`
+- **Nota (AWS):** o AWS API Gateway / ALB emitem `X-Amzn-Trace-Id` (nao `traceparent`). Repetir com `-H "X-Amzn-Trace-Id: Root=1-67891233-abcdef012345678912345678;Sampled=1"` — esperado `x-correlation-id: 1-67891233-abcdef012345678912345678` e o mesmo valor em `traceId`. Precedencia do `traceId` para APM: span ativo (`dd-trace`) → `traceparent` → `x-datadog-trace-id` → `X-Amzn-Trace-Id` → `correlationId`. Cobertura automatizada: `resolve-correlation-id.spec.ts`, `correlation-id.middleware.spec.ts`, `tracer-bridge.spec.ts`.
 
 ### TS-06: correlationId propagado em todos os logs da mesma requisicao (AsyncLocalStorage)
 - **Type:** Both
