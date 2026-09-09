@@ -6,6 +6,31 @@ Back-end MVP para sistema integrado de oficina mecânica, focado em gestão de o
 
 ---
 
+## Fase 3 — Nuvem, Segurança e Observabilidade
+
+A Fase 3 leva a solução da Fase 2 para a **AWS**: autenticação serverless por
+CPF (Lambda) atrás de um **API Gateway**, monólito no **EKS**, banco **RDS
+PostgreSQL**, segregação em **4 repositórios** com CI/CD independente e
+observabilidade com **Datadog**. Plano completo em
+[`docs/plano-execucao-fase-3.md`](docs/plano-execucao-fase-3.md).
+
+### Desenho da arquitetura (Fase 3)
+
+Diagrama de **componentes (visão de nuvem)**, diagramas de **sequência**
+(autenticação por CPF e abertura de OS) e **fluxo de deploy dos 4 repositórios**,
+com legenda linkando cada decisão às RFCs/ADRs (renderizados pelo GitHub):
+
+➡️ **[docs/arquitetura/arquitetura-fase3.md](docs/arquitetura/arquitetura-fase3.md)**
+
+| Entregável | Onde |
+|---|---|
+| Desenho da arquitetura (Fase 3) | [`docs/arquitetura/arquitetura-fase3.md`](docs/arquitetura/arquitetura-fase3.md) |
+| RFCs (nuvem, banco, autenticação) | [`docs/arquitetura/rfcs/`](docs/arquitetura/rfcs/README.md) |
+| ADRs (comunicação, HPA, resource server, observabilidade, gateway, 4 repos) | [`docs/arquitetura/adr/`](docs/arquitetura/adr/README.md) |
+| Justificativa do banco + modelo ER | [`docs/arquitetura/banco-de-dados.md`](docs/arquitetura/banco-de-dados.md) |
+
+---
+
 ## Fase 2 — Qualidade, Resiliência e Escalabilidade
 
 A Fase 2 evolui o MVP da Fase 1 para **qualidade, resiliência e escalabilidade**,
@@ -30,6 +55,7 @@ Diagramas de **componentes da aplicação**, **infraestrutura provisionada** e
 **fluxo de deploy** (renderizados pelo GitHub):
 
 ➡️ **[docs/arquitetura/arquitetura-fase2.md](docs/arquitetura/arquitetura-fase2.md)**
+(evolução para a nuvem em [arquitetura-fase3.md](docs/arquitetura/arquitetura-fase3.md))
 
 ### Entregáveis da Fase 2
 
@@ -483,10 +509,12 @@ US-F3-06).
 
 ## Documentação
 
+- **Hub de documentação (índice completo):** [`docs/README.md`](docs/README.md)
 - **Swagger:** `http://localhost:3000/api` (quando a app está rodando)
 - **RFCs (decisões técnicas — nuvem, banco, autenticação):** [`docs/arquitetura/rfcs/`](docs/arquitetura/rfcs/README.md)
 - **ADRs (decisões arquiteturais permanentes):** [`docs/arquitetura/adr/`](docs/arquitetura/adr/README.md)
+- **Banco de dados (justificativa PostgreSQL/RDS, ER, relacionamentos, índices):** [`docs/arquitetura/banco-de-dados.md`](docs/arquitetura/banco-de-dados.md)
 - **ER Diagram:** `docs/schema.dbml` (importe em [dbdiagram.io](https://dbdiagram.io))
-- **User Stories:** `docs/user-stories/`
-- **QA Plans:** `docs/qa-plans/`
-- **Event Storming:** Miro board (ver `CLAUDE.md` para o ID)
+- **User Stories:** [`docs/user-stories/`](docs/user-stories/README.md)
+- **QA Plans:** [`docs/qa-plans/`](docs/qa-plans/README.md)
+- **Event Storming:** [Miro board (público)](https://miro.com/app/board/uXjVGwyI88w=/?share_link_id=464407873082)

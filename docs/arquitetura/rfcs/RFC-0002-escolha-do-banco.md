@@ -52,7 +52,10 @@ banco gerenciado com HA.
 - Repositório dedicado de infra: `soat-fiap-oficina-infra-db` (US-F3-04),
   com contrato de saída `DATABASE_URL` via Secrets Manager.
 - Acesso **somente** de dentro da VPC (security groups: EKS nodes + Lambda).
-- A justificativa formal + modelo relacional/ER ficam na US-F3-DOC-04
-  (`docs/schema.dbml` é a fonte do ER).
+- A **justificativa formal detalhada** (requisitos × alternativas), o
+  diagrama ER, a explicação de cada relacionamento e a estratégia de
+  índices/consistência estão em
+  [`docs/arquitetura/banco-de-dados.md`](../banco-de-dados.md) (US-F3-DOC-04);
+  `docs/schema.dbml` é a fonte do ER.
 - O job de migrations (`prisma migrate deploy`) do deploy no EKS passa a
   apontar para o RDS.
