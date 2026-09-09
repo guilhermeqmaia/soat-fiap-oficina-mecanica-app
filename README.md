@@ -22,6 +22,26 @@ com legenda linkando cada decisão às RFCs/ADRs (renderizados pelo GitHub):
 
 ➡️ **[docs/arquitetura/arquitetura-fase3.md](docs/arquitetura/arquitetura-fase3.md)**
 
+### Onde este repositório entra
+
+```mermaid
+flowchart LR
+    C["Cliente / Staff"] --> GW["API Gateway<br/>(repo 2)"]
+    GW -->|POST /auth| L["Lambda de CPF<br/>(repo 1)"]
+    GW -->|VPC Link| APP["**Aplicação NestJS**<br/>(este repo)"]
+    APP --> DB[("RDS PostgreSQL<br/>(repo 3)")]
+    L --> DB
+    APP -.métricas/traces.-> OBS["Datadog<br/>(repo 2)"]
+    style APP fill:#e3f2fd,stroke:#1565c0,stroke-width:3px
+```
+
+| Repositório | Papel |
+|---|---|
+| [1 · auth-lambda](https://github.com/guilhermeqmaia/soat-fiap-oficina-auth-lambda) | emite o JWT (CPF) e valida no gateway |
+| [2 · infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s) | API Gateway, cluster EKS e observabilidade |
+| [3 · infra-db](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db) | RDS PostgreSQL gerenciado |
+| **4 · este repo** | **API NestJS, manifestos K8s e documentação da arquitetura** |
+
 | Entregável | Onde |
 |---|---|
 | Desenho da arquitetura (Fase 3) | [`docs/arquitetura/arquitetura-fase3.md`](docs/arquitetura/arquitetura-fase3.md) |
