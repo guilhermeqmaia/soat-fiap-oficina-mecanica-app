@@ -6,6 +6,31 @@ Back-end MVP para sistema integrado de oficina mecânica, focado em gestão de o
 
 ---
 
+## Fase 3 — Nuvem, Segurança e Observabilidade
+
+A Fase 3 leva a solução da Fase 2 para a **AWS**: autenticação serverless por
+CPF (Lambda) atrás de um **API Gateway**, monólito no **EKS**, banco **RDS
+PostgreSQL**, segregação em **4 repositórios** com CI/CD independente e
+observabilidade com **Datadog**. Plano completo em
+[`docs/plano-execucao-fase-3.md`](docs/plano-execucao-fase-3.md).
+
+### Desenho da arquitetura (Fase 3)
+
+Diagrama de **componentes (visão de nuvem)**, diagramas de **sequência**
+(autenticação por CPF e abertura de OS) e **fluxo de deploy dos 4 repositórios**,
+com legenda linkando cada decisão às RFCs/ADRs (renderizados pelo GitHub):
+
+➡️ **[docs/arquitetura/arquitetura-fase3.md](docs/arquitetura/arquitetura-fase3.md)**
+
+| Entregável | Onde |
+|---|---|
+| Desenho da arquitetura (Fase 3) | [`docs/arquitetura/arquitetura-fase3.md`](docs/arquitetura/arquitetura-fase3.md) |
+| RFCs (nuvem, banco, autenticação) | [`docs/arquitetura/rfcs/`](docs/arquitetura/rfcs/README.md) |
+| ADRs (comunicação, HPA, resource server, observabilidade, gateway, 4 repos) | [`docs/arquitetura/adr/`](docs/arquitetura/adr/README.md) |
+| Justificativa do banco + modelo ER | [`docs/arquitetura/banco-de-dados.md`](docs/arquitetura/banco-de-dados.md) |
+
+---
+
 ## Fase 2 — Qualidade, Resiliência e Escalabilidade
 
 A Fase 2 evolui o MVP da Fase 1 para **qualidade, resiliência e escalabilidade**,
@@ -30,6 +55,7 @@ Diagramas de **componentes da aplicação**, **infraestrutura provisionada** e
 **fluxo de deploy** (renderizados pelo GitHub):
 
 ➡️ **[docs/arquitetura/arquitetura-fase2.md](docs/arquitetura/arquitetura-fase2.md)**
+(evolução para a nuvem em [arquitetura-fase3.md](docs/arquitetura/arquitetura-fase3.md))
 
 ### Entregáveis da Fase 2
 
@@ -38,7 +64,9 @@ Diagramas de **componentes da aplicação**, **infraestrutura provisionada** e
 | Desenho da arquitetura | [`docs/arquitetura/arquitetura-fase2.md`](docs/arquitetura/arquitetura-fase2.md) |
 | Manifestos Kubernetes | [`k8s/`](k8s) · [`k8s/README.md`](k8s/README.md) |
 | Scripts Terraform (IaC) | [`infra/terraform/`](infra/terraform) · [`infra/terraform/README.md`](infra/terraform/README.md) |
-| Pipeline CI/CD | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) |
+| Pipeline CI/CD (Fase 2 — kind) | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) |
+| Pipeline CD AWS (Fase 3 — ECR + EKS) | [`.github/workflows/cd-aws.yml`](.github/workflows/cd-aws.yml) |
+| Manifestos de deploy no EKS (Fase 3) | [`k8s-aws/`](k8s-aws/README.md) |
 | Testes de carga / escalabilidade | [`perf/`](perf) · [`perf/README.md`](perf/README.md) |
 | Collection das APIs (Swagger/OpenAPI) | `http://localhost:3000/api` (com a app rodando) — ver [Collection das APIs](#collection-das-apis) |
 | Vídeo demonstrativo (≤15 min) | https://drive.google.com/file/d/1K5Qihz4IGKitT791J9-3o77F8kg_ujvd/view |
@@ -101,7 +129,7 @@ cp .env.example .env
 | `DATABASE_URL` | String de conexão PostgreSQL | `postgresql://postgres:postgres@localhost:5432/oficina_mecanica?schema=public` |
 | `PORT` | Porta da API | `3000` |
 | `JWT_SECRET` | **Obrigatória.** Chave secreta do JWT | — (a app falha em iniciar sem esta variável) |
-| `JWT_EXPIRES_IN` | Expiração do token | `1h` |
+| `JWT_ISSUER` | Claim `iss` aceita nos tokens (emissor = Lambda de CPF) | `oficina-auth-lambda` |
 | `PUBLIC_BASE_URL` | URL pública usada nos links enviados em notificações | `http://localhost:3000` |
 | `NOTIFICATION_PROVIDER` | Adapter de notificação: `mock` ou `webhook`. Sem valor, usa `mock` em desenvolvimento e `webhook` em produção | `mock` em dev, `webhook` em prod |
 | `NOTIFICATION_WEBHOOK_URL` | URL de destino do POST outbound de notificação. Para demo, use uma URL de `https://webhook.site/` ou RequestBin | — |
@@ -185,34 +213,34 @@ A API usa JWT para proteger endpoints administrativos. Endpoints marcados com `@
 >
 > Em produção, crie o administrador inicial por um canal seguro/manual.
 
-| Role | Email | Senha (dev) |
+| Role | CPF (dev) | Senha (dev) |
 |---|---|---|
-| ADMIN | `admin@oficina.com` | `admin123` |
-| ATENDENTE | `atendente@oficina.com` | `atendente123` |
-| MECANICO | `mecanico@oficina.com` | `mecanico123` |
-| ESTOQUISTA | `estoquista@oficina.com` | `estoquista123` |
-| CLIENTE | `cliente@oficina.com` | `cliente123` |
+| ADMIN | `529.982.247-25` | `admin123` |
+| ATENDENTE | `248.301.457-73` | `atendente123` |
+| MECANICO | `168.995.350-09` | `mecanico123` |
+| ESTOQUISTA | `746.824.883-41` | `estoquista123` |
+| CLIENTE | `390.533.447-05` | — (cliente autentica só com CPF) |
 
-### Fazendo login
+### Fazendo login (Fase 3 — resource server)
+
+**A aplicação não emite mais tokens** ([US-F3-03](docs/user-stories/f3-03-app-resource-server.md)):
+o login é por **CPF** na Lambda atrás do API Gateway
+(repo [soat-fiap-oficina-auth-lambda](https://github.com/guilhermeqmaia/soat-fiap-oficina-auth-lambda)).
 
 ```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@oficina.com","senha":"admin123"}'
+# Cliente (só CPF) / Staff (CPF + senha) — na URL pública do gateway:
+curl -X POST "$GATEWAY_URL/auth" -H "Content-Type: application/json" \
+  -d '{"cpf":"529.982.247-25","senha":"admin123"}'
 ```
 
-Resposta:
+**Desenvolvimento local** (sem gateway): gere um token com o mesmo `JWT_SECRET`:
 
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-  "usuario": {
-    "id": "uuid",
-    "nome": "Admin Oficina",
-    "email": "admin@oficina.com",
-    "role": "ADMIN"
-  }
-}
+```bash
+node -e "console.log(require('jsonwebtoken').sign(
+  { cpf: '52998224725', nome: 'Admin', role: 'ADMIN' },
+  process.env.JWT_SECRET,
+  { algorithm: 'HS256', subject: 'dev-admin', issuer: 'oficina-auth-lambda', expiresIn: 3600 }
+))"
 ```
 
 ### Usando o token
@@ -462,10 +490,66 @@ com as dependências apontando para o domínio (Clean Architecture).
 
 ---
 
+## Observabilidade (Fase 3 — US-F3-10)
+
+A aplicação é instrumentada de forma **agnóstica de fornecedor** (ADR-0004):
+
+| Sinal | Onde |
+|---|---|
+| **Latência por rota** (p50/p95/p99) | `oficina_http_request_duration_seconds` em `GET /metrics` |
+| **CPU/memória/event loop do processo** | métricas padrão do `prom-client` (prefixo `oficina_`) |
+| **Volume de OS por transição de status** | `oficina_os_transicoes_total{de,para}` |
+| **Erros de integração** (notificação/webhook) | `oficina_integracoes_total{integracao,resultado}` |
+| **Traces (APM)** correlacionados aos logs | `dd-trace` com `logInjection`, ativado por `DD_TRACE_ENABLED=true` |
+| **Correlação de requisições** | header `x-correlation-id` (US-F3-09) |
+
+```bash
+curl -s localhost:3000/metrics | grep oficina_http_request_duration_seconds_count
+```
+
+O `/metrics` é `@Public()` porque quem faz scrape é o **agente dentro do
+cluster**; como não está na lista de rotas públicas do API Gateway, continua
+inalcançável pela internet. O tracing é **opcional**: sem `DD_TRACE_ENABLED` a
+dependência do APM nem é carregada — a app roda igual em dev e no CI.
+
+Coletores (agente Datadog, alternativa Prometheus/Grafana e monitores de
+uptime) ficam em
+[soat-fiap-oficina-infra-k8s/observability](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s/tree/main/observability).
+
+## CI/CD na AWS (Fase 3 — US-F3-08)
+
+O [`ci-cd.yml`](.github/workflows/ci-cd.yml) da Fase 2 segue como **CI**
+(testes com gate de 80% + build + prova de deploy em kind efêmero). O
+[`cd-aws.yml`](.github/workflows/cd-aws.yml) faz o **deploy automático na
+nuvem**: push em `homolog` → homologação, push em `main` → produção.
+
+Etapas: build da imagem → **scan Trivy** (bloqueia CRITICAL) → push no **ECR**
+(tag por commit + alias do ambiente) → sincroniza os Secrets do **Secrets
+Manager** → `kustomize set image` + `kubectl apply -k` [`k8s-aws/`](k8s-aws/README.md)
+no **EKS** → job de migrations → `rollout status` → smoke test
+(`/health` + `/health/ready`). Cada etapa é guardada: sem credenciais o run
+avisa e não falha; sem `EKS_CLUSTER_NAME` para no push do ECR (a chave liga na
+US-F3-06).
+
+**Secrets** (por ambiente): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_SESSION_TOKEN` (AWS Academy — renovar por sessão do lab) ou `AWS_ROLE_ARN`
+(OIDC em conta própria).
+**Vars**: `AWS_REGION` (default `us-east-1`), `ECR_REPOSITORY` (default
+`oficina-mecanica-app`), `DB_SECRET_ID` e `JWT_SECRET_ID` (Secrets Manager),
+`GATEWAY_URL` (output `api_base_url` do gateway), `EKS_CLUSTER_NAME` (output do repo
+[soat-fiap-oficina-infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s)).
+
+**Deploy ativo:** URL pública = API Gateway (repo infra-k8s, output
+`api_base_url`). <!-- atualizar com a URL após o primeiro apply -->
+
 ## Documentação
 
+- **Hub de documentação (índice completo):** [`docs/README.md`](docs/README.md)
 - **Swagger:** `http://localhost:3000/api` (quando a app está rodando)
+- **RFCs (decisões técnicas — nuvem, banco, autenticação):** [`docs/arquitetura/rfcs/`](docs/arquitetura/rfcs/README.md)
+- **ADRs (decisões arquiteturais permanentes):** [`docs/arquitetura/adr/`](docs/arquitetura/adr/README.md)
+- **Banco de dados (justificativa PostgreSQL/RDS, ER, relacionamentos, índices):** [`docs/arquitetura/banco-de-dados.md`](docs/arquitetura/banco-de-dados.md)
 - **ER Diagram:** `docs/schema.dbml` (importe em [dbdiagram.io](https://dbdiagram.io))
-- **User Stories:** `docs/user-stories/`
-- **QA Plans:** `docs/qa-plans/`
-- **Event Storming:** Miro board (ver `CLAUDE.md` para o ID)
+- **User Stories:** [`docs/user-stories/`](docs/user-stories/README.md)
+- **QA Plans:** [`docs/qa-plans/`](docs/qa-plans/README.md)
+- **Event Storming:** [Miro board (público)](https://miro.com/app/board/uXjVGwyI88w=/?share_link_id=464407873082)

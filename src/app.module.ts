@@ -22,9 +22,11 @@ import { UsuarioModule } from './usuario/usuario.module';
 import { NotificacaoModule } from './notificacao/notificacao.module';
 import { LoggerModule } from './shared/infrastructure/logging/logger.module';
 import { CorrelationIdMiddleware } from './shared/infrastructure/correlation-id.middleware';
+import { ObservabilidadeModule } from './observabilidade/observabilidade.module';
 
 @Module({
   imports: [
+    ObservabilidadeModule,
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     LoggerModule,
     EventEmitterModule.forRoot(),

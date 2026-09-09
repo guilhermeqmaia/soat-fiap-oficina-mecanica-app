@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 3
-**Status:** To Do
+**Status:** Concluída
 **DDD Domain:** Documentacao
 **DDD Layer:** —
 **Repositorio:** 4 — `docs/`
@@ -17,13 +17,13 @@ infra (Onda 0 do [plano](../plano-execucao-fase-3.md)).
 
 ## Criterios de Aceite
 
-- [ ] Diretorio `docs/arquitetura/rfcs/` criado com um template padrao (contexto, opcoes, decisao, consequencias, status)
-- [ ] Indice das RFCs (`docs/arquitetura/rfcs/README.md`)
-- [ ] **RFC — Escolha da nuvem**: AWS x GCP x Azure x local; criterios (acesso de estudante, EKS/RDS pre-existente, custo), decisao = **AWS**
-- [ ] **RFC — Escolha do banco**: PostgreSQL gerenciado (RDS) x outros; compatibilidade com migrations Prisma, ACID, HA; decisao = **RDS PostgreSQL** (referencia [f3-doc-04](f3-doc-04-justificativa-banco-er.md))
-- [ ] **RFC — Estrategia de autenticacao**: Lambda CPF como unico emissor de JWT; API Gateway (AWS API Gateway x Kong x Traefik); **como o staff autentica** (questao em aberto do plano); expiracao/claims do token
-- [ ] Cada RFC com status (`Proposta`/`Aceita`/`Substituida`) e data
-- [ ] RFCs linkadas no README principal e no indice de docs ([f3-doc-06](f3-doc-06-indice-docs-readme.md))
+- [x] Diretorio `docs/arquitetura/rfcs/` criado com um template padrao (contexto, opcoes, decisao, consequencias, status)
+- [x] Indice das RFCs (`docs/arquitetura/rfcs/README.md`)
+- [x] **RFC — Escolha da nuvem**: AWS x GCP x Azure x local; criterios (acesso de estudante, EKS/RDS pre-existente, custo), decisao = **AWS**
+- [x] **RFC — Escolha do banco**: PostgreSQL gerenciado (RDS) x outros; compatibilidade com migrations Prisma, ACID, HA; decisao = **RDS PostgreSQL** (referencia [f3-doc-04](f3-doc-04-justificativa-banco-er.md))
+- [x] **RFC — Estrategia de autenticacao**: Lambda CPF como unico emissor de JWT; API Gateway (AWS API Gateway x Kong x Traefik); **como o staff autentica** (questao em aberto do plano); expiracao/claims do token
+- [x] Cada RFC com status (`Proposta`/`Aceita`/`Substituida`) e data
+- [x] RFCs linkadas no README principal e no indice de docs ([f3-doc-06](f3-doc-06-indice-docs-readme.md))
 
 ## Notas
 

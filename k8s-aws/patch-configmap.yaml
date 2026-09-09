@@ -1,0 +1,23 @@
+# URLs publicas na topologia da Fase 3.
+#
+# `__GATEWAY_URL__` e substituido pelo CD (cd-aws.yml) com a var
+# GATEWAY_URL = output `api_base_url` do stage `gateway/`
+# (repo soat-fiap-oficina-infra-k8s). Sem ela o CD avisa e mantem o valor
+# padrao — os links de aprovacao por e-mail so funcionam apontando para o
+# gateway, que e o unico endereco publico da solucao.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-app-config
+data:
+  # Base dos links enviados nas notificacoes (webhooks de aprovacao da OS).
+  PUBLIC_BASE_URL: "__GATEWAY_URL__"
+  # Origens das SPAs + o proprio gateway (CORS).
+  WEB_ORIGINS: "__GATEWAY_URL__,http://localhost:5173,http://localhost:5174"
+  # Emissor aceito nos tokens — a Lambda de CPF (US-F3-01/03).
+  JWT_ISSUER: "oficina-auth-lambda"
+  # APM (US-F3-10): o agente do Datadog roda no cluster (repo infra-k8s,
+  # observability/). Fora do EKS estas vars nao existem e o tracing fica off.
+  DD_TRACE_ENABLED: "true"
+  DD_SERVICE: "oficina-mecanica-app"
+  DD_ENV: "producao"

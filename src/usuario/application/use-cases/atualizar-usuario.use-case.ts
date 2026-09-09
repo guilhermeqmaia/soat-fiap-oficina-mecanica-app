@@ -9,6 +9,7 @@ import { USUARIO_GATEWAY, UsuarioGateway } from '../gateways/usuario.gateway';
 import { UsuarioOutput } from '../usuario-output';
 
 export interface AtualizarUsuarioInput {
+  cpf?: string;
   id: string;
   nome?: string;
   email?: string;
@@ -46,6 +47,7 @@ export class AtualizarUsuarioUseCase
       id: usuario.id,
       nome: input.nome || usuario.nome,
       email: input.email || usuario.email.value,
+      cpf: input.cpf !== undefined ? input.cpf : usuario.cpf,
       senhaHash: usuario.senhaHash,
       role: (input.role as Role) || usuario.role,
       ativo: input.ativo !== undefined ? input.ativo : usuario.ativo,
@@ -56,6 +58,7 @@ export class AtualizarUsuarioUseCase
       id: updated.id,
       nome: updated.nome,
       email: updated.email.value,
+      cpf: updated.cpf,
       role: updated.role,
       ativo: updated.ativo,
     };

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Controller,
   Get,
   Param,
@@ -17,7 +18,7 @@ import {
 import { Role } from '../../auth/domain/role.enum';
 import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
 import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
-import { Usuario } from '../../auth/domain/usuario.entity';
+import { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { ListarNotificacoesPorCpfCnpjUseCase } from '../application/use-cases/listar-notificacoes-por-cpf-cnpj.use-case';
 import { NotificacaoResponseDto } from './dto/notificacao-response.dto';
 import { QueryNotificacaoDto } from './dto/query-notificacao.dto';
@@ -51,17 +52,20 @@ export class ClienteNotificacaoController {
   async findByCpfCnpj(
     @Param('cpfCnpj') cpfCnpj: string,
     @Query() query: QueryNotificacaoDto,
-    @CurrentUser() usuario: Usuario,
+    @CurrentUser() usuario: AuthenticatedUser,
   ) {
     if (!CPF_CNPJ_DIGITS_REGEX.test(cpfCnpj)) {
       throw new BadRequestException(
         'CPF/CNPJ deve conter apenas digitos (11 para CPF ou 14 para CNPJ)',
       );
     }
+    // Resource server (US-F3-03): posse provada pela claim `cpf` do token.
+    if (!usuario.possuiDocumento(cpfCnpj)) {
+      throw new ForbiddenException('CPF/CNPJ nao pertence ao usuario autenticado');
+    }
 
     const result = await this.useCase.execute({
       cpfCnpj,
-      emailCliente: usuario.email.value,
       page: query.page ?? 1,
       limit: query.limit ?? 20,
     });

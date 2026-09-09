@@ -9,10 +9,19 @@ export const BASE_URL = (__ENV.BASE_URL || 'http://localhost:3000').replace(
   '',
 );
 
-// Usuario de seed usado UMA vez (no setup) para obter o JWT.
-// Ver prisma/seeds/03_test_users.sql (atendente pode listar/criar OS).
-export const AUTH_EMAIL = __ENV.AUTH_EMAIL || 'atendente@oficina.com';
-export const AUTH_SENHA = __ENV.AUTH_SENHA || 'atendente123';
+// Resource server (US-F3-03): a app NAO emite mais tokens — quem emite e a
+// Lambda de CPF. Para nao acoplar a suite de carga ao gateway/Lambda, o k6
+// assina o proprio JWT com o MESMO segredo/issuer que a app-alvo valida
+// (ver login() em helpers.js).
+export const JWT_SECRET = __ENV.JWT_SECRET || 'test-jwt-secret-ci-0123456789abcdef-strong';
+export const JWT_ISSUER = __ENV.JWT_ISSUER || 'oficina-auth-lambda';
+export const AUTH_SUB = __ENV.AUTH_SUB || 'perf-atendente';
+export const AUTH_ROLE = __ENV.AUTH_ROLE || 'ATENDENTE';
+
+// Rota PUBLICA com throttle proprio (30/60s) — alvo dos cenarios que exercitam
+// o rate limit, no lugar do antigo /auth/login (removido na US-F3-03).
+export const THROTTLE_PROBE_PATH =
+  __ENV.THROTTLE_PROBE_PATH || '/ordens-servico/numero/PERF-PROBE/status';
 
 // IDs de seed para o cenario de escrita (POST /ordens-servico).
 // Ver prisma/seeds/01_test_data.sql.

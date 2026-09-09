@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AppModule } from '../app.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../auth/domain/role.enum';
+import { mintToken } from '../auth/testing/token-factory';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 
 jest.setTimeout(120000);
@@ -22,7 +22,6 @@ describe('Servico (e2e)', () => {
   beforeAll(async () => {
     const databaseUrl = await startTestDatabase();
     process.env.DATABASE_URL = databaseUrl;
-    process.env.JWT_SECRET = 'test-secret';
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -39,29 +38,12 @@ describe('Servico (e2e)', () => {
     await prisma.servico.deleteMany();
     await prisma.usuario.deleteMany();
 
-    const users = [
-      { nome: 'Admin',      email: 'admin.svc@oficina.com',  senha: 'admin123', role: Role.ADMIN },
-      { nome: 'Atendente',  email: 'atend.svc@oficina.com',  senha: 'atend123', role: Role.ATENDENTE },
-      { nome: 'Mecanico',   email: 'mec.svc@oficina.com',    senha: 'mec123',   role: Role.MECANICO },
-      { nome: 'Estoquista', email: 'estq.svc@oficina.com',   senha: 'estq123',  role: Role.ESTOQUISTA },
-      { nome: 'Cliente',    email: 'cliente.svc@oficina.com',senha: 'cli123',   role: Role.CLIENTE },
-    ];
-
-    for (const u of users) {
-      const senhaHash = await bcrypt.hash(u.senha, 10);
-      await prisma.usuario.create({ data: { nome: u.nome, email: u.email, senhaHash, role: u.role, ativo: true } });
-    }
-
-    const login = async (email: string, senha: string) => {
-      const res = await request(app.getHttpServer()).post('/auth/login').send({ email, senha });
-      return res.body.accessToken as string;
-    };
-
-    adminToken     = await login('admin.svc@oficina.com',   'admin123');
-    atendenteToken = await login('atend.svc@oficina.com',   'atend123');
-    mecanicoToken  = await login('mec.svc@oficina.com',     'mec123');
-    estoquistaToken = await login('estq.svc@oficina.com',   'estq123');
-    clienteToken   = await login('cliente.svc@oficina.com', 'cli123');
+    // Resource server (US-F3-03): tokens minted directly, no login endpoint
+    adminToken      = mintToken({ sub: 'admin-svc',      nome: 'Admin',      role: Role.ADMIN });
+    atendenteToken  = mintToken({ sub: 'atendente-svc',  nome: 'Atendente',  role: Role.ATENDENTE });
+    mecanicoToken   = mintToken({ sub: 'mecanico-svc',   nome: 'Mecanico',   role: Role.MECANICO });
+    estoquistaToken = mintToken({ sub: 'estoquista-svc', nome: 'Estoquista', role: Role.ESTOQUISTA });
+    clienteToken    = mintToken({ sub: 'cliente-svc',    nome: 'Cliente',    role: Role.CLIENTE });
   });
 
   afterAll(async () => {

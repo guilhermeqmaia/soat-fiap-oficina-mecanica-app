@@ -30,10 +30,10 @@ Cada um dos 4 repos ([f3-07](f3-07-segregacao-repositorios.md)) com README conte
 
 Por repo:
 
-- [ ] `oficina-auth-lambda`: contrato de entrada/saida da funcao (CPF -> JWT), variaveis, como testar/deployar
-- [ ] `oficina-infra-k8s`: recursos EKS criados, variaveis, como aplicar/destruir, diagrama de rede
-- [ ] `oficina-infra-db`: recursos RDS criados, secrets, como aplicar/destruir, contrato de `DATABASE_URL`
-- [ ] `oficina-mecanica-app`: execucao local, deploy no EKS, link Swagger, dependencia dos outros repos
+- [ ] `soat-fiap-oficina-auth-lambda`: contrato de entrada/saida da funcao (CPF -> JWT), variaveis, como testar/deployar
+- [ ] `soat-fiap-oficina-infra-k8s`: recursos EKS criados, variaveis, como aplicar/destruir, diagrama de rede
+- [ ] `soat-fiap-oficina-infra-db`: recursos RDS criados, secrets, como aplicar/destruir, contrato de `DATABASE_URL`
+- [ ] `soat-fiap-oficina-mecanica-app`: execucao local, deploy no EKS, link Swagger, dependencia dos outros repos
 
 ## Notas
 

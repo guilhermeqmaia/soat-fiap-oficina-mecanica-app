@@ -7,7 +7,7 @@
 **Status:** To Do
 **DDD Domain:** Infraestrutura
 **DDD Layer:** —
-**Repositorio:** 2 — `oficina-infra-k8s`
+**Repositorio:** 2 — `soat-fiap-oficina-infra-k8s`
 
 ## Contexto
 

@@ -17,10 +17,10 @@ proprio com **deploy automatico** para AWS. Autenticacao dos pipelines na AWS vi
 
 ## Criterios de Aceite
 
-- [ ] **`oficina-auth-lambda`** — CI (lint/test/build) + CD (deploy da Lambda; publicar versao/alias)
-- [ ] **`oficina-infra-k8s`** — CI (`fmt`/`validate`/`plan` no PR) + CD (`apply` no merge)
-- [ ] **`oficina-infra-db`** — CI (`fmt`/`validate`/`plan` no PR) + CD (`apply` no merge)
-- [ ] **`oficina-mecanica-app`** — CI (test unit/integracao + gate 80% + build imagem) + CD (push ECR + `kubectl apply` no EKS + migrations + smoke test)
+- [ ] **`soat-fiap-oficina-auth-lambda`** — CI (lint/test/build) + CD (deploy da Lambda; publicar versao/alias)
+- [ ] **`soat-fiap-oficina-infra-k8s`** — CI (`fmt`/`validate`/`plan` no PR) + CD (`apply` no merge)
+- [ ] **`soat-fiap-oficina-infra-db`** — CI (`fmt`/`validate`/`plan` no PR) + CD (`apply` no merge)
+- [ ] **`soat-fiap-oficina-mecanica-app`** — CI (test unit/integracao + gate 80% + build imagem) + CD (push ECR + `kubectl apply` no EKS + migrations + smoke test)
 - [ ] Deploy automatico por branch: `homolog` -> ambiente de homologacao; `main` -> producao
 - [ ] Autenticacao AWS via **OIDC** (federacao), sem secrets estaticos
 - [ ] `plan` do Terraform comentado no PR; `apply` apenas apos merge na branch protegida

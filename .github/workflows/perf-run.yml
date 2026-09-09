@@ -79,7 +79,7 @@ jobs:
       - name: Rodar k6 (${{ inputs.test_type }})
         run: |
           mkdir -p perf-results
-          ARGS=(-e "BASE_URL=http://localhost:3000")
+          ARGS=(-e "BASE_URL=http://localhost:3000" -e "JWT_SECRET=${JWT_SECRET}")
           [ -n "${{ inputs.duration }}" ] && ARGS+=(-e "DURATION=${{ inputs.duration }}")
           [ -n "${{ inputs.vus }}" ]      && ARGS+=(-e "VUS=${{ inputs.vus }}")
           [ "${{ inputs.write }}" = "true" ] && ARGS+=(-e "PERF_WRITE=1")

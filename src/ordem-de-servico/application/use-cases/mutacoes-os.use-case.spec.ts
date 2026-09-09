@@ -168,7 +168,7 @@ describe('OS mutation use cases', () => {
   });
 
   describe('Aprovar/Rejeitar ownership', () => {
-    it('approves without ownership check when no client email is given', async () => {
+    it('approves without ownership check when no client cpf is given', async () => {
       const os = fakeOs({ status: 'AGUARDANDO_APROVACAO' });
       const g = gatewayWith(os);
       const clienteGateway = { findById: jest.fn(), findByCpfCnpj: jest.fn() };
@@ -185,7 +185,9 @@ describe('OS mutation use cases', () => {
       const os = fakeOs({ status: 'AGUARDANDO_APROVACAO', clienteId: 'cli-1' });
       const g = gatewayWith(os);
       const clienteGateway = {
-        findById: jest.fn().mockResolvedValue({ email: 'dono@x.com' }),
+        findById: jest
+          .fn()
+          .mockResolvedValue({ cpfCnpj: { value: '52998224725' } }),
         findByCpfCnpj: jest.fn(),
       };
       await expect(
@@ -193,7 +195,7 @@ describe('OS mutation use cases', () => {
           publish: jest.fn(),
         } as any).execute({
           id: 'os-1',
-          emailClienteAutenticado: 'intruso@x.com',
+          cpfCnpjClienteAutenticado: '11144477735',
         }),
       ).rejects.toBeInstanceOf(OsNotOwnedByClienteError);
       expect(os.rejeitar).not.toHaveBeenCalled();
@@ -203,13 +205,15 @@ describe('OS mutation use cases', () => {
       const os = fakeOs({ status: 'AGUARDANDO_APROVACAO' });
       const g = gatewayWith(os);
       const clienteGateway = {
-        findById: jest.fn().mockResolvedValue({ email: 'Dono@x.com' }),
+        findById: jest
+          .fn()
+          .mockResolvedValue({ cpfCnpj: { value: '52998224725' } }),
         findByCpfCnpj: jest.fn(),
       };
       await new AprovarOrcamentoUseCase(g as any, clienteGateway as any, {
         publish: jest.fn(),
       } as any).execute(
-        { id: 'os-1', emailClienteAutenticado: 'dono@x.com' },
+        { id: 'os-1', cpfCnpjClienteAutenticado: '529.982.247-25' },
       );
       expect(os.aprovar).toHaveBeenCalled();
     });

@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UseCase } from '../../../shared/application/use-case';
 import { ClienteNotFoundError } from '../../domain/errors/cliente-not-found.error';
-import { ClienteNotOwnedByUsuarioError } from '../../domain/errors/cliente-not-owned-by-usuario.error';
 import {
   ORDEM_DE_SERVICO_GATEWAY,
   OrdemDeServicoGateway,
@@ -15,7 +14,6 @@ import { OsHistoryItem } from '../views/ordem-de-servico-views';
 
 export interface ListarHistoricoPorCpfCnpjInput {
   cpfCnpj: string;
-  emailClienteAutenticado: string;
   page?: number;
   limit?: number;
 }
@@ -35,16 +33,11 @@ export class ListarHistoricoPorCpfCnpjUseCase
   async execute(
     input: ListarHistoricoPorCpfCnpjInput,
   ): Promise<PaginatedResult<OsHistoryItem>> {
+    // A posse (CPF do token == CPF consultado) e checada no controller a
+    // partir da claim — resource server (US-F3-03). Aqui so resta o 404.
     const cliente = await this.clienteGateway.findByCpfCnpj(input.cpfCnpj);
     if (!cliente) {
       throw new ClienteNotFoundError(input.cpfCnpj);
-    }
-    if (
-      !cliente.email ||
-      cliente.email.toLowerCase() !==
-        input.emailClienteAutenticado.toLowerCase()
-    ) {
-      throw new ClienteNotOwnedByUsuarioError(input.cpfCnpj);
     }
 
     const result = await this.gateway.findAll({

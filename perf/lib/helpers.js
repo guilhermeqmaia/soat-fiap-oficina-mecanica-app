@@ -3,12 +3,17 @@
 // geracao de relatorios (JSON + HTML) via handleSummary.
 
 import http from 'k6/http';
+import crypto from 'k6/crypto';
+import encoding from 'k6/encoding';
 import { check, fail } from 'k6';
 import { Counter } from 'k6/metrics';
 import {
   BASE_URL,
-  AUTH_EMAIL,
-  AUTH_SENHA,
+  JWT_SECRET,
+  JWT_ISSUER,
+  AUTH_SUB,
+  AUTH_ROLE,
+  THROTTLE_PROBE_PATH,
   SEED_CLIENTE_ID,
   SEED_VEICULO_ID,
   OUT_DIR,
@@ -28,46 +33,73 @@ function authHeaders(token) {
   return token ? { ...JSON_HEADERS, Authorization: `Bearer ${token}` } : JSON_HEADERS;
 }
 
-/** setup(): autentica UMA vez e devolve o token para os VUs reutilizarem. */
+const b64url = (value) => encoding.b64encode(value, 'rawurl');
+
+/**
+ * setup(): emite UMA vez o JWT que os VUs reutilizam.
+ *
+ * Resource server (US-F3-03): a app so VALIDA tokens (assinatura HS256, `iss`
+ * e `exp`) — quem emite e a Lambda de CPF. Assinar aqui, com o mesmo segredo
+ * da app-alvo, mantem a suite de carga medindo a APLICACAO, sem depender do
+ * gateway/Lambda nem de dado semeado de usuario.
+ */
 export function login() {
-  const res = http.post(
-    `${BASE_URL}/auth/login`,
-    JSON.stringify({ email: AUTH_EMAIL, senha: AUTH_SENHA }),
-    { headers: JSON_HEADERS, tags: { name: 'setup:login' } },
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64url(
+    JSON.stringify({
+      sub: AUTH_SUB,
+      nome: 'Perf Runner',
+      role: AUTH_ROLE,
+      iss: JWT_ISSUER,
+      iat: now,
+      exp: now + 3600,
+    }),
   );
-  const ok = check(res, { 'login 200': (r) => r.status === 200 });
-  if (!ok) {
+  const signature = crypto.hmac(
+    'sha256',
+    JWT_SECRET,
+    `${header}.${payload}`,
+    'base64rawurl',
+  );
+  const token = `${header}.${payload}.${signature}`;
+
+  // Falha cedo (e com mensagem clara) se o segredo/issuer nao casar com a app.
+  const probe = http.get(`${BASE_URL}/ordens-servico?limit=1`, {
+    headers: { ...JSON_HEADERS, Authorization: `Bearer ${token}` },
+    tags: { name: 'setup:token-probe' },
+  });
+  if (probe.status === 401) {
     fail(
-      `login falhou (status ${res.status}) em ${BASE_URL}/auth/login — ` +
-        `a app-alvo esta up e semeada (npm run seed)?`,
+      `Token rejeitado pela app-alvo (401). Confira JWT_SECRET/JWT_ISSUER do k6 ` +
+        `(-e JWT_SECRET=...) contra os da app-alvo — US-F3-03.`,
     );
   }
-  return res.json('accessToken');
+  return token;
 }
 
 /**
  * Sanidade anti-contaminacao: garante que o throttler esta DESATIVADO antes de
- * medir performance. `/auth/login` tem limite baixo (5/60s); com o throttler
- * ATIVO uma rajada curta retorna 429, com THROTTLER_DISABLED=true nao retorna
- * nenhum. Se aparecer 429 aqui, os numeros estariam contaminados -> aborta.
- * (Variante mais sensivel do criterio da US: o limite de /login e so 5.)
+ * medir performance. A rota publica de status de OS tem limite proprio
+ * (30/60s); com o throttler ATIVO uma rajada curta retorna 429, com
+ * THROTTLER_DISABLED=true nao retorna nenhum. Se aparecer 429 aqui, os numeros
+ * estariam contaminados -> aborta.
+ * (Ate a US-F3-03 o alvo era `/auth/login`, que saiu do monolito.)
  */
 export function assertThrottlerDisabled() {
-  const burst = 12;
+  const burst = 40;
   let seen429 = 0;
   for (let i = 0; i < burst; i++) {
-    const res = http.post(
-      `${BASE_URL}/auth/login`,
-      JSON.stringify({ email: 'sanity-check@perf.local', senha: 'x' }),
-      { headers: JSON_HEADERS, tags: { name: 'setup:sanity-throttler' } },
-    );
+    const res = http.get(`${BASE_URL}${THROTTLE_PROBE_PATH}`, {
+      tags: { name: 'setup:sanity-throttler' },
+    });
     if (res.status === 429) seen429++;
   }
   if (seen429 > 0) {
     fail(
-      `Sanidade anti-429 falhou: ${seen429}/${burst} respostas 429 em /auth/login. ` +
-        `O throttler ainda esta ATIVO — suba a app-alvo com THROTTLER_DISABLED=true ` +
-        `antes de medir performance.`,
+      `Sanidade anti-429 falhou: ${seen429}/${burst} respostas 429 em ` +
+        `${THROTTLE_PROBE_PATH}. O throttler ainda esta ATIVO — suba a app-alvo ` +
+        `com THROTTLER_DISABLED=true antes de medir performance.`,
     );
   }
 }

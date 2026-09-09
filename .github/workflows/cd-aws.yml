@@ -1,0 +1,219 @@
+name: CD - AWS (ECR + EKS)
+
+# Deploy automatico na nuvem (US-F3-08): push em `homolog` -> homologacao,
+# push em `main` -> producao. Build da imagem -> push no ECR -> deploy no EKS
+# (kustomize) -> migrations -> smoke test. O pipeline da Fase 2 (ci-cd.yml)
+# permanece como CI + prova de deploy em kind efemero.
+#
+# Cada etapa e guardada: sem credenciais AWS o run avisa e nao falha; sem
+# EKS_CLUSTER_NAME o deploy para no push do ECR (a US-F3-06 liga a chave).
+
+on:
+  push:
+    branches: [main, homolog]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-aws-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      env_name: ${{ steps.map.outputs.env_name }}
+      tag_suffix: ${{ steps.map.outputs.tag_suffix }}
+    steps:
+      - id: map
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo 'env_name=production' >> "$GITHUB_OUTPUT"
+            echo 'tag_suffix=prod' >> "$GITHUB_OUTPUT"
+          else
+            echo 'env_name=homolog' >> "$GITHUB_OUTPUT"
+            echo 'tag_suffix=homolog' >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.env_name }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'oficina-mecanica-app' }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ha credenciais AWS configuradas?
+        id: guard
+        run: |
+          if [ -n "${{ secrets.AWS_ROLE_ARN }}" ] || [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+            echo "::warning::Deploy AWS IGNORADO — configure os secrets (README secao CI/CD)."
+          fi
+          if [ -n "${{ vars.EKS_CLUSTER_NAME }}" ]; then
+            echo 'eks=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'eks=false' >> "$GITHUB_OUTPUT"
+            echo "::notice::EKS_CLUSTER_NAME ausente — para no push do ECR (deploy no EKS liga na US-F3-06)."
+          fi
+
+      - name: Credenciais AWS
+        if: steps.guard.outputs.configured == 'true'
+        uses: ./.github/actions/aws-credentials
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Garantir repositorio no ECR
+        if: steps.guard.outputs.configured == 'true'
+        run: |
+          aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1 \
+            || aws ecr create-repository --repository-name "$ECR_REPOSITORY" \
+                 --image-scanning-configuration scanOnPush=true >/dev/null
+          echo "registry=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Login no ECR
+        if: steps.guard.outputs.configured == 'true'
+        run: aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+
+      - name: Build da imagem
+        if: steps.guard.outputs.configured == 'true'
+        run: docker build -t "$registry/$ECR_REPOSITORY:$IMAGE_TAG" -t "$registry/$ECR_REPOSITORY:${{ needs.resolve.outputs.tag_suffix }}" .
+
+      - name: Scan de vulnerabilidades (Trivy — bloqueia CRITICAL)
+        if: steps.guard.outputs.configured == 'true'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            "$registry/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Push no ECR (tag por commit + alias do ambiente)
+        if: steps.guard.outputs.configured == 'true'
+        run: |
+          docker push "$registry/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$registry/$ECR_REPOSITORY:${{ needs.resolve.outputs.tag_suffix }}"
+          echo "Imagem: $registry/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: kubeconfig do EKS
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "${{ vars.EKS_CLUSTER_NAME }}"
+
+      - name: Instalar kustomize
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          curl -sfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+            | bash -s -- 5.4.3 /usr/local/bin
+
+      # Contrato single-writer-per-Secret (US-F2-05): o Secrets Manager e a
+      # fonte de verdade; o cluster so recebe uma copia sincronizada aqui.
+      - name: Sincronizar Secrets (Secrets Manager -> cluster)
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        env:
+          DB_SECRET_ID: ${{ vars.DB_SECRET_ID }}
+          JWT_SECRET_ID: ${{ vars.JWT_SECRET_ID }}
+        run: |
+          set -euo pipefail
+          kubectl get namespace oficina >/dev/null 2>&1 || kubectl create namespace oficina
+
+          # --- oficina-db: DATABASE_URL do RDS (repo soat-fiap-oficina-infra-db)
+          if [ -z "${DB_SECRET_ID}" ]; then
+            echo "::error::Defina a var DB_SECRET_ID (secret do RDS no Secrets Manager)."; exit 1
+          fi
+          DB_JSON=$(aws secretsmanager get-secret-value --secret-id "$DB_SECRET_ID" \
+                      --query SecretString --output text)
+          DATABASE_URL=$(printf '%s' "$DB_JSON" | jq -r '.DATABASE_URL // empty')
+          if [ -z "$DATABASE_URL" ]; then
+            # Secret gerenciado pelo RDS (username/password/host/port/dbname).
+            DATABASE_URL=$(printf '%s' "$DB_JSON" | jq -r '
+              "postgresql://\(.username):\(.password|@uri)@\(.host):\(.port // 5432)/\(.dbname // "oficina_mecanica")?schema=public"')
+          fi
+          DB_HOST=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*@([^:/]+).*|\1|')
+          DB_PORT=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*:([0-9]+)/.*|\1|')
+          kubectl -n oficina create secret generic oficina-db \
+            --from-literal=DATABASE_URL="$DATABASE_URL" \
+            --from-literal=DB_HOST="$DB_HOST" \
+            --from-literal=DB_PORT="${DB_PORT:-5432}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # --- oficina-app: JWT compartilhado com a Lambda + tokens de webhook
+          JWT_SECRET=$(aws secretsmanager get-secret-value --secret-id "${JWT_SECRET_ID:-$DB_SECRET_ID}" \
+                        --query SecretString --output text \
+                        | jq -r 'if type=="object" then (.JWT_SECRET // empty) else . end')
+          if [ -z "$JWT_SECRET" ]; then
+            echo "::error::JWT_SECRET_ID nao resolveu um segredo — a app nao valida os tokens da Lambda."; exit 1
+          fi
+          # O kustomize da base referencia k8s/secret.yaml (nao versionado).
+          cat > k8s/secret.yaml <<YAML
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: oficina-app
+          type: Opaque
+          stringData:
+            JWT_SECRET: "${JWT_SECRET}"
+            WEBHOOK_APPROVAL_TOKEN: "${{ secrets.WEBHOOK_APPROVAL_TOKEN || 'gerado-no-deploy' }}"
+            NOTIFICATION_WEBHOOK_SECRET: "${{ secrets.NOTIFICATION_WEBHOOK_SECRET || 'gerado-no-deploy' }}"
+          YAML
+          sed -i 's/^          //' k8s/secret.yaml
+
+      - name: URLs publicas (gateway) no overlay
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          if [ -n "${{ vars.GATEWAY_URL }}" ]; then
+            sed -i "s|__GATEWAY_URL__|${{ vars.GATEWAY_URL }}|g" k8s-aws/patch-configmap.yaml
+          else
+            echo "::warning::var GATEWAY_URL ausente — links de aprovacao por e-mail ficarao sem endereco publico (output api_base_url do stage gateway/)."
+            sed -i "s|__GATEWAY_URL__|http://localhost:3000|g" k8s-aws/patch-configmap.yaml
+          fi
+
+      - name: Deploy (kustomize) + migrations
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          set -euo pipefail
+          cd k8s-aws
+          kustomize edit set image "oficina-mecanica-app=$registry/$ECR_REPOSITORY:$IMAGE_TAG"
+          kubectl apply -k .
+          # migrations-job e imutavel: recria a cada deploy e roda ANTES do rollout
+          kubectl -n oficina delete job oficina-migrations --ignore-not-found
+          kubectl -n oficina apply -f ../k8s/migrations-job.yaml
+          kubectl -n oficina wait --for=condition=complete job/oficina-migrations --timeout=300s
+          kubectl -n oficina rollout status deployment/oficina-app --timeout=300s
+
+      - name: Smoke test (/health e /health/ready)
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          kubectl -n oficina run smoke-${{ github.run_id }} --rm -i --restart=Never \
+            --image=curlimages/curl:8.10.1 -- \
+            sh -c 'curl -fsS http://oficina-app:3000/health && curl -fsS http://oficina-app:3000/health/ready'
+
+      # Fecha o contrato com o stage `gateway/`: o listener do NLB interno e a
+      # entrada `backend_listener_arn` la (repo soat-fiap-oficina-infra-k8s).
+      - name: Publicar endpoint interno para o API Gateway
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          NLB_DNS=$(kubectl -n oficina get svc oficina-app \
+                     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "### Backend interno (entrada do stage gateway/)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- NLB: \`${NLB_DNS:-pendente}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$NLB_DNS" ]; then
+            LB_ARN=$(aws elbv2 describe-load-balancers \
+                      --query "LoadBalancers[?DNSName=='${NLB_DNS}'].LoadBalancerArn" --output text)
+            LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$LB_ARN" \
+                            --query 'Listeners[0].ListenerArn' --output text 2>/dev/null || true)
+            echo "- \`backend_listener_arn\` = \`${LISTENER_ARN}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi

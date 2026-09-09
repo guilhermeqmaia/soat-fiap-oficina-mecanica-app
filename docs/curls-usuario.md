@@ -6,30 +6,40 @@
 2. Obter token de autenticação (admin)
 3. Substituir `<token>` pelas variáveis nos exemplos abaixo
 
-## 1. AUTENTICAÇÃO (Login)
+## 1. AUTENTICAÇÃO (Fase 3 — via API Gateway/Lambda)
+
+> **A aplicação não emite mais tokens** (US-F3-03): o `POST /auth/login` foi
+> removido. O login é por **CPF** na Lambda atrás do API Gateway
+> (`POST {GATEWAY_URL}/auth`); staff usa **CPF + senha** (RFC-0003).
 
 ```bash
-# Login para obter JWT token
-curl -X POST http://localhost:3000/auth/login \
+# Staff (admin) — CPF + senha, na URL do gateway:
+curl -X POST "$GATEWAY_URL/auth" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@oficina.com",
+    "cpf": "529.982.247-25",
     "senha": "admin123"
   }'
 
 # Resposta:
 # {
 #   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-#   "usuario": {
-#     "id": "550e8400-e29b-41d4-a716-446655440000",
-#     "nome": "Admin Oficina",
-#     "email": "admin@oficina.com",
-#     "role": "ADMIN"
-#   }
+#   "tokenType": "Bearer",
+#   "expiresAt": "2026-01-01T12:00:00.000Z",
+#   "usuario": { "id": "...", "nome": "Admin Oficina", "cpf": "***.***.***-25", "role": "ADMIN" }
 # }
 ```
 
-**Salve o token para usar nos próximos requests**
+**Desenvolvimento local (sem gateway/Lambda):** gere um token de teste com o
+mesmo `JWT_SECRET` da app:
+
+```bash
+node -e "console.log(require('jsonwebtoken').sign(
+  { cpf: '52998224725', nome: 'Admin', role: 'ADMIN' },
+  process.env.JWT_SECRET,
+  { algorithm: 'HS256', subject: 'dev-admin', issuer: 'oficina-auth-lambda', expiresIn: 3600 }
+))"
+```
 
 ---
 
@@ -264,17 +274,12 @@ curl -X DELETE "http://localhost:3000/usuario/550e8400-e29b-41d4-a716-4466554400
 
 ## 7. FLUXO COMPLETO DE TESTE
 
-### Passo 1: Login
+### Passo 1: Token (via gateway; ver seção 1 para o modo local)
 
 ```bash
-curl -X POST http://localhost:3000/auth/login \
+TOKEN=$(curl -s -X POST "$GATEWAY_URL/auth" \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@oficina.com",
-    "senha": "admin123"
-  }' | jq -r '.accessToken' > token.txt
-
-TOKEN=$(cat token.txt)
+  -d '{"cpf": "529.982.247-25", "senha": "admin123"}' | jq -r '.accessToken')
 ```
 
 ### Passo 2: Criar novo usuário

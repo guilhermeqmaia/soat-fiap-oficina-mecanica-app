@@ -18,10 +18,10 @@ automatico. Ver o mapeamento em
 ## Criterios de Aceite
 
 - [ ] Criados/organizados os 4 repositorios:
-  1. `oficina-auth-lambda` (Function Serverless)
-  2. `oficina-infra-k8s` (Terraform do cluster EKS)
-  3. `oficina-infra-db` (Terraform do banco RDS)
-  4. `oficina-mecanica-app` (aplicacao — este repo)
+  1. `soat-fiap-oficina-auth-lambda` (Function Serverless)
+  2. `soat-fiap-oficina-infra-k8s` (Terraform do cluster EKS)
+  3. `soat-fiap-oficina-infra-db` (Terraform do banco RDS)
+  4. `soat-fiap-oficina-mecanica-app` (aplicacao — este repo)
 - [ ] Conteudo de infra migrado de `infra/terraform/` (01-cluster/02-app) para os repos 2 e 3, preservando historico quando possivel
 - [ ] **`main` protegida** em todos os repos: sem push direto, **PR obrigatorio** para merge
 - [ ] Regras de PR: pelo menos 1 aprovacao, status checks (CI) obrigatorios verdes, branch atualizada

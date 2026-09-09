@@ -7,7 +7,7 @@
 **Status:** To Do
 **DDD Domain:** Autenticacao (Bounded Context)
 **DDD Layer:** Infrastructure (funcao serverless externa ao monolito)
-**Repositorio:** 1 — `oficina-auth-lambda`
+**Repositorio:** 1 — `soat-fiap-oficina-auth-lambda`
 
 ## Contexto
 

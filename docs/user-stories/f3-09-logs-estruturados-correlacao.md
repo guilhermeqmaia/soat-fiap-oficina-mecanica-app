@@ -7,7 +7,7 @@
 **Status:** To Do
 **DDD Domain:** Observabilidade
 **DDD Layer:** Infrastructure
-**Repositorio:** 4 — `oficina-mecanica-app`
+**Repositorio:** 4 — `soat-fiap-oficina-mecanica-app`
 
 ## Criterios de Aceite
 

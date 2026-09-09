@@ -34,7 +34,7 @@ Referência do enunciado: [tech-challenges/fase-3-tech-challenge.pdf](tech-chall
 | 2 | **Cluster Kubernetes** | **Amazon EKS** com managed node group + `metrics-server` (para HPA) | Cluster gerenciado, escalável, HA multi-AZ. |
 | 3 | **Banco Gerenciado** | **Amazon RDS for PostgreSQL** (Multi-AZ) | Mantém Postgres (mesmo dialeto/migrations da Fase 1/2); ACID, backups gerenciados. Formalizada em RFC + justificativa. |
 | 4 | **Function Serverless** | **AWS Lambda** (Node.js/TypeScript) atrás do **AWS API Gateway** | Autenticação via CPF; único emissor de JWT. |
-| 5 | **Estratégia de autenticação** | **Substituir toda a autenticação pela função serverless de CPF.** A aplicação vira **resource server** (apenas valida o JWT). O `POST /auth/login` (e-mail/senha) sai do monólito. | Escolha do time. Enunciado exige auth via CPF em rota sensível. **Decisão em aberto** (resolver na RFC de auth): como autenticar **staff** (ADMIN/ATENDENTE/MECANICO/ESTOQUISTA), que hoje usam e-mail/senha — a Lambda passa a resolver também esse caso (CPF do funcionário + fator adicional, ou fluxo staff dedicado). |
+| 5 | **Estratégia de autenticação** | **Substituir toda a autenticação pela função serverless de CPF.** A aplicação vira **resource server** (apenas valida o JWT). O `POST /auth/login` (e-mail/senha) sai do monólito. | Escolha do time. Enunciado exige auth via CPF em rota sensível. **Staff resolvido** ([RFC-0003](arquitetura/rfcs/RFC-0003-estrategia-de-autenticacao.md)): o professor sancionou no fórum credenciais com senha *desde que o CPF seja validado e associado ao usuário* — staff autentica com **CPF + senha na mesma Lambda**; cliente segue só com CPF. |
 | 6 | **Observabilidade** | **Primária: Datadog** (nomeada no enunciado; APM + infra + logs + dashboards + alertas num único painel, trial cobre a demo). **Alternativa OSS: Prometheus + Grafana + OpenTelemetry** (métricas/dashboards in-cluster). | As aulas cobrem Prometheus, Grafana, Datadog e New Relic. Escolha final registrada em **ADR**. As histórias de observabilidade descrevem os **sinais** exigidos (independem do fornecedor). |
 | 7 | **Container Registry** | **Amazon ECR** (um repositório por imagem) | Integra com IAM/EKS sem credenciais extras. Alternativa: GHCR. |
 | 8 | **Granularidade das histórias de doc** | **Conjunto granular** (uma história por artefato) | Rastreabilidade no board. |
@@ -48,10 +48,10 @@ automático. Este repositório atual vira o **Repo 4 (Aplicação)**.
 
 | # | Repositório | Conteúdo | Deploy alvo | Terraform? |
 |---|---|---|---|---|
-| 1 | `oficina-auth-lambda` | Function Serverless de autenticação por CPF (código + testes) | AWS Lambda (via API Gateway) | não (a infra da Lambda pode ficar aqui ou no repo 2) |
-| 2 | `oficina-infra-k8s` | Terraform do **cluster EKS** (VPC, node groups, IAM, add-ons, HPA/metrics-server) | AWS EKS | sim |
-| 3 | `oficina-infra-db` | Terraform do **banco gerenciado** (RDS PostgreSQL, subnet group, security groups, secret) | AWS RDS | sim |
-| 4 | `oficina-mecanica-app` (este repo) | Aplicação NestJS + manifestos K8s + CI/CD de deploy no EKS | AWS EKS | não (consome outputs dos repos 2 e 3) |
+| 1 | `soat-fiap-oficina-auth-lambda` | Function Serverless de autenticação por CPF (código + testes) | AWS Lambda (via API Gateway) | não (a infra da Lambda pode ficar aqui ou no repo 2) |
+| 2 | `soat-fiap-oficina-infra-k8s` | Terraform do **cluster EKS** (VPC, node groups, IAM, add-ons, HPA/metrics-server) | AWS EKS | sim |
+| 3 | `soat-fiap-oficina-infra-db` | Terraform do **banco gerenciado** (RDS PostgreSQL, subnet group, security groups, secret) | AWS RDS | sim |
+| 4 | `soat-fiap-oficina-mecanica-app` (este repo) | Aplicação NestJS + manifestos K8s + CI/CD de deploy no EKS | AWS EKS | não (consome outputs dos repos 2 e 3) |
 
 **Regras de proteção (todos os repos):** `main` protegida (sem push direto),
 **PR obrigatório** para merge, **deploy automático** das branches de homologação

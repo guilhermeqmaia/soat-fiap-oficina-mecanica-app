@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { UseCase } from '../../../shared/application/use-case';
 import { Notificacao } from '../../domain/notificacao.entity';
 import { ClienteNotFoundError } from '../../../ordem-de-servico/domain/errors/cliente-not-found.error';
-import { ClienteNotOwnedByUsuarioError } from '../../../ordem-de-servico/domain/errors/cliente-not-owned-by-usuario.error';
 import {
   NOTIFICACAO_GATEWAY,
   NotificacaoGateway,
@@ -15,7 +14,6 @@ import {
 
 export interface ListarNotificacoesPorCpfCnpjInput {
   cpfCnpj: string;
-  emailCliente: string;
   page?: number;
   limit?: number;
 }
@@ -35,15 +33,11 @@ export class ListarNotificacoesPorCpfCnpjUseCase
   async execute(
     input: ListarNotificacoesPorCpfCnpjInput,
   ): Promise<PaginatedResult<Notificacao>> {
+    // A posse (CPF do token == CPF consultado) e checada no controller a
+    // partir da claim — resource server (US-F3-03). Aqui so resta o 404.
     const cliente = await this.clienteGateway.findByCpfCnpj(input.cpfCnpj);
     if (!cliente) {
       throw new ClienteNotFoundError(input.cpfCnpj);
-    }
-    if (
-      !cliente.email ||
-      cliente.email.toLowerCase() !== input.emailCliente.toLowerCase()
-    ) {
-      throw new ClienteNotOwnedByUsuarioError(input.cpfCnpj);
     }
     return this.gateway.findAll({
       clienteId: cliente.id,

@@ -1,10 +1,10 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import request from "supertest";
-import * as bcrypt from "bcrypt";
 import { AppModule } from "../app.module";
 import { PrismaService } from "../prisma/prisma.service";
 import { Role } from "../auth/domain/role.enum";
+import { mintToken } from "../auth/testing/token-factory";
 import { StatusOS } from "./domain/value-objects/status-os.vo";
 import {
   startTestDatabase,
@@ -13,52 +13,14 @@ import {
 
 jest.setTimeout(120000);
 
-interface TestUser {
-  nome: string;
-  email: string;
-  senha: string;
-  role: Role;
-}
-
-const USERS: Record<string, TestUser> = {
-  admin: {
-    nome: "Admin",
-    email: "admin.os@oficina.com",
-    senha: "admin123",
-    role: Role.ADMIN,
-  },
-  atendente: {
-    nome: "Atendente",
-    email: "atendente.os@oficina.com",
-    senha: "atend123",
-    role: Role.ATENDENTE,
-  },
-  mecanico: {
-    nome: "Mecanico",
-    email: "mecanico.os@oficina.com",
-    senha: "mec123",
-    role: Role.MECANICO,
-  },
-  estoquista: {
-    nome: "Estoquista",
-    email: "estoquista.os@oficina.com",
-    senha: "estq123",
-    role: Role.ESTOQUISTA,
-  },
-  cliente: {
-    nome: "Cliente",
-    email: "cliente.os@oficina.com",
-    senha: "cli123",
-    role: Role.CLIENTE,
-  },
-};
+/** CPF do cliente dono da OS (mesmo cpfCnpj do cliente semeado). */
+const CLIENTE_CPF = "52998224725";
 
 describe("OrdemDeServico (e2e)", () => {
   let app: INestApplication;
   let prisma: PrismaService;
 
   const tokens: Record<string, string> = {};
-  const userIds: Record<string, string> = {};
 
   let clienteId: string;
   let veiculoId: string;
@@ -68,7 +30,8 @@ describe("OrdemDeServico (e2e)", () => {
   beforeAll(async () => {
     const databaseUrl = await startTestDatabase();
     process.env.DATABASE_URL = databaseUrl;
-    process.env.JWT_SECRET = "test-secret";
+    // JWT_SECRET vem de src/test/jest-setup-env.ts — o mesmo valor que o
+    // ConfigModule ja validou no import do AppModule e que o mintToken usa.
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -89,28 +52,27 @@ describe("OrdemDeServico (e2e)", () => {
     await prisma.servico.deleteMany();
     await prisma.usuario.deleteMany();
 
-    for (const user of Object.values(USERS)) {
-      const senhaHash = await bcrypt.hash(user.senha, 10);
-      const created = await prisma.usuario.create({
-        data: {
-          nome: user.nome,
-          email: user.email,
-          senhaHash,
-          role: user.role,
-          ativo: true,
-        },
-      });
-      userIds[user.role] = created.id;
-    }
-    mecanicoUserId = userIds[Role.MECANICO];
+    // O mecanico ainda precisa existir no banco: atribuir-mecanico valida o
+    // usuarioId informado no body. Senha nunca e verificada (login removido).
+    const mecanico = await prisma.usuario.create({
+      data: {
+        nome: "Mecanico",
+        email: "mecanico.os@oficina.com",
+        senhaHash: "nao-usado-nos-testes",
+        role: Role.MECANICO,
+        ativo: true,
+      },
+    });
+    mecanicoUserId = mecanico.id;
 
-    for (const [key, user] of Object.entries(USERS)) {
-      const res = await request(app.getHttpServer())
-        .post("/auth/login")
-        .send({ email: user.email, senha: user.senha });
-      expect(res.status).toBe(200);
-      tokens[key] = res.body.accessToken;
-    }
+    // Resource server (US-F3-03): tokens emitidos direto nos testes com o
+    // contrato da Lambda de CPF (sem POST /auth/login). O token de CLIENTE
+    // carrega o CPF do cliente dono das OS semeadas.
+    tokens.admin = mintToken({ sub: "admin-os", nome: "Admin", role: Role.ADMIN });
+    tokens.atendente = mintToken({ sub: "atendente-os", nome: "Atendente", role: Role.ATENDENTE });
+    tokens.mecanico = mintToken({ sub: mecanicoUserId, nome: "Mecanico", role: Role.MECANICO });
+    tokens.estoquista = mintToken({ sub: "estoquista-os", nome: "Estoquista", role: Role.ESTOQUISTA });
+    tokens.cliente = mintToken({ sub: "cliente-os", nome: "Cliente", cpf: CLIENTE_CPF, role: Role.CLIENTE });
 
     const clienteRes = await request(app.getHttpServer())
       .post("/clientes")
@@ -119,7 +81,7 @@ describe("OrdemDeServico (e2e)", () => {
         nome: "Joao Silva",
         cpfCnpj: "529.982.247-25",
         telefone: "11999990000",
-        email: USERS.cliente.email,
+        email: "cliente.os@oficina.com",
       });
     expect(clienteRes.status).toBe(201);
     clienteId = clienteRes.body.id;

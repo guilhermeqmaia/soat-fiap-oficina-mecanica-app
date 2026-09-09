@@ -133,8 +133,8 @@ Notion import manifest: `docs/user-stories/f3-notion-import.md`.
 | US-F3-DOC-07 | QA Plans (backfill + Fase 3) | 5 | 5 | app/docs |
 | US-F3-12 | Delivery: video + PDF + soat-architecture | 2 | 6 | all |
 
-**Phase 3 repos:** `oficina-auth-lambda` (1), `oficina-infra-k8s` (2),
-`oficina-infra-db` (3), `oficina-mecanica-app` (4, this repo).
+**Phase 3 repos:** `soat-fiap-oficina-auth-lambda` (1), `soat-fiap-oficina-infra-k8s` (2),
+`soat-fiap-oficina-infra-db` (3), `soat-fiap-oficina-mecanica-app` (4, this repo).
 
 ## Working with user stories
 

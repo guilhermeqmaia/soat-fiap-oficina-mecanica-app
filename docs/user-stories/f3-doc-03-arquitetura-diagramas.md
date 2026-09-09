@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 3
-**Status:** To Do
+**Status:** Concluída
 **DDD Domain:** Documentacao
 **DDD Layer:** —
 **Repositorio:** 4 — `docs/arquitetura/`
@@ -17,10 +17,10 @@ Evoluir o `arquitetura-fase2.md` para um `arquitetura-fase3.md`.
 
 ## Criterios de Aceite
 
-- [ ] `docs/arquitetura/arquitetura-fase3.md` criado (Mermaid, renderizavel no GitHub) + export de imagem para o PDF
-- [ ] **Diagrama de Componentes (visao de nuvem)**: cliente/UIs, **API Gateway**, **Lambda (CPF)**, **EKS** (app, HPA, ingress/ALB), **RDS**, **observabilidade** (agente/coletor + dashboards), Secrets Manager, ECR
-- [ ] **Diagrama de Sequencia — Autenticacao**: cliente -> API Gateway -> Lambda (valida CPF + status) -> JWT -> API protegida
-- [ ] **Diagrama de Sequencia — Abertura de OS**: cliente/atendente autenticado -> API Gateway -> app (EKS) -> RDS -> evento -> notificacao
-- [ ] Diagrama do **fluxo de deploy** (CI/CD por repo -> AWS) atualizado da Fase 2 para a topologia dos 4 repos
-- [ ] Legenda/racional linkando cada componente as RFCs/ADRs ([f3-doc-01](f3-doc-01-rfcs.md), [f3-doc-02](f3-doc-02-adrs.md))
-- [ ] Diagramas referenciados no README principal e no indice de docs
+- [x] `docs/arquitetura/arquitetura-fase3.md` criado (Mermaid, renderizavel no GitHub) + export de imagem para o PDF
+- [x] **Diagrama de Componentes (visao de nuvem)**: cliente/UIs, **API Gateway**, **Lambda (CPF)**, **EKS** (app, HPA, ingress/ALB), **RDS**, **observabilidade** (agente/coletor + dashboards), Secrets Manager, ECR
+- [x] **Diagrama de Sequencia — Autenticacao**: cliente -> API Gateway -> Lambda (valida CPF + status) -> JWT -> API protegida
+- [x] **Diagrama de Sequencia — Abertura de OS**: cliente/atendente autenticado -> API Gateway -> app (EKS) -> RDS -> evento -> notificacao
+- [x] Diagrama do **fluxo de deploy** (CI/CD por repo -> AWS) atualizado da Fase 2 para a topologia dos 4 repos
+- [x] Legenda/racional linkando cada componente as RFCs/ADRs ([f3-doc-01](f3-doc-01-rfcs.md), [f3-doc-02](f3-doc-02-adrs.md))
+- [x] Diagramas referenciados no README principal e no indice de docs

@@ -4,10 +4,13 @@
 |---|---|---|---|
 | `01-cluster` | US-F2-06 | Cluster `kind` local | este README |
 | `02-app` | US-F2-06 | Banco + namespace + Secret no `kind` | este README |
-| `03-gateway` | US-F3-02 | **AWS API Gateway** (HTTP API + Lambda Authorizer + VPC Link) | [03-gateway/README.md](03-gateway/README.md) |
 
-> Os stages 01/02 são da **Fase 2** (demo local em kind). O stage 03 inicia a
-> infra AWS da **Fase 3** (Academy) e migrará de repo na US-F3-07.
+> Os stages 01/02 são da **Fase 2** (demo local em kind). A infra AWS da
+> **Fase 3** vive nos repositórios dedicados (US-F3-07): o **API Gateway**
+> (US-F3-02) está em
+> [soat-fiap-oficina-infra-k8s/gateway](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s/tree/main/gateway),
+> junto do futuro cluster EKS (US-F3-05); o banco RDS (US-F3-04) ficará em
+> [soat-fiap-oficina-infra-db](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db).
 
 ## Stages 01/02 — kind (US-F2-06)
 

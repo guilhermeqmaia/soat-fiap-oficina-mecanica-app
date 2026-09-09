@@ -4,7 +4,7 @@
 
 **Prioridade:** Media
 **Story Points:** 3
-**Status:** To Do
+**Status:** In Progress
 **DDD Domain:** Documentacao
 **DDD Layer:** —
 **Repositorio:** 4 — `README.md` + `docs/`
@@ -30,10 +30,10 @@ README principal:
 
 Indice de documentacao:
 
-- [ ] `docs/README.md` (indice/sumario) com secoes: Arquitetura (RFCs, ADRs, diagramas, banco), User Stories (Fases 1/2/3), QA Plans, Seguranca/Scans, Curls, Storytelling
-- [ ] `docs/user-stories/README.md` (indice das historias por fase/sprint, com status)
-- [ ] Links relativos corretos e navegaveis a partir do README principal
-- [ ] Verificacao de links quebrados
+- [x] `docs/README.md` (indice/sumario) com secoes: Arquitetura (RFCs, ADRs, diagramas, banco), User Stories (Fases 1/2/3), QA Plans, Seguranca/Scans, Curls, Storytelling
+- [x] `docs/user-stories/README.md` (indice das historias por fase/sprint, com status)
+- [x] Links relativos corretos e navegaveis a partir do README principal
+- [x] Verificacao de links quebrados
 
 ## Notas
 
