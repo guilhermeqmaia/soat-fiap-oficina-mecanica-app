@@ -5,11 +5,16 @@ iniciarTracing();
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // `bufferLogs` segura os logs do bootstrap ate o Logger do nestjs-pino
+  // (JSON estruturado) ser aplicado logo abaixo — evita perder/duplicar
+  // linhas em formato texto antes da troca.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
 
   // Security headers. CSP desabilitado para nao quebrar o Swagger UI em dev;
   // os demais headers (nosniff, frameguard, HSTS, etc.) permanecem ativos.
