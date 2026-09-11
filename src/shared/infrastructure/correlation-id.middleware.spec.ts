@@ -1,5 +1,11 @@
 import { correlationIdMiddleware } from './correlation-id.middleware';
 import { getCorrelationContext } from './logging/correlation-context';
+import {
+  registrarTracer,
+  resetTracerBridge,
+} from './tracing/tracer-bridge';
+
+afterEach(() => resetTracerBridge());
 
 describe('correlationIdMiddleware', () => {
   it('gera um UUID quando nenhum header de correlacao vem', () => {
@@ -61,6 +67,53 @@ describe('correlationIdMiddleware', () => {
     correlationIdMiddleware(req, res, next);
 
     expect(observedTraceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736');
+  });
+
+  it('deriva o traceId do x-amzn-trace-id quando nao ha traceparent (AWS API Gateway)', () => {
+    const req: any = {
+      headers: {
+        'x-correlation-id': 'cid-amzn',
+        'x-amzn-trace-id':
+          'Root=1-67891233-abcdef012345678912345678;Parent=53995c3f42cd8ad8;Sampled=1',
+      },
+      method: 'GET',
+      url: '/a',
+    };
+    const res: any = { setHeader: jest.fn() };
+    let observedTraceId: string | undefined;
+    const next = jest.fn(() => {
+      observedTraceId = getCorrelationContext()?.traceId;
+    });
+
+    correlationIdMiddleware(req, res, next);
+
+    expect(observedTraceId).toBe('1-67891233-abcdef012345678912345678');
+  });
+
+  it('usa o traceId do span de APM ativo e grava correlation_id como tag no span', () => {
+    const span = {
+      setTag: jest.fn(),
+      context: () => ({ toTraceId: () => 'apm-trace-id', toSpanId: () => 'apm-span-id' }),
+    };
+    registrarTracer({ scope: () => ({ active: () => span }) } as never);
+
+    const traceparent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    const req: any = {
+      headers: { 'x-correlation-id': 'cid-apm', traceparent },
+      method: 'GET',
+      url: '/apm',
+    };
+    const res: any = { setHeader: jest.fn() };
+    let observedTraceId: string | undefined;
+    const next = jest.fn(() => {
+      observedTraceId = getCorrelationContext()?.traceId;
+    });
+
+    correlationIdMiddleware(req, res, next);
+
+    // span de APM vence o traceparent do header
+    expect(observedTraceId).toBe('apm-trace-id');
+    expect(span.setTag).toHaveBeenCalledWith('correlation_id', 'cid-apm');
   });
 
   it('disponibiliza correlationId/traceId via AsyncLocalStorage durante e apos next() (sincrono)', () => {

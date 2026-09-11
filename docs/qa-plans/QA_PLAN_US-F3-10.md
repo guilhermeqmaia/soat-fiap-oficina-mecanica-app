@@ -25,11 +25,14 @@ Valida a instrumentacao de APM/tracing (`dd-trace`, via `src/observabilidade/tra
 - **Expected result:** Latencias visiveis e segmentadas por rota
 
 ### TS-03: Traces correlacionados com logs via trace_id
-- **Type:** Manual — ver tambem [QA_PLAN_US-F3-09](QA_PLAN_US-F3-09.md) TS-08
+- **Type:** Manual — ver tambem [QA_PLAN_US-F3-09](QA_PLAN_US-F3-09.md) TS-05/TS-08
+- **Mecanismo:** com `DD_TRACE_ENABLED=true`, o `mixin` do pino (`logger.module.ts`) le o span ativo via `tracer-bridge` e emite `dd.trace_id`/`dd.span_id` (formato que o pipeline do Datadog casa com o trace) + `traceId` com o mesmo valor. O `correlation-id.middleware` grava a tag `correlation_id` no span (pivo trace -> logs). Sem APM, `dd.trace_id` de `logInjection` fica desligado para nao duplicar campos.
 - **Steps:**
-  1. Localizar um trace de uma requisicao no APM
-  2. Confirmar o link/correlacao para os logs da mesma requisicao (mesmo `trace_id`)
-- **Expected result:** Navegacao trace -> logs funcional
+  1. Com tracing habilitado, gerar uma requisicao e anotar o `X-Correlation-Id` da resposta
+  2. Localizar o trace dessa requisicao no APM; confirmar a tag `correlation_id` com aquele valor
+  3. A partir do trace, abrir os logs vinculados e conferir `dd.trace_id` igual ao `trace_id` do trace
+  4. Filtro reverso no backend de logs por `@correlation_id:<valor>` retorna todas as linhas da requisicao
+- **Expected result:** Navegacao trace <-> logs funcional nos dois sentidos; `dd.trace_id` do log == `trace_id` do trace
 
 ### TS-04: Metricas de infra do Kubernetes (CPU/memoria por pod/node)
 - **Type:** Manual
