@@ -4,7 +4,7 @@
 
 **Prioridade:** Media
 **Story Points:** 3
-**Status:** In Progress
+**Status:** Em revisão
 **DDD Domain:** Documentacao
 **DDD Layer:** —
 **Repositorio:** 4 — `README.md` + `docs/`
@@ -19,14 +19,14 @@ stories sem indice e a documentacao esta espalhada em `docs/` sem um sumario.
 
 README principal:
 
-- [ ] Nova secao **"Fase 3 — Nuvem, Seguranca e Observabilidade"** (objetivos, o que mudou vs Fase 2)
-- [ ] **Links para os 4 repositorios** com uma linha de proposito cada
-- [ ] Diagrama da arquitetura de nuvem inline (de [f3-doc-03](f3-doc-03-arquitetura-diagramas.md))
-- [ ] Fluxo de **autenticacao por CPF** documentado (novo `/auth` via gateway; remocao do `/auth/login`)
-- [ ] **Links dos dashboards** de observabilidade e do vídeo
-- [ ] Substituir o bloco "TODO (entrega)" do video pelo link final
-- [ ] Tabela de entregaveis da Fase 3 (como a da Fase 2)
-- [ ] README revisado para nao contradizer a Fase 3 (ex.: instrucoes de login e Postgres in-cluster marcadas como Fase 2/legado)
+- [x] Nova secao **"Fase 3 — Nuvem, Seguranca e Observabilidade"** (objetivos, o que mudou vs Fase 2)
+- [x] **Links para os 4 repositorios** com uma linha de proposito cada
+- [x] Diagrama da arquitetura de nuvem inline (de [f3-doc-03](f3-doc-03-arquitetura-diagramas.md))
+- [x] Fluxo de **autenticacao por CPF** documentado (novo `/auth` via gateway; remocao do `/auth/login`)
+- [ ] **Links dos dashboards** de observabilidade e do vídeo — PENDENTE: URLs saem do apply na AWS (card INFRA) e da gravacao; secoes ja apontam para `docs/entrega-fase-3.md`
+- [x] Substituir o bloco "TODO (entrega)" do video pelo link final — bloco substituido por roteiro + ponteiro para o doc de entrega; link final entra apos a gravacao
+- [x] Tabela de entregaveis da Fase 3 (como a da Fase 2)
+- [x] README revisado para nao contradizer a Fase 3 (ex.: instrucoes de login e Postgres in-cluster marcadas como Fase 2/legado)
 
 Indice de documentacao:
 

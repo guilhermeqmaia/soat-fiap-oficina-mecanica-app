@@ -6,7 +6,7 @@ Valida a Lambda de autenticacao (`soat-fiap-oficina-auth-lambda`), unica emissor
 ## Prerequisites
 - Node.js 20+, dependencias instaladas (`npm install`)
 - Banco Postgres acessivel (local ou testcontainer) com tabelas `cliente` e `usuario` seedadas
-- Variaveis de ambiente: segredo JWT resolvido via `src/infra/secrets.ts` (Secrets Manager em nuvem; `.env` local para testes)
+- Variaveis de ambiente: segredo JWT resolvido via `soat-fiap-oficina-auth-lambda/src/infra/secrets.ts` (Secrets Manager em nuvem; `.env` local para testes)
 - Para teste manual: `npm run docker:build && npm run docker:run` (Lambda local na porta 9000) ou `npm run invoke:local`
 - Massa de dados: 1 cliente ativo, 1 cliente inativo/bloqueado, 1 CPF sem cadastro, 1 usuario staff ativo, 1 usuario staff inativo
 
@@ -86,7 +86,7 @@ Valida a Lambda de autenticacao (`soat-fiap-oficina-auth-lambda`), unica emissor
 - **Type:** Manual/config
 - **Acceptance criterion:** Segredo nunca hardcoded
 - **Steps:**
-  1. Inspecionar `src/infra/secrets.ts` e `src/config/env.ts` — confirmar que o segredo vem do AWS Secrets Manager (ou variavel de ambiente injetada em runtime), nunca literal no codigo
+  1. Inspecionar `soat-fiap-oficina-auth-lambda/src/infra/secrets.ts` e `soat-fiap-oficina-auth-lambda/src/config/env.ts` — confirmar que o segredo vem do AWS Secrets Manager (ou variavel de ambiente injetada em runtime), nunca literal no codigo
   2. `grep -r` no repo por padroes de segredo hardcoded (deve retornar vazio)
 - **Expected result:** Nenhum segredo em texto plano no codigo-fonte
 
@@ -111,7 +111,7 @@ Valida a Lambda de autenticacao (`soat-fiap-oficina-auth-lambda`), unica emissor
 - **Type:** Manual/config
 - **Steps:**
   1. Revisar configuracao de timeout e memoria da Lambda no deploy (`infra`/console AWS)
-  2. Revisar `src/container.ts` para confirmar reuso de conexao ao RDS entre invocacoes (fora do handler)
+  2. Revisar `soat-fiap-oficina-auth-lambda/src/container.ts` para confirmar reuso de conexao ao RDS entre invocacoes (fora do handler)
 - **Expected result:** Timeout compativel com latencia do RDS; conexao nao recriada a cada invocacao
 
 ### TS-14: Dockerfile ou artefato de deploy documentado

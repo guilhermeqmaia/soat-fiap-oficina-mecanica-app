@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 2
-**Status:** To Do
+**Status:** Em andamento
 **DDD Domain:** Entrega
 **DDD Layer:** —
 **Repositorio:** todos
@@ -22,15 +22,15 @@ Video demonstrativo (YouTube/Vimeo, publico ou nao listado, **ate 15 min**), dem
 
 PDF unico de entrega:
 
-- [ ] Links dos **4 repositorios**
+- [x] Links dos **4 repositorios**
 - [ ] Link do **video** (ate 15 min)
-- [ ] Links das **documentacoes** (arquitetura, RFCs, ADRs, ER, Swagger/Postman)
+- [x] Links das **documentacoes** (arquitetura, RFCs, ADRs, ER, Swagger/Postman)
 - [ ] Confirmacao de que o usuario **`soat-architecture`** foi adicionado a **todos** os repos
 
 Acessos:
 
-- [ ] Usuario **`soat-architecture`** adicionado como colaborador nos 4 repositorios
-- [ ] `main`/`master` protegida em todos (evidencia no PDF/README) ([f3-07](f3-07-segregacao-repositorios.md))
+- [x] Usuario **`soat-architecture`** adicionado como colaborador nos 4 repositorios — convites enviados nos 4; aceito no repo da app, pendentes de aceite nos demais (11/09)
+- [x] `main`/`master` protegida em todos (evidencia no PDF/README) ([f3-07](f3-07-segregacao-repositorios.md))
 - [ ] Links de deploy ativo validados (se aplicavel)
 
 ## Notas

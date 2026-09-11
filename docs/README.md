@@ -67,3 +67,7 @@ documentos abaixo detalham cada tema.
 |---|---|
 | [Testes iniciais de OS via Swagger](testes-iniciais-ordens-servico-via-swagger.md) | Roteiro manual de validação das Ordens de Serviço |
 | [`tech-challenges/`](tech-challenges/) | Enunciados oficiais (PDF) das Fases 1, 2 e 3 |
+
+## Entrega
+
+- [entrega-fase-3.md](entrega-fase-3.md) — documento de entrega da Fase 3 (fonte do PDF): repositórios, evidências de proteção de branch, roteiro do vídeo, links da documentação e URLs de deploy
