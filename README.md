@@ -44,12 +44,27 @@ flowchart LR
 | [3 · infra-db](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db) | RDS PostgreSQL gerenciado |
 | **4 · este repo** | **API NestJS, manifestos K8s e documentação da arquitetura** |
 
+### Entregáveis da Fase 3
+
 | Entregável | Onde |
 |---|---|
-| Desenho da arquitetura (Fase 3) | [`docs/arquitetura/arquitetura-fase3.md`](docs/arquitetura/arquitetura-fase3.md) |
+| Desenho da arquitetura (componentes, sequência, deploy) | [`docs/arquitetura/arquitetura-fase3.md`](docs/arquitetura/arquitetura-fase3.md) |
 | RFCs (nuvem, banco, autenticação) | [`docs/arquitetura/rfcs/`](docs/arquitetura/rfcs/README.md) |
 | ADRs (comunicação, HPA, resource server, observabilidade, gateway, 4 repos) | [`docs/arquitetura/adr/`](docs/arquitetura/adr/README.md) |
 | Justificativa do banco + modelo ER | [`docs/arquitetura/banco-de-dados.md`](docs/arquitetura/banco-de-dados.md) |
+| Autenticação serverless por CPF (Lambda + Authorizer) | repo [soat-fiap-oficina-auth-lambda](https://github.com/guilhermeqmaia/soat-fiap-oficina-auth-lambda) |
+| API Gateway, cluster EKS e observabilidade (Terraform) | repo [soat-fiap-oficina-infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s) |
+| Banco gerenciado RDS (Terraform) | repo [soat-fiap-oficina-infra-db](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db) |
+| App como resource server (valida o JWT da Lambda) | [`src/auth/`](src/auth) · [US-F3-03](docs/user-stories/f3-03-app-resource-server.md) |
+| Manifestos de deploy no EKS | [`k8s-aws/`](k8s-aws/README.md) |
+| CI/CD com deploy automático (4 repos) | [`.github/workflows/cd-aws.yml`](.github/workflows/cd-aws.yml) + workflows de cada repo |
+| Logs estruturados JSON + correlação trace↔log | [`src/shared/infrastructure/logging/`](src/shared/infrastructure/logging) · [US-F3-09](docs/user-stories/f3-09-logs-estruturados-correlacao.md) |
+| Métricas, APM e `/metrics` (OpenMetrics) | [`src/observabilidade/`](src/observabilidade) · [US-F3-10](docs/user-stories/f3-10-observabilidade-apm.md) |
+| Dashboards e alertas como código | [infra-k8s/observability](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s/tree/main/observability) |
+| QA Plans (Fase 3 + backfill + integração) | [`docs/qa-plans/`](docs/qa-plans/README.md) |
+| Índice de toda a documentação | [`docs/README.md`](docs/README.md) |
+| Documento de entrega (links, evidências, vídeo) | [`docs/entrega-fase-3.md`](docs/entrega-fase-3.md) |
+| Vídeo demonstrativo (≤15 min) | _pendente — gravado após o apply na AWS (sessão do Learner Lab)_ |
 
 ---
 
@@ -353,9 +368,14 @@ bash scripts/local-k8s-forward.sh
 
 ## Provisionamento da infraestrutura com Terraform
 
+> **Fase 2 (legado local).** Este Terraform sobe um cluster **kind** com Postgres
+> in-cluster para a demo local. Na **Fase 3** a infraestrutura de nuvem vive nos
+> repositórios dedicados: [infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s)
+> (VPC, EKS, API Gateway, observabilidade) e
+> [infra-db](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db) (RDS).
+
 O Terraform provisiona o **cluster Kubernetes** e o **banco de dados** em dois
-estágios. Detalhes completos e o modo cloud (EKS + RDS) em
-[`infra/terraform/README.md`](infra/terraform/README.md).
+estágios. Detalhes em [`infra/terraform/README.md`](infra/terraform/README.md).
 
 ```bash
 # Pré-requisitos: terraform >= 1.9, docker e kubectl
@@ -434,9 +454,12 @@ Exemplos de `curl` prontos por domínio em [`docs/`](docs):
 
 ## Vídeo demonstrativo
 
-> ⚠️ **TODO (entrega):** publicar o vídeo (≤15 min) no YouTube/Vimeo demonstrando
-> deploy da aplicação, execução do CI/CD, consumo das APIs e escalabilidade
-> automática (HPA), e substituir este bloco pelo link.
+**Fase 2:** https://drive.google.com/file/d/1K5Qihz4IGKitT791J9-3o77F8kg_ujvd/view
+
+**Fase 3 (≤15 min):** roteiro e link em [`docs/entrega-fase-3.md`](docs/entrega-fase-3.md)
+— autenticação por CPF via gateway, pipeline CI/CD, deploy automático na AWS,
+consumo das APIs protegidas, dashboard ao vivo e logs/traces correlacionados.
+_Link publicado após a gravação (depende do apply na AWS)._
 
 ---
 

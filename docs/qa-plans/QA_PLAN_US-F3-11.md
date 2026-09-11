@@ -1,10 +1,10 @@
 # QA Plan — US-F3-11: Dashboards e Alertas
 
 ## Summary
-Valida os dashboards versionados como codigo (`infra-k8s/observability/dashboards.tf`) — negocio (volume de OS, tempo por status, erros de integracao) e tecnico (latencia, 5xx, CPU/memoria, uptime) — e os monitores (`monitors.tf`): falha de processamento de OS, latencia acima do SLO, CPU/CrashLoop, healthcheck e falha de notificacao, incluindo o canal de notificacao e o runbook de cada um.
+Valida os dashboards versionados como codigo (`soat-fiap-oficina-infra-k8s/observability/dashboards.tf`) — negocio (volume de OS, tempo por status, erros de integracao) e tecnico (latencia, 5xx, CPU/memoria, uptime) — e os monitores (`monitors.tf`): falha de processamento de OS, latencia acima do SLO, CPU/CrashLoop, healthcheck e falha de notificacao, incluindo o canal de notificacao e o runbook de cada um.
 
 ## Prerequisites
-- Terraform aplicado em `infra-k8s/observability/` com as chaves do Datadog configuradas (`local.habilitado = true`)
+- Terraform aplicado em `soat-fiap-oficina-infra-k8s/observability/` com as chaves do Datadog configuradas (`local.habilitado = true`)
 - Trafego real ou simulado na aplicacao para gerar dados nos paineis
 - Acesso ao canal de notificacao configurado (e-mail/Slack) para validar o disparo
 
@@ -101,13 +101,13 @@ Valida os dashboards versionados como codigo (`infra-k8s/observability/dashboard
 - **Type:** Manual
 - **Steps:**
   1. Com conta Datadog + cluster no ar, abrir os dashboards durante uma demo e confirmar atualizacao em tempo real
-- **Expected result:** **PENDENTE no momento deste plano** — depende da sessao do Learner Lab; definicoes ja prontas em `infra-k8s/observability/`
+- **Expected result:** **PENDENTE no momento deste plano** — depende da sessao do Learner Lab; definicoes ja prontas em `soat-fiap-oficina-infra-k8s/observability/`
 
 ### TS-14: README documenta dashboards, alertas e runbook
 - **Type:** Manual
 - **Acceptance criterion:** Documentado no README: link dos dashboards, o que cada alerta significa e runbook basico
 - **Steps:**
-  1. Abrir o README (`infra-k8s/observability/README.md` ou equivalente)
+  1. Abrir o README (`soat-fiap-oficina-infra-k8s/observability/README.md` ou equivalente)
   2. Confirmar link dos dashboards, descricao de cada alerta e runbook basico
 - **Expected result:** README completo, cobrindo link dos dashboards, significado dos alertas e runbook
 
