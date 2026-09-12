@@ -10,6 +10,12 @@ export class PrismaService
   constructor() {
     const adapter = new PrismaPg({
       connectionString: process.env.DATABASE_URL,
+      // RDS exige TLS (rds.force_ssl=1). Mesma convencao da Lambda de auth
+      // (DB_SSL): sem CA local, apenas cifra o canal. Local/kind segue sem TLS.
+      ssl:
+        process.env.DB_SSL === "true"
+          ? { rejectUnauthorized: false }
+          : undefined,
     });
     super({ adapter });
   }

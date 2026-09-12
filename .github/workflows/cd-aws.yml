@@ -189,10 +189,10 @@ jobs:
           set -euo pipefail
           cd k8s-aws
           kustomize edit set image "oficina-mecanica-app=$registry/$ECR_REPOSITORY:$IMAGE_TAG"
-          kubectl apply -k .
-          # migrations-job e imutavel: recria a cada deploy e roda ANTES do rollout
+          # migrations-job e imutavel: apaga o anterior e deixa o kustomize recria-lo
+          # ja com a imagem do ECR (aplicar o YAML da base usaria a tag local do kind).
           kubectl -n oficina delete job oficina-migrations --ignore-not-found
-          kubectl -n oficina apply -f ../k8s/migrations-job.yaml
+          kubectl apply -k .
           kubectl -n oficina wait --for=condition=complete job/oficina-migrations --timeout=300s
           kubectl -n oficina rollout status deployment/oficina-app --timeout=300s
 
