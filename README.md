@@ -584,8 +584,13 @@ US-F3-06).
 `GATEWAY_URL` (output `api_base_url` do gateway), `EKS_CLUSTER_NAME` (output do repo
 [soat-fiap-oficina-infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s)).
 
-**Deploy ativo:** URL pública = API Gateway (repo infra-k8s, output
-`api_base_url`). <!-- atualizar com a URL após o primeiro apply -->
+**Vars adicionais do overlay `k8s-aws`:** `DB_SSL=true` (RDS exige TLS) e
+`JWT_ISSUER` já vêm do ConfigMap; `GATEWAY_URL` é gravada pelo script de deploy.
+
+**Deploy ativo:** o ambiente é **efêmero** ([ADR-0008](docs/arquitetura/adr/ADR-0008-ambiente-efemero.md)):
+`scripts/aws-deploy-all.sh` do repo infra-k8s sobe tudo (~30 min) e imprime a
+URL pública do API Gateway; `aws-pause.sh`/`aws-resume.sh` entre gravações;
+`aws-destroy-all.sh` ao final. Conta própria + OIDC: [ADR-0007](docs/arquitetura/adr/ADR-0007-conta-aws-propria-oidc.md).
 
 ## Documentação
 

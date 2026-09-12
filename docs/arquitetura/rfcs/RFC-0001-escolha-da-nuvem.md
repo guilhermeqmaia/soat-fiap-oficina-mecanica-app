@@ -45,6 +45,12 @@ escalabilidade. O time tem acesso de estudante via **AWS Academy Learner Lab**
 ## Decisão
 
 **AWS**, na conta do **AWS Academy Learner Lab**, região **us-east-1**.
+
+> **Adendo (2026-09-12):** o ambiente principal passou a ser uma **conta AWS
+> própria** (plano Free, autenticação do CI/CD por OIDC); o Academy ficou como
+> fallback suportado. Motivos e consequências em
+> [ADR-0007](../adr/ADR-0007-conta-aws-propria-oidc.md). As restrições do
+> Academy listadas abaixo continuam válidas nesse modo.
 Critérios decisivos: acesso já existente sem custo, aderência ao enunciado e
 reaproveitamento do Terraform da Fase 2.
 

@@ -15,6 +15,8 @@ Template: [TEMPLATE.md](TEMPLATE.md)
 | [ADR-0004](ADR-0004-plataforma-de-observabilidade.md) | Plataforma de observabilidade (Datadog) | Aceita | 2026-08-24 |
 | [ADR-0005](ADR-0005-api-gateway.md) | API Gateway (AWS API Gateway HTTP API) | Aceita | 2026-08-24 |
 | [ADR-0006](ADR-0006-segregacao-4-repositorios.md) | Segregação em 4 repositórios e branches/deploy | Aceita | 2026-08-24 |
+| [ADR-0007](ADR-0007-conta-aws-propria-oidc.md) | Conta AWS própria com OIDC (Academy como fallback) | Aceita | 2026-09-12 |
+| [ADR-0008](ADR-0008-ambiente-efemero.md) | Ambiente efêmero — subir, pausar e derrubar por script | Aceita | 2026-09-12 |
 
 ## Ciclo de vida
 
