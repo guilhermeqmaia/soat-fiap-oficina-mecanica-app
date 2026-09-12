@@ -1,134 +1,130 @@
 # QA Plan — US-F3-06: Deploy da Aplicacao no EKS
 
-## Summary
-Valida o deploy da aplicacao NestJS no EKS consumindo o RDS gerenciado: imagem no ECR, manifestos do overlay `k8s-aws/`, Secret do RDS sincronizado, alcance via NLB interno + VPC Link, Job de migrations antes do rollout, probes/HPA calibrados, rollout sem downtime e smoke test pos-deploy. Story marcada como concluida no board — este plano valida o que foi entregue, incluindo os desvios conscientes documentados.
+## Resumo
+Valida o `cd-aws.yml` e o overlay `k8s-aws/`: imagem no ECR por commit, manifestos no EKS, `DATABASE_URL` vindo do Secrets Manager, NLB interno alcancado pelo gateway, Job de migrations antes do rollout, probes/recursos, HPA, SPAs fora do EKS, rollout sem downtime + rollback, smoke test e README.
 
-## Prerequisites
-- Cluster EKS no ar ([QA_PLAN_US-F3-05](QA_PLAN_US-F3-05.md)) e RDS provisionado ([QA_PLAN_US-F3-04](QA_PLAN_US-F3-04.md))
-- `kubectl` configurado para o cluster; acesso ao ECR
-- Pipeline de CD do repo da app configurado (OIDC AWS) — ver [QA_PLAN_US-F3-08](QA_PLAN_US-F3-08.md)
+## Pre-requisitos
+- Ambiente no ar (`scripts/aws-deploy-all.sh`) e kubeconfig do cluster
+- `gh`, `aws` (profile `oficina`), `kubectl`, `curl`, `jq`
+- Seeds carregados; tokens admin/cliente (QA_PLAN_US-F3-01)
 
-## Test Scenarios
+## Cenarios de Teste
 
 ### TS-01: Imagem publicada no ECR com tag por commit
-- **Type:** Automated (CI/CD) / Manual
-- **Steps:**
-  1. Apos merge, verificar no ECR a nova tag (commit SHA ou versao)
-  2. `docker pull` a imagem publicada e confirmar que builda/roda localmente
-- **Expected result:** Imagem publicada e correspondente ao commit deployado
+- **Tipo:** Ambos
+- **Criterio:** Imagem no ECR (tag por commit/versao)
+- **Passos:**
+  1. `aws ecr describe-images --repository-name oficina-mecanica-app --query 'imageDetails[].imageTags' | jq -c`
+  2. `kubectl -n oficina get deploy oficina-app -o jsonpath='{.spec.template.spec.containers[0].image}'`
+- **Resultado esperado:** tags `<sha>` e `prod`; o Deployment usa a tag imutavel `<sha>` do run de CD; scan Trivy passou (CRITICAL bloqueia — evidencia: `tar` 6.2.1 bloqueou e foi corrigido)
 
-### TS-02: Manifestos aplicam no EKS via overlay k8s-aws/
-- **Type:** Manual / Automated (CD)
-- **Steps:**
-  1. `kubectl kustomize k8s-aws/` (dry-run de build) sem erros
-  2. `kubectl apply -k k8s-aws/` (ou validar que o CD fez isso)
-  3. `kubectl get deployment,svc,hpa,configmap -n oficina`
-- **Expected result:** Todos os recursos (deployment, service, HPA, configmap, migrations-job) presentes e saudaveis
+### TS-02: Manifestos aplicados no EKS (overlay `k8s-aws/`)
+- **Tipo:** Ambos
+- **Criterio:** namespace, deployment, service, HPA, configmap, migrations-job
+- **Passos:**
+  1. `kubectl -n oficina get deploy,svc,hpa,cm,pdb,job`
+- **Resultado esperado:** `oficina-app` (2/2), Service `LoadBalancer`, HPA 2–10, ConfigMap `oficina-app-config` (com `DB_SSL`, `JWT_ISSUER`, `PUBLIC_BASE_URL`=URL do gateway), PDB, Job `oficina-migrations` `Completed`
 
-### TS-03: DATABASE_URL vem do Secret sincronizado do RDS
-- **Type:** Manual
-- **Steps:**
-  1. `kubectl get secret oficina-db -n oficina -o jsonpath='{.data.DATABASE_URL}' | base64 -d` (ambiente de teste apenas)
-  2. Comparar com o endpoint do RDS provisionado ([QA_PLAN_US-F3-04](QA_PLAN_US-F3-04.md))
-  3. Forcar um novo deploy e confirmar que o Secret e re-sincronizado do Secrets Manager
-- **Expected result:** Secret sempre reflete o endpoint/credenciais atuais do RDS
+### TS-03: `DATABASE_URL` do Secret do RDS
+- **Tipo:** Ambos
+- **Criterio:** DATABASE_URL vem do Secret do RDS sincronizado do Secrets Manager
+- **Passos:**
+  1. Log do run de CD, step "Sincronizar Secrets (Secrets Manager -> cluster)"
+  2. `kubectl -n oficina get secret oficina-db -o jsonpath='{.data}' | jq 'keys'`
+  3. `kubectl -n oficina exec deploy/oficina-app -c app -- node -e "fetch('http://localhost:3000/health/ready').then(r=>r.json()).then(j=>console.log(JSON.stringify(j)))"`
+- **Resultado esperado:** chaves `DATABASE_URL, DB_HOST, DB_PORT`; readiness `{"status":"ready","checks":{"database":{"status":"ok"}}}`
 
-### TS-04: Backend alcancavel via NLB interno + VPC Link
-- **Type:** Manual
-- **Acceptance criterion:** Desvio consciente documentado (NLB in-tree em vez de ALB, por limitacao do AWS Academy)
-- **Steps:**
-  1. Revisar `k8s-aws/patch-service-nlb.yaml` e `k8s-aws/README.md` para entender o desvio
-  2. Confirmar que o listener do NLB interno bate com o `backend_listener_arn` usado pelo VPC Link do gateway ([QA_PLAN_US-F3-02](QA_PLAN_US-F3-02.md))
-  3. Chamar uma rota via o gateway publico ponta-a-ponta
-- **Expected result:** Requisicao completa com sucesso; desvio nao compromete o contrato de listener esperado pelo gateway
+### TS-04: Backend alcancavel pelo gateway via NLB interno
+- **Tipo:** Ambos
+- **Criterio:** Alcancavel pelo API Gateway via NLB interno (desvio: sem ALB Controller)
+- **Passos:**
+  1. `kubectl -n oficina get svc oficina-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`
+  2. `aws elbv2 describe-load-balancers --query 'LoadBalancers[].[Scheme,Type]'`; `describe-target-health` do target group -> `healthy`
+  3. `curl -s $GW/health` -> 200
+- **Resultado esperado:** NLB `internal`/`network`; alvos saudaveis (NodePort, `externalTrafficPolicy: Local`); step do CD "Publicar endpoint interno" imprime o `backend_listener_arn` consumido pelo gateway
 
-### TS-05: Job de migrations roda antes do rollout
-- **Type:** Automated (CD) / Manual
-- **Steps:**
-  1. Disparar um deploy e observar a ordem de execucao (`kubectl get jobs -n oficina -w`)
-  2. Confirmar que o CD aguarda `condition=complete` do Job antes de atualizar o Deployment
-  3. Forcar uma migration falha (schema invalido) e confirmar que o rollout e bloqueado
-- **Expected result:** Rollout so avanca com o Job `Complete`; falha no Job impede deploy de app quebrada
+### TS-05: Migrations antes do rollout
+- **Tipo:** Automatizado
+- **Criterio:** Job de migrations roda antes do rollout
+- **Passos:**
+  1. Log do step "Deploy (kustomize) + migrations": `delete job` -> `apply -k` -> `wait --for=condition=complete job/oficina-migrations` -> `rollout status`
+  2. `kubectl -n oficina logs job/oficina-migrations`
+- **Resultado esperado:** Job usa a **mesma imagem do ECR** (recriado pelo kustomize); "18 migrations found ... No pending migrations" ou lista aplicada; rollout so depois
 
-### TS-06: Probes e requests/limits calibrados
-- **Type:** Manual
-- **Steps:**
-  1. `kubectl describe pod <pod> -n oficina` — conferir `startupProbe`/`livenessProbe`/`readinessProbe` e `resources.requests/limits`
-  2. Confirmar que os valores sao compativeis com o node group `t3.medium` (sem over-commit que impeça scheduling)
-- **Expected result:** Probes configuradas e pods `Ready`; sem `OOMKilled` recorrente
+### TS-06: Probes e recursos
+- **Tipo:** Manual
+- **Criterio:** startup/liveness/readiness e requests/limits calibrados
+- **Passos:**
+  1. `kubectl -n oficina get deploy oficina-app -o yaml | grep -A6 -E "startupProbe|livenessProbe|readinessProbe|resources:"`
+- **Resultado esperado:** `/health` (liveness) e `/health/ready` (readiness) com initialDelay/period definidos; requests/limits de CPU/memoria presentes; pods `1/1` sem restarts
 
-### TS-07: HPA ativo (2-10, CPU 70%/mem 80%)
-- **Type:** Manual (com carga) — ver tambem [QA_PLAN_US-F3-05](QA_PLAN_US-F3-05.md) TS-08
-- **Steps:**
-  1. `kubectl get hpa -n oficina`
-  2. Gerar carga e observar escalonamento
-- **Expected result:** `MINPODS=2`, `MAXPODS=10`, escalonamento reage aos thresholds — nota: validacao sob carga real depende de sessao ativa do Learner Lab (limitacao documentada)
+### TS-07: HPA ativo
+- **Tipo:** Ambos
+- **Criterio:** HPA 2–10 (CPU 70% / mem 80%) com metrics-server
+- **Passos:**
+  1. `kubectl -n oficina get hpa oficina-app` — `TARGETS` mostra percentuais (nao `<unknown>`)
+  2. Carga: ver QA_PLAN_US-F3-05 TS-05
+- **Resultado esperado:** metricas lidas; replicas sobem sob carga
 
-### TS-08: SPAs fora do EKS, apontando para o gateway
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar que `web/admin` e `web/cliente` nao tem manifesto no overlay `k8s-aws/`
-  2. Confirmar que as SPAs (onde estiverem hospedadas) apontam para a URL publica do gateway, nao para um endpoint interno do cluster
-- **Expected result:** Unico endpoint publico e o API Gateway
+### TS-08: SPAs fora do EKS
+- **Tipo:** Manual
+- **Criterio:** Escopo — SPAs removidas do overlay
+- **Passos:**
+  1. `kubectl -n oficina get deploy,svc | grep -c web` -> 0
+  2. `kustomize build k8s-aws | grep -c "oficina-web"` -> 0
+- **Resultado esperado:** nenhum recurso `oficina-web-*`; patches `$patch: delete` no `k8s-aws/kustomization.yaml`
 
-### TS-09: Rollout sem downtime e rollback documentado
-- **Type:** Manual
-- **Steps:**
-  1. Disparar um novo deploy enquanto se faz polling continuo em `/health`
-  2. Confirmar `maxUnavailable: 0`, PodDisruptionBudget (`pdb.yaml`) e spread por AZ (`topologySpreadConstraints`)
-  3. Seguir o passo-a-passo de rollback do `k8s-aws/README.md` (`kubectl rollout undo`) e validar que a app volta a versao anterior
-- **Expected result:** Nenhuma requisicao falha durante o deploy; rollback funcional e documentado
+### TS-09: Rollout sem downtime e rollback
+- **Tipo:** Ambos
+- **Criterio:** `maxUnavailable: 0` + PDB + spread por AZ; rollback documentado
+- **Passos:**
+  1. Durante um redeploy (`gh workflow run cd-aws.yml`), rodar `while true; do curl -s -o /dev/null -w '%{http_code}\n' $GW/health; sleep 1; done`
+  2. `kubectl -n oficina get pods -o wide` — pods em nodes/AZs distintos
+  3. Rollback: `kubectl -n oficina rollout undo deployment/oficina-app && kubectl -n oficina rollout status deployment/oficina-app`
+- **Resultado esperado:** 100% `200` durante o rollout (surge 1, unavailable 0); PDB `minAvailable 1`; rollback volta a revisao anterior em < 1 min (documentado em `k8s-aws/README.md`)
 
-### TS-10: Smoke test pos-deploy no pipeline
-- **Type:** Automated (CD)
-- **Steps:**
-  1. Revisar o step de smoke test do `cd-aws.yml`/`ci-cd.yml` (`/health`, `/health/ready`)
-  2. Simular falha (ex.: apontar temporariamente para uma imagem quebrada) e confirmar que o smoke test falha e bloqueia/alerta
-- **Expected result:** Pipeline detecta app nao saudavel logo apos o deploy
+### TS-10: Smoke test pos-deploy
+- **Tipo:** Automatizado
+- **Criterio:** Smoke test (`/health`, `/health/ready`) no pipeline
+- **Passos:**
+  1. Log do step "Smoke test (/health e /health/ready)" do run de CD
+- **Resultado esperado:** pod efemero `curlimages/curl` recebe 200 nos dois endpoints; falha derruba o run
 
-### TS-11: README com passo-a-passo, rollback e placeholder do deploy ativo
-- **Type:** Manual
-- **Acceptance criterion:** README com passo-a-passo, rollback e placeholder do deploy ativo (`k8s-aws/README.md`)
-- **Steps:**
-  1. Abrir `k8s-aws/README.md`
-  2. Confirmar passo-a-passo de deploy, secao de rollback e placeholder/link do deploy ativo
-- **Expected result:** README completo, cobrindo passo-a-passo, rollback e link/placeholder do deploy ativo
+### TS-11: README
+- **Tipo:** Manual
+- **Criterio:** README com passo a passo, rollback e deploy ativo
+- **Resultado esperado:** `k8s-aws/README.md` + secao CI/CD do README raiz apontando para os scripts (ADR-0008)
 
-## Edge Cases
-- RDS temporariamente indisponivel durante o deploy — `/health/ready` deve refletir "not ready" sem derrubar o pod em crash loop imediato
-- Deploy com imagem invalida (tag inexistente no ECR) — rollout deve falhar de forma visivel, sem remover os pods saudaveis anteriores
-- HPA no maximo (10 replicas) e carga continua aumentando — comportamento deve ser degradacao controlada, nao falha total (ver alerta de CPU do US-F3-11)
+## Casos de Borda
+- Re-disparar o CD no mesmo commit (ex.: nova `GATEWAY_URL`): ConfigMap via `envFrom` so entra em pods novos — o CD faz `rollout restart`
+- Sem `EKS_CLUSTER_NAME`: o CD para no push do ECR (aviso, nao falha)
+- RDS parado (pause): readiness falha, pods `0/1`; o `aws-resume.sh` religa e escala a app de volta
+- NLB recem-criado: 503 intermitente por ~1 min ate os alvos convergirem
 
-## Traceability
+## Rastreabilidade
 
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| Imagem no ECR | TS-01 |
-| Manifestos aplicam no EKS (overlay k8s-aws/) | TS-02 |
-| DATABASE_URL via Secret do RDS | TS-03 |
-| Alcancavel pelo API Gateway via NLB interno | TS-04 |
-| Job de migrations antes do rollout | TS-05 |
-| Probes e requests/limits calibrados | TS-06 |
-| HPA ativo (2-10, CPU 70%/mem 80%) | TS-07 |
+| Imagem no ECR (tag por commit) | TS-01 |
+| Manifestos aplicam no EKS (overlay) | TS-02 |
+| `DATABASE_URL` do Secret do RDS | TS-03 |
+| Alcancavel pelo gateway via NLB interno | TS-04 |
+| Migrations antes do rollout | TS-05 |
+| Probes e requests/limits | TS-06 |
+| HPA ativo | TS-07 |
 | SPAs fora do EKS | TS-08 |
 | Rollout sem downtime + rollback | TS-09 |
 | Smoke test pos-deploy | TS-10 |
-| README com passo-a-passo, rollback e placeholder do deploy ativo | TS-11 |
+| README | TS-11 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos (inclusive os já marcados como concluídos no board)
-- [ ] Edge cases documentados
-- [ ] Fluxos de erro documentados
-- [ ] Instrucoes de setup claras
-- [ ] Desvios conscientes (NLB em vez de ALB) revalidados a cada mudanca de ambiente
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Fluxos de erro documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-kubectl apply -k k8s-aws/
-kubectl get deployment,svc,hpa,configmap,job -n oficina
-kubectl get pods -n oficina -w
-kubectl rollout status deployment/oficina-app -n oficina
-kubectl rollout undo deployment/oficina-app -n oficina
-curl {gateway_url}/health
-curl {gateway_url}/health/ready
+gh workflow run cd-aws.yml -R guilhermeqmaia/soat-fiap-oficina-mecanica-app --ref main
+kubectl -n oficina rollout history deployment/oficina-app
 ```

@@ -1,142 +1,124 @@
 # QA Plan — US-F3-05: Terraform — Cluster Kubernetes Gerenciado (EKS)
 
-## Summary
-Valida o provisionamento do cluster EKS via Terraform (`soat-fiap-oficina-infra-k8s/cluster`): VPC/subnets, managed node group escalavel, metrics-server, add-ons (AWS Load Balancer Controller/CNI/CoreDNS), IRSA, HPA funcional e integracao com o API Gateway.
+## Resumo
+Valida o stage `cluster/` do repo `soat-fiap-oficina-infra-k8s`: VPC multi-AZ (publicas/privadas, NAT), EKS com managed node group, metrics-server e add-ons, HPA sob carga, alcance pelo API Gateway, remote state, ambientes, CI/CD e outputs. Registra os desvios conscientes (sem IRSA/ALB Controller — NLB in-tree) herdados do desenho para o AWS Academy e mantidos na conta propria (ADR-0007/0008).
 
-## Prerequisites
-- Terraform 1.9.8, `kubectl`, `aws` CLI configurados
-- Credenciais AWS (Learner Lab) com permissao para EKS/VPC/IAM
-- Para os testes de HPA: `kubectl top` funcionando (metrics-server) e alguma forma de gerar carga (ex.: `perf/scripts` do repo da app ou `hey`/`k6`)
+## Pre-requisitos
+- Ambiente no ar (`scripts/aws-deploy-all.sh`); `aws eks update-kubeconfig --name oficina-mecanica-eks`
+- `kubectl`, `k6` (cenario de HPA), `aws` CLI (profile `oficina`)
+- Acesso admin ao cluster: `CLUSTER_ADMIN_ARNS` (access entry) ou ser quem rodou o apply
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: Terraform fmt/validate no CI
-- **Type:** Automated (CI)
-- **Steps:**
-  1. `terraform -chdir=cluster fmt -check -diff`
-  2. `terraform -chdir=cluster init -backend=false -input=false`
-  3. `terraform -chdir=cluster validate`
-- **Expected result:** Sucesso (mesmo gate do `ci.yml`, matrix `stage: cluster`)
+### TS-01: VPC multi-AZ com subnets publicas/privadas e NAT
+- **Tipo:** Manual
+- **Criterio:** VPC (publicas/privadas, NAT, multi-AZ)
+- **Passos:**
+  1. `aws ec2 describe-subnets --filters Name=tag:Name,Values='oficina-mecanica-*' --query 'Subnets[].[Tags[?Key==`Name`].Value|[0],AvailabilityZone,MapPublicIpOnLaunch]' --output table`
+  2. `aws ec2 describe-nat-gateways --filter Name=state,Values=available --query 'NatGateways[].SubnetId'`
+- **Resultado esperado:** 2 publicas + 2 privadas em `us-east-1a`/`1b`; 1 NAT numa subnet publica; rota default das privadas via NAT
 
-### TS-02: VPC com subnets publicas/privadas multi-AZ e NAT
-- **Type:** Manual/config
-- **Steps:**
-  1. Revisar `network.tf` — subnets publicas (com IGW) e privadas (com NAT Gateway), distribuidas em pelo menos 2 AZs
-  2. `terraform plan`/console AWS — confirmar contagem de subnets e AZs
-- **Expected result:** Topologia multi-AZ com NAT permitindo saida das subnets privadas
+### TS-02: Cluster EKS e managed node group escalavel
+- **Tipo:** Manual
+- **Criterio:** Cluster EKS; managed node group com escalabilidade
+- **Passos:**
+  1. `aws eks describe-cluster --name oficina-mecanica-eks --query 'cluster.[status,version,resourcesVpcConfig.endpointPublicAccess]'`
+  2. `aws eks describe-nodegroup --cluster-name oficina-mecanica-eks --nodegroup-name oficina-mecanica-nodes --query 'nodegroup.[status,instanceTypes,scalingConfig]'`
+  3. `kubectl get nodes -o wide`
+- **Resultado esperado:** `ACTIVE`, `1.31`; node group `ACTIVE`, `m7i-flex.large` (plano Free) ou `t3.medium`, `min 2 / max 4`; 2 nodes `Ready` em AZs distintas
 
-### TS-03: Cluster EKS e managed node group provisionados
-- **Type:** Manual/config
-- **Steps:**
-  1. `terraform plan` — revisar `aws_eks_cluster` e `aws_eks_node_group`
-  2. `aws eks update-kubeconfig --name <cluster>` + `kubectl get nodes`
-- **Expected result:** Nodes do managed node group visiveis e `Ready`
+### TS-03: metrics-server e add-ons
+- **Tipo:** Manual
+- **Criterio:** metrics-server; CNI, CoreDNS (e kube-proxy)
+- **Passos:**
+  1. `aws eks list-addons --cluster-name oficina-mecanica-eks`
+  2. `kubectl top nodes && kubectl top pods -n oficina`
+- **Resultado esperado:** add-ons `vpc-cni, coredns, kube-proxy, metrics-server`; `kubectl top` responde (pre-requisito do HPA)
 
-### TS-04: Autoescalonamento de nodes (cluster autoscaler / Karpenter)
-- **Type:** Manual
-- **Steps:**
-  1. Revisar configuracao do autoscaler/Karpenter em `cluster.tf`
-  2. Forcar demanda de pods acima da capacidade atual e observar se novos nodes sobem
-- **Expected result:** Node group escala dentro dos limites `min`/`max` configurados
+### TS-04: Desvio consciente — sem IRSA / AWS Load Balancer Controller
+- **Tipo:** Manual
+- **Criterio:** AWS Load Balancer Controller + IRSA (criterio original)
+- **Passos:**
+  1. Ler `cluster/README.md` (tabela "IAM: AWS Academy ou conta propria") e `k8s-aws/README.md` do app
+  2. `kubectl -n oficina get svc oficina-app -o jsonpath='{.metadata.annotations}'`
+- **Resultado esperado:** documentado que o app e exposto por **NLB interno via provider in-tree** (annotations `aws-load-balancer-type: nlb`, `internal: true`), sem IRSA — mesmo contrato (listener de LB interno) para o VPC Link; o segredo do Datadog vem de Secret do cluster. Na conta propria as roles do cluster/nodes sao criadas pelo Terraform (`iam.tf`)
 
-### TS-05: metrics-server instalado (pre-requisito do HPA)
-- **Type:** Automated (smoke) / Manual
-- **Steps:**
-  1. `kubectl get deployment metrics-server -n kube-system`
-  2. `kubectl top nodes` e `kubectl top pods -n oficina`
-- **Expected result:** metrics-server rodando; `kubectl top` retorna dados (nao erro "metrics not available")
+### TS-05: HPA sob carga real
+- **Tipo:** Ambos
+- **Criterio:** Escalabilidade comprovada: HPA por CPU/memoria funcionando
+- **Passos:**
+  1. `kubectl -n oficina get hpa oficina-app` (min 2, max 10, CPU 70% / mem 80%)
+  2. Gerar carga pelo gateway: `JWT_SECRET=$(aws secretsmanager get-secret-value --secret-id oficina-auth-prod/jwt --query SecretString --output text | jq -r .JWT_SECRET); k6 run perf/load.js -e BASE_URL=$GW -e JWT_SECRET=$JWT_SECRET -e VUS=60 -e DURATION=6m`
+  3. Em paralelo: `kubectl -n oficina get hpa,pods -w`
+- **Resultado esperado:** CPU alvo ultrapassa 70%, `REPLICAS` sobe de 2 (ate o limite 10 conforme a carga) e volta apos o cooldown; nodes absorvem os pods (ou o node group escala ate 4). Evidencia registrada em `docs/qa-plans/evidencias/` quando executado
 
-### TS-06: Add-ons — AWS Load Balancer Controller, CNI, CoreDNS
-- **Type:** Manual
-- **Steps:**
-  1. `kubectl get pods -n kube-system` — confirmar pods do CNI (`aws-node`), CoreDNS e, se aplicavel, `aws-load-balancer-controller`
-- **Expected result:** Todos os add-ons `Running`
+### TS-06: Alcancavel pelo API Gateway
+- **Tipo:** Ambos
+- **Criterio:** Integracao com o API Gateway
+- **Passos:**
+  1. `curl -s $GW/health` -> 200 (VPC Link -> NLB interno -> NodePort)
+- **Resultado esperado:** 200 em < 1 s; QA_PLAN_US-F3-02 TS-06 detalha o caminho
 
-### TS-07: IRSA para pods que acessam AWS
-- **Type:** Manual/config
-- **Acceptance criterion:** IRSA (IAM Roles for Service Accounts)
-- **Steps:**
-  1. Revisar `aws_iam_openid_connect_provider` e roles associadas a service accounts (Secrets Manager, ECR, agente de observabilidade)
-  2. `kubectl describe sa <service-account> -n oficina` — confirmar annotation `eks.amazonaws.com/role-arn`
-  3. De dentro de um pod com essa SA, tentar acessar o recurso AWS correspondente (ex.: ler um secret)
-- **Expected result:** Pod consegue autenticar na AWS sem chaves estaticas, via IRSA
+### TS-07: Remote state e parametrizacao por ambiente
+- **Tipo:** Manual
+- **Criterio:** Remote state (S3); homolog/prod
+- **Passos:**
+  1. `aws s3 ls s3://soat-oficina-tfstate-<conta>/oficina-infra-k8s/cluster/`
+  2. `cd.yml`: `homolog` -> `homolog.tfstate`, `main` -> `prod.tfstate`
+- **Resultado esperado:** state por stage e ambiente; lock via S3 (sem DynamoDB neste repo — documentado)
 
-### TS-08: HPA funcionando no cluster gerenciado
-- **Type:** Manual (com carga)
-- **Acceptance criterion:** Escalabilidade comprovada — HPA por CPU/memoria (min/max)
-- **Steps:**
-  1. `kubectl get hpa -n oficina`
-  2. Gerar carga sustentada na aplicacao (ex.: `npm run perf:load` do repo da app, ou `perf/scripts/hpa-scale-test.sh`)
-  3. Observar `kubectl get hpa -n oficina -w` durante a carga
-- **Expected result:** Replicas aumentam quando CPU/memoria ultrapassam o threshold (70%/80%) e reduzem apos a carga cessar, respeitando min/max
+### TS-08: CI (`fmt`/`validate`/`plan`) e CD (`apply`)
+- **Tipo:** Automatizado
+- **Criterio:** CI no PR; apply no merge
+- **Passos:**
+  1. PR no repo: jobs `fmt + validate (cluster|gateway|observability)` e `plan comentado no PR (cluster|gateway)`
+  2. Merge em `main` ou `gh workflow run cd.yml -f action=apply -f stage=cluster`
+- **Resultado esperado:** plan real via OIDC comentado (`Plan: N to add`); CD `Apply complete` (evidencia 12/09/2026: 33–35 recursos)
 
-### TS-09: Integracao com o API Gateway (ingress/ALB alcancavel)
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar que o listener/NLB interno usado pelo VPC Link do gateway ([QA_PLAN_US-F3-02](QA_PLAN_US-F3-02.md)) aponta para o Service correto do cluster
-  2. Chamar uma rota via o gateway publico e confirmar resposta da aplicacao no EKS
-- **Expected result:** Requisicao completa gateway -> EKS com sucesso
+### TS-09: Outputs consumidos pelos outros repos
+- **Tipo:** Ambos
+- **Criterio:** Outputs (nome do cluster, endpoint, kubeconfig, subnets, SGs)
+- **Passos:**
+  1. `aws s3 cp s3://<bucket>/oficina-infra-k8s/cluster/prod.tfstate - | jq '.outputs | keys'`
+  2. Conferir as GitHub Variables gravadas pelo `aws-deploy-all.sh` (`gh variable list -R ...`)
+- **Resultado esperado:** `cluster_name, cluster_endpoint, kubeconfig_command, vpc_id, vpc_cidr, private_subnet_ids, public_subnet_ids, vpc_link_security_group_id, auth_lambda_security_group_id, cluster_role_arn, node_role_arn`; vars `EKS_CLUSTER_NAME`, `DB_SUBNET_IDS`, `SUBNET_IDS`, `SECURITY_GROUP_IDS`, `VPC_LINK_*` preenchidas
 
-### TS-10: Remote state e parametrizacao por ambiente
-- **Type:** Manual/config
-- **Steps:**
-  1. Revisar backend S3 + DynamoDB lock em `versions.tf`
-  2. Revisar `terraform.tfvars.example` e diferenca homolog/prod (tamanho do node group, etc.)
-- **Expected result:** State remoto com lock; parametros variam por ambiente sem duplicar codigo
+### TS-10: README
+- **Tipo:** Manual
+- **Criterio:** README com recursos, como aplicar, diagrama de rede, variaveis, custo
+- **Resultado esperado:** `cluster/README.md` com topologia, contratos, IAM dual-mode, nota do plano Free e custo; README raiz com scripts de subir/pausar/derrubar
 
-### TS-11: Outputs consumidos pelo repo da aplicacao
-- **Type:** Manual/config
-- **Steps:**
-  1. `terraform output` — nome do cluster, endpoint, dados OIDC
-  2. Confirmar que o pipeline do repo da app le esses outputs (remote state data source ou SSM) para configurar `kubectl`/deploy
-- **Expected result:** Outputs corretos e consumidos automaticamente pelo CD da aplicacao
+## Casos de Borda
+- Plano Free: `t3.medium` nao e free-tier-eligible — node group fica `CREATE_FAILED`; usar `NODE_INSTANCE_TYPES=["m7i-flex.large"]`
+- Descricao de regra de SG com `>` e rejeitada pela EC2 (corrigido)
+- Pause (`aws-pause.sh`): PDB `minAvailable 1` bloqueia o drain se a app estiver `0/1` — a app e zerada antes dos nos
+- Destroy: ENIs da Lambda no SG `auth-lambda` precisam sumir antes da VPC
 
-### TS-12: README do repo completo
-- **Type:** Manual — ver tambem [f3-doc-05](../user-stories/f3-doc-05-readmes-por-repo.md)
-- **Acceptance criterion:** README do repo: recursos, como aplicar, diagrama de rede, variaveis, custo estimado
-- **Steps:**
-  1. Abrir o README do repo `soat-fiap-oficina-infra-k8s`
-  2. Confirmar presenca de: recursos criados, como aplicar, diagrama de rede, variaveis, custo estimado
-- **Expected result:** README completo, cobrindo todos os itens acima
+## Rastreabilidade
 
-## Edge Cases
-- Node group atinge o `max_size` sob carga sustentada — HPA nao consegue mais escalar pods (validar que o alerta de CPU do US-F3-11 dispara nesse cenario)
-- Falha de um node (simulada via `kubectl drain`) — pods devem ser reagendados nos nodes restantes sem downtime perceptivel (PDB configurado no repo da app)
-- IRSA mal configurado (role sem trust policy correta) — pod deve falhar de forma visivel nos logs, nao silenciosamente
-
-## Traceability
-
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| Terraform fmt/validate/plan no CI | TS-01 |
-| VPC (subnets, NAT, multi-AZ) | TS-02 |
-| Cluster EKS + managed node group | TS-03 |
-| Escalabilidade do node group | TS-04 |
-| metrics-server | TS-05 |
-| Add-ons (LB Controller, CNI, CoreDNS) | TS-06 |
-| IRSA | TS-07 |
-| HPA funcionando | TS-08 |
-| Integracao com API Gateway | TS-09 |
-| Remote state + parametrizacao | TS-10 |
-| Outputs consumidos pelo repo da app | TS-11 |
-| README do repo | TS-12 |
+| VPC publicas/privadas, NAT, multi-AZ + EKS | TS-01, TS-02 |
+| Managed node group escalavel | TS-02, TS-05 |
+| metrics-server | TS-03 |
+| Add-ons (LB Controller, CNI, CoreDNS) | TS-03, TS-04 (desvio) |
+| IRSA | TS-04 (desvio documentado) |
+| HPA comprovado sob carga | TS-05 |
+| Integracao com o API Gateway | TS-06 |
+| Remote state | TS-07 |
+| Parametrizacao por ambiente | TS-07 |
+| CI plan / CD apply | TS-08 |
+| Outputs consumidos | TS-09 |
+| README | TS-10 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Fluxos de erro documentados
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos (2 como desvio consciente documentado)
+- [x] Casos de borda documentados
+- [x] Fluxos de erro documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-terraform -chdir=cluster fmt -check -diff
-terraform -chdir=cluster init -backend=false -input=false
-terraform -chdir=cluster validate
-
-# Com credenciais reais
-terraform -chdir=cluster plan
-aws eks update-kubeconfig --name <cluster-name>
-kubectl get nodes
-kubectl get hpa -n oficina -w
-kubectl top pods -n oficina
+aws eks update-kubeconfig --name oficina-mecanica-eks && kubectl get nodes,hpa -A
+gh workflow run cd.yml -R guilhermeqmaia/soat-fiap-oficina-infra-k8s -f action=plan -f stage=cluster
 ```
