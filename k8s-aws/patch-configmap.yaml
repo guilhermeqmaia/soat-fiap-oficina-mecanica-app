@@ -14,6 +14,8 @@ data:
   PUBLIC_BASE_URL: "__GATEWAY_URL__"
   # Origens das SPAs + o proprio gateway (CORS).
   WEB_ORIGINS: "__GATEWAY_URL__,http://localhost:5173,http://localhost:5174"
+  # RDS exige TLS (rds.force_ssl=1); o adapter pg cifra o canal (ver PrismaService).
+  DB_SSL: "true"
   # Emissor aceito nos tokens — a Lambda de CPF (US-F3-01/03).
   JWT_ISSUER: "oficina-auth-lambda"
   # APM (US-F3-10): o agente do Datadog roda no cluster (repo infra-k8s,

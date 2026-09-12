@@ -26,6 +26,25 @@ describe("PrismaService", () => {
     expect(service).toBeDefined();
   });
 
+  it("conecta sem TLS por padrao (local/kind)", () => {
+    const { PrismaPg } = jest.requireMock("@prisma/adapter-pg");
+    delete process.env.DB_SSL;
+    new PrismaService();
+    expect(PrismaPg).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ssl: undefined }),
+    );
+  });
+
+  it("liga TLS sem verificar a CA quando DB_SSL=true (RDS)", () => {
+    const { PrismaPg } = jest.requireMock("@prisma/adapter-pg");
+    process.env.DB_SSL = "true";
+    new PrismaService();
+    expect(PrismaPg).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ssl: { rejectUnauthorized: false } }),
+    );
+    delete process.env.DB_SSL;
+  });
+
   it("should have onModuleInit method", () => {
     expect(typeof service.onModuleInit).toBe("function");
   });
