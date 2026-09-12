@@ -1,143 +1,124 @@
 # QA Plan — US-F3-08: CI/CD por Repositorio com Deploy Automatico
 
-## Summary
-Valida o pipeline de CI/CD de cada um dos 4 repositorios: CI (lint/test/build/`terraform plan`), CD (deploy automatico por branch), autenticacao via OIDC (sem secrets estaticos), comentario de `plan` no PR, publicacao de artefatos/logs, link do deploy ativo no README e scans de seguranca.
+## Resumo
+Valida os pipelines dos 4 repos: CI (lint/test/build ou `fmt`/`validate`/`plan`) e CD (deploy automatico por branch) autenticando na AWS por **OIDC**, `plan` comentado no PR, artefatos/logs, link do deploy ativo, scans de seguranca e diagrama do fluxo. Inclui as evidencias reais do primeiro ciclo completo (12/09/2026).
 
-## Prerequisites
-- Acesso de leitura aos workflows (`.github/workflows/`) dos 4 repositorios
-- Permissao para abrir PRs de teste (ou observar execucoes recentes na aba Actions)
+## Pre-requisitos
+- `gh` logado; `aws` (profile `oficina`) para conferir a role OIDC
+- Secrets/vars criados pelo `scripts/aws-account-bootstrap.sh` (`AWS_ROLE_ARN`, `TF_STATE_BUCKET`, ...)
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: auth-lambda — CI roda lint/test/build
-- **Type:** Automated (CI real) / Manual
-- **Steps:**
-  1. Abrir um PR no `soat-fiap-oficina-auth-lambda`
-  2. Observar a execucao do job `quality` (`ci.yml`): `npm run format`, `npm run lint`, `npm run typecheck`, `npm run test:cov`
-- **Expected result:** Todos os passos executam e reportam sucesso/falha corretamente (forcar uma falha proposital de lint para confirmar que bloqueia)
+### TS-01: Lambda — CI + CD (versao/alias)
+- **Tipo:** Automatizado
+- **Criterio:** `auth-lambda`: CI (lint/test/build) + CD (deploy, versao/alias)
+- **Passos:**
+  1. `gh run list -R guilhermeqmaia/soat-fiap-oficina-auth-lambda --workflow ci.yml --limit 1`; idem `cd.yml` e `infra.yml`
+  2. Log do `cd.yml`: `update-function-code` -> `publish-version` -> smoke `422` -> `update-alias prod`
+- **Resultado esperado:** CI verde (prettier, eslint, tsc, jest+cov, `lambda.zip`, `terraform fmt/validate`); CD publica versao N e move o alias so apos o smoke; `infra.yml` aplica o Terraform (secrets, role, VPC)
 
-### TS-02: auth-lambda — CD publica versao/alias da Lambda
-- **Type:** Manual
-- **Steps:**
-  1. Revisar `cd.yml` — build (`npm run package`) + deploy (atualizacao de function code, publicacao de versao/alias)
-  2. Fazer merge em `homolog` e observar o deploy da nova versao
-- **Expected result:** Nova versao publicada e alias apontando para ela
+### TS-02: infra-k8s — CI `fmt`/`validate`/`plan` + CD `apply`
+- **Tipo:** Automatizado
+- **Criterio:** `infra-k8s`: CI no PR + CD no merge
+- **Passos:**
+  1. Abrir PR tocando `cluster/`; conferir jobs `fmt + validate (*)` e `plan comentado no PR (cluster|gateway)`
+  2. Merge -> run `CD - Terraform apply` (stages `cluster` e depois `gateway`, `max-parallel: 1`)
+- **Resultado esperado:** comentario com `Plan: N to add ...` (via OIDC); apply automatico; `workflow_dispatch` com `action` e `stage`
 
-### TS-03: infra-k8s e infra-db — CI valida Terraform no PR
-- **Type:** Automated (CI real)
-- **Steps:**
-  1. Abrir PR com uma mudanca em `.tf` em `infra-k8s` (matrix `cluster`/`gateway`/`observability`) e em `infra-db`
-  2. Confirmar execucao de `fmt -check`, `init -backend=false`, `validate` (ver `ci.yml` de `infra-k8s`)
-- **Expected result:** CI roda para cada stage/modulo e bloqueia o PR se `fmt`/`validate` falhar
+### TS-03: infra-db — CI + CD
+- **Tipo:** Automatizado
+- **Criterio:** `infra-db`: CI no PR + CD no merge
+- **Passos:** analogos ao TS-02 (`ci.yml`/`cd.yml`)
+- **Resultado esperado:** plan no PR; apply no merge com state em S3 + lock DynamoDB
 
-### TS-04: infra-k8s e infra-db — CD aplica no merge
-- **Type:** Manual
-- **Steps:**
-  1. Revisar `cd.yml` de ambos os repos — `terraform apply` disparado no merge em `homolog`/`main`
-  2. Confirmar que o `apply` usa o backend remoto (state real), nao `-backend=false`
-- **Expected result:** `apply` automatico apos merge, com state remoto
+### TS-04: App — CI (testes + gate 80% + imagem) e CD (ECR + EKS + migrations + smoke)
+- **Tipo:** Automatizado
+- **Criterio:** `mecanica-app`: CI + CD completo
+- **Passos:**
+  1. `ci-cd.yml` em PR: unit + integracao (testcontainers), cobertura >= 80%, build da imagem, deploy em kind efemero
+  2. `cd-aws.yml` em `main`: build -> Trivy -> push ECR -> secrets -> kustomize -> migrations -> rollout -> smoke -> publica listener do NLB
+- **Resultado esperado:** ambos verdes; step summary com a imagem e o `backend_listener_arn`
 
-### TS-05: mecanica-app — CI com gate de cobertura e build de imagem
-- **Type:** Automated (CI real)
-- **Steps:**
-  1. Abrir PR no `soat-fiap-oficina-mecanica-app`
-  2. Observar `ci-cd.yml`: job "1️⃣ Execução dos Testes Automatizados" (unit + integration, gate de 80%), "2️⃣ Build da Aplicação", "3️⃣ Build da Imagem Docker"
-  3. Forcar uma queda de cobertura abaixo de 80% — confirmar que o pipeline falha
-- **Expected result:** Pipeline bloqueia PR com cobertura abaixo do gate ou testes quebrados
+### TS-05: Deploy por branch (`homolog`/`main`)
+- **Tipo:** Ambos
+- **Criterio:** `homolog` -> homologacao; `main` -> producao
+- **Passos:**
+  1. `grep -A8 "resolve:" .github/workflows/cd-aws.yml` — mapeamento `env_name`/`tag_suffix`
+  2. `git push origin homolog` (ou PR) e observar o environment do run
+- **Resultado esperado:** run com environment `homolog` e tag `homolog`; `main` -> `production`/`prod`
 
-### TS-06: mecanica-app — CD publica no ECR e faz deploy no EKS
-- **Type:** Manual
-- **Steps:**
-  1. Revisar `cd-aws.yml` e o job "4️⃣ Provisionamento (Terraform) + Deploy (k8s)" do `ci-cd.yml`
-  2. Confirmar push da imagem para o ECR, `kubectl apply` no EKS, execucao do Job de migrations e smoke test (`/health`)
-- **Expected result:** Deploy completo ponta-a-ponta apos merge na branch correta
+### TS-06: Autenticacao AWS por OIDC, sem secrets estaticos
+- **Tipo:** Ambos
+- **Criterio:** OIDC (federacao)
+- **Passos:**
+  1. `gh secret list -R guilhermeqmaia/<repo>` — apenas `AWS_ROLE_ARN` (+ `TF_STATE_BUCKET`, segredos de app), sem `AWS_ACCESS_KEY_ID`
+  2. Log do step "Credenciais AWS" de qualquer run: `aws sts get-caller-identity`
+  3. `aws iam get-role --role-name github-actions-oficina --query 'Role.AssumeRolePolicyDocument'`
+- **Resultado esperado:** `"Arn": "arn:aws:sts::<conta>:assumed-role/github-actions-oficina/gha-oficina-<repo>"`; trust restrita aos 4 repos (`sub` com e sem IDs imutaveis); `permissions: id-token: write` nos workflows
 
-### TS-07: Deploy automatico por branch (homolog vs. main)
-- **Type:** Manual
-- **Steps:**
-  1. Em cada um dos 4 repos, confirmar nos workflows os filtros `branches: [homolog]` -> ambiente de homologacao e `[main]` -> producao
-  2. Fazer merge de teste em `homolog` e confirmar que o ambiente de producao NAO e afetado
-- **Expected result:** Isolamento correto entre ambientes por branch
+### TS-07: `plan` no PR, `apply` so apos merge
+- **Tipo:** Automatizado
+- **Criterio:** plan comentado no PR; apply apenas na branch protegida
+- **Passos:**
+  1. Nos repos de infra, `ci.yml` (pull_request) comenta o plan; `cd.yml` so em `push` de `main`/`homolog` ou dispatch manual
+- **Resultado esperado:** nenhum apply em PR; comentario de plan presente
 
-### TS-08: Autenticacao AWS via OIDC (sem secrets estaticos)
-- **Type:** Manual
-- **Acceptance criterion:** Sem secrets estaticos de longa duracao
-- **Steps:**
-  1. Revisar `permissions: id-token: write` nos workflows e o step de `aws-actions/configure-aws-credentials` com `role-to-assume`
-  2. Verificar em Settings > Secrets de cada repo que nao existem `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` de longa duracao usados pelo deploy
-- **Expected result:** Todos os deploys autenticam via OIDC -> IAM Role, sem chaves estaticas
+### TS-08: Artefatos, logs e bloqueio por falha
+- **Tipo:** Ambos
+- **Criterio:** Artefatos/logs publicados; falha bloqueia merge/rollout
+- **Passos:**
+  1. Step summaries (imagem, outputs do Terraform, listener); artefatos do perf (`perf-*`)
+  2. Evidencia real: o Trivy bloqueou o rollout por `tar` 6.2.1 (CRITICAL) ate o fix no Dockerfile; runs vermelhos impedem merge (check obrigatorio)
+- **Resultado esperado:** rastreabilidade por run; falha e bloqueante
 
-### TS-09: Plan do Terraform comentado no PR
-- **Type:** Manual
-- **Steps:**
-  1. Abrir PR com mudanca de infra em `infra-k8s`/`infra-db`
-  2. Confirmar comentario automatico no PR com a saida do `terraform plan`
-- **Expected result:** Comentario presente e legivel antes do merge
+### TS-09: Link do deploy ativo nos READMEs
+- **Tipo:** Manual
+- **Criterio:** Link do deploy ativo em cada README
+- **Passos:**
+  1. README de cada repo, secao CI/CD — "Deploy ativo"
+- **Resultado esperado:** explica que o ambiente e efemero (ADR-0008) e como obter a URL (`api_base_url` / saida do `aws-deploy-all.sh`); no PDF de entrega a URL vigente
 
-### TS-10: Falha bloqueia merge/rollout; artefatos e logs publicados
-- **Type:** Manual
-- **Steps:**
-  1. Forcar uma falha em cada tipo de pipeline (lint, teste, terraform validate, build de imagem)
-  2. Confirmar bloqueio do merge (branch protegida + status check) e disponibilidade dos logs na aba Actions
-- **Expected result:** Nenhuma falha passa despercebida; logs acessiveis para diagnostico
+### TS-10: Scans de seguranca
+- **Tipo:** Automatizado
+- **Criterio:** npm audit / Trivy / Semgrep
+- **Passos:**
+  1. `grep -n -i "trivy\|npm audit\|semgrep" .github/workflows/*.yml` (e nos outros repos)
+- **Resultado esperado:** `npm audit` e Trivy (imagem, `--severity CRITICAL --exit-code 1`) no app; `npm audit` na Lambda; `tfsec`/`validate` nos de infra
 
-### TS-11: Link do deploy ativo no README
-- **Type:** Manual — ver [f3-doc-05](../user-stories/f3-doc-05-readmes-por-repo.md)
-- **Steps:**
-  1. Conferir que o README de cada repo tem (ou tem placeholder claro para) o link do ambiente/deploy ativo
-- **Expected result:** Link presente e atualizado (ou TODO explicito, nunca informacao desatualizada silenciosa)
+### TS-11: Diagrama do fluxo ponta a ponta
+- **Tipo:** Manual
+- **Criterio:** Diagrama (US-F3-DOC-03)
+- **Resultado esperado:** `docs/arquitetura/` contem o fluxo PR -> CI -> merge -> CD -> AWS para os 4 repos
 
-### TS-12: Scans de seguranca no pipeline
-- **Type:** Manual
-- **Acceptance criterion:** npm audit / Trivy / Semgrep
-- **Steps:**
-  1. Revisar os workflows em busca de steps de `npm audit`, Trivy (imagem Docker) ou Semgrep (SAST)
-  2. Introduzir uma dependencia com vulnerabilidade conhecida (ambiente de teste) e confirmar que o scan acusa
-- **Expected result:** Scan de seguranca presente e funcional em pelo menos o repo da aplicacao (reaproveitado da Fase 2)
+## Casos de Borda
+- `${{ }}` literal em comentario de workflow invalida o arquivo ("workflow file issue")
+- Listas HCL em `echo "..."` perdem as aspas no bash — usar aspas simples (corrigido em `infra.yml` da Lambda)
+- Runner ja tem `kustomize`; o instalador recusa sobrescrever (corrigido)
+- Var vazia em `TF_VAR_<lista>` quebra o parse — defaults `|| '[]'`
 
-### TS-13: Fluxo ponta-a-ponta documentado em diagrama
-- **Type:** Manual
-- **Acceptance criterion:** Documentar o fluxo ponta-a-ponta em diagrama ([f3-doc-03](../user-stories/f3-doc-03-arquitetura-diagramas.md))
-- **Steps:**
-  1. Abrir o diagrama de arquitetura ([f3-doc-03](../user-stories/f3-doc-03-arquitetura-diagramas.md))
-  2. Confirmar que o diagrama cobre o fluxo ponta-a-ponta de CI/CD (PR -> CI -> merge -> CD -> deploy)
-- **Expected result:** Diagrama presente e condizente com o pipeline real dos 4 repos
+## Rastreabilidade
 
-## Edge Cases
-- PR que so mexe em documentacao (`.md`) — pipeline de infra/app nao deveria rodar `apply`/deploy desnecessariamente (otimizacao, nao bloqueante)
-- Dois PRs mergeados quase simultaneamente em `infra-k8s`/`infra-db` — lock do state (DynamoDB) deve serializar os `apply`s
-- Rollback de deploy da aplicacao — confirmar que existe um caminho manual/documentado caso o CD nao tenha rollback automatico
-
-## Traceability
-
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| auth-lambda CI + CD | TS-01, TS-02 |
-| infra-k8s CI (fmt/validate/plan) + CD (apply) | TS-03, TS-04 |
-| infra-db CI (fmt/validate/plan) + CD (apply) | TS-03, TS-04 |
-| mecanica-app CI (testes + gate 80% + build) + CD (ECR + EKS + migrations + smoke) | TS-05, TS-06 |
-| Deploy automatico por branch | TS-07 |
-| Autenticacao AWS via OIDC | TS-08 |
-| Plan comentado no PR | TS-09 |
-| Falha bloqueia merge/rollout; logs publicados | TS-10 |
-| Link do deploy ativo no README | TS-11 |
-| Scans de seguranca | TS-12 |
-| Documentar fluxo ponta-a-ponta em diagrama | TS-13 |
+| auth-lambda CI + CD | TS-01 |
+| infra-k8s CI + CD | TS-02 |
+| infra-db CI + CD | TS-03 |
+| mecanica-app CI + CD | TS-04 |
+| Deploy por branch | TS-05 |
+| OIDC sem secrets estaticos | TS-06 |
+| plan no PR / apply apos merge | TS-07 |
+| Artefatos/logs; falha bloqueia | TS-08 |
+| Link do deploy ativo | TS-09 |
+| Scans de seguranca | TS-10 |
+| Diagrama | TS-11 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Fluxos de erro documentados
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Fluxos de erro documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-# Ver execucoes recentes de workflow (GitHub CLI)
-gh run list --repo {owner}/soat-fiap-oficina-auth-lambda
-gh run list --repo {owner}/soat-fiap-oficina-infra-k8s
-gh run list --repo {owner}/soat-fiap-oficina-infra-db
-gh run list --repo {owner}/soat-fiap-oficina-mecanica-app
-
-# Ver detalhes/logs de uma execucao
-gh run view <run-id> --log
+for r in auth-lambda infra-k8s infra-db mecanica-app; do gh run list -R guilhermeqmaia/soat-fiap-oficina-$r --limit 3; done
 ```

@@ -1,149 +1,82 @@
 # QA Plan — US-F3-12: Entrega — Video, PDF e Compartilhamento
 
-## Summary
-Valida o pacote final de entrega da Fase 3: video demonstrativo (ate 15 min, cobrindo os 6 pontos exigidos), PDF unico com todos os links e confirmacoes, e os acessos (usuario `soat-architecture` nos 4 repos, branches protegidas). Este QA Plan e essencialmente uma checklist de conferencia pre-submissao — a maior parte dos cenarios e manual, ligados aos itens ja implementados nas outras stories.
+## Resumo
+Checklist de validacao do pacote de entrega: video (<= 15 min) cobrindo os seis pontos exigidos, PDF unico com links e confirmacoes, e acessos (`soat-architecture` nos 4 repos, `main` protegida, deploy ativo).
 
-## Prerequisites
-- Todas as outras stories da Fase 3 concluidas ou em estado demonstravel ([QA_PLAN_US-F3-01](QA_PLAN_US-F3-01.md) a [QA_PLAN_US-F3-11](QA_PLAN_US-F3-11.md))
-- Conta no YouTube/Vimeo para publicar o video
-- Acesso de admin aos 4 repositorios para conferir colaboradores e protecao de branch
+## Pre-requisitos
+- Ambiente no ar para gravar (`caffeinate -i scripts/aws-deploy-all.sh`, ou `aws-resume.sh` se pausado) com o coletor de observabilidade instalado
+- Roteiro ensaiado; cronometro
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: Video cobre autenticacao com CPF
-- **Type:** Manual (revisao do roteiro/gravacao)
-- **Steps:**
-  1. Assistir o video e cronometrar o trecho de autenticacao
-  2. Confirmar que mostra o fluxo cliente -> API Gateway -> Lambda -> JWT (chamada real, nao so slide)
-- **Expected result:** Fluxo demonstrado com uma chamada real e o token resultante visivel
+### TS-01: Video — autenticacao com CPF
+- **Tipo:** Manual
+- **Criterio:** Fluxo cliente -> API Gateway -> Lambda -> JWT
+- **Passos:** mostrar `POST $GW/auth` com CPF do seed retornando `accessToken`; decodificar as claims
+- **Resultado esperado:** trecho gravado (< 2 min)
 
-### TS-02: Video cobre pipeline de CI/CD em execucao
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar trecho mostrando um pipeline (Actions) rodando ao vivo ou uma execucao recente completa
-- **Expected result:** CI/CD demonstrado, nao apenas descrito
+### TS-02: Video — pipeline CI/CD executando
+- **Passos:** abrir um PR pequeno (ou re-disparar um CD) e mostrar CI verde, plan comentado, run de CD com OIDC
+- **Resultado esperado:** trecho gravado
 
-### TS-03: Video cobre deploy automatizado
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar trecho mostrando o deploy (CD) para a nuvem, ou evidencia de uma execucao recente
-- **Expected result:** Deploy automatizado demonstrado
+### TS-03: Video — deploy automatizado para a nuvem
+- **Passos:** merge -> `cd-aws.yml` -> imagem no ECR -> rollout no EKS -> smoke test
+- **Resultado esperado:** trecho gravado (usar um deploy real ou o log de um run recente)
 
-### TS-04: Video cobre consumo das APIs protegidas
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar chamada a uma rota protegida usando o token do gateway (nao um token gerado localmente)
-- **Expected result:** Chamada bem-sucedida com o token real do fluxo de CPF
+### TS-04: Video — consumo das APIs protegidas
+- **Passos:** `GET $GW/clientes` sem token (401), com token (200); cliente vendo as proprias OS
+- **Resultado esperado:** trecho gravado
 
-### TS-05: Video cobre dashboard com analise ao vivo
-- **Type:** Manual
-- **Acceptance criterion:** Depende de [QA_PLAN_US-F3-11](QA_PLAN_US-F3-11.md) TS-13
-- **Steps:**
-  1. Confirmar trecho no dashboard real (Datadog) navegando pelos paineis com dados atuais
-- **Expected result:** Dashboard ao vivo, nao print estatico
+### TS-05: Video — dashboard com analise ao vivo
+- **Passos:** gerar trafego (k6) e mostrar os dashboards de negocio e tecnico atualizando; mostrar um alerta
+- **Resultado esperado:** trecho gravado (QA_PLAN_US-F3-11 TS-12)
 
-### TS-06: Video cobre logs e traces em execucao
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar trecho mostrando logs estruturados e/ou trace de uma requisicao, com o correlationId visivel
-- **Expected result:** Correlacao demonstrada na pratica
+### TS-06: Video — logs e traces em execucao
+- **Passos:** `kubectl logs ... | jq` com `correlationId`; trace no APM com os logs ligados
+- **Resultado esperado:** trecho gravado
 
-### TS-07: Video dentro do limite de 15 minutos
-- **Type:** Manual
-- **Steps:**
-  1. Conferir a duracao total do video publicado
-- **Expected result:** <= 15 minutos
+### TS-07: Video — duracao e publicacao
+- **Criterio:** YouTube/Vimeo, publico ou nao listado, ate 15 min
+- **Passos:** publicar; conferir duracao e visibilidade em janela anonima
+- **Resultado esperado:** <= 15:00, acessivel pelo link
 
-### TS-08: Video publicado com visibilidade correta
-- **Type:** Manual
-- **Steps:**
-  1. Abrir o link do video em uma janela anonima/sem login
-- **Expected result:** Acessivel (publico ou nao listado, nunca privado)
+### TS-08: PDF unico
+- **Criterio:** Links dos 4 repos, do video, das documentacoes; confirmacao do `soat-architecture`
+- **Passos:** abrir o PDF e clicar em cada link (repos, video, `docs/arquitetura` — RFCs/ADRs/diagramas, `docs/schema.dbml`, Swagger/Postman)
+- **Resultado esperado:** todos os links abrem; confirmacao do colaborador presente
 
-### TS-09: PDF contem os links dos 4 repositorios
-- **Type:** Manual
-- **Steps:**
-  1. Abrir o PDF final e clicar em cada um dos 4 links de repositorio
-- **Expected result:** Todos os links resolvem para os repositorios corretos e acessiveis
+### TS-09: Acessos
+- **Criterio:** `soat-architecture` nos 4 repos; `main` protegida; deploy ativo validado
+- **Passos:**
+  1. `for r in ...; do gh api repos/guilhermeqmaia/soat-fiap-oficina-$r/collaborators/soat-architecture; done`
+  2. Regras de branch (QA_PLAN_US-F3-07 TS-03); print para o PDF
+  3. `curl -s $GW/health` na data da entrega (ou nota de que o ambiente e efemero e como subir — ADR-0008)
+- **Resultado esperado:** conforme
 
-### TS-10: PDF contem o link do video
-- **Type:** Manual
-- **Steps:**
-  1. Clicar no link do video a partir do PDF
-- **Expected result:** Abre o video correto, dentro do limite de 15 min
+## Casos de Borda
+- Video acima de 15 min: cortar CI/CD para o log de um run pronto; priorizar CPF e dashboard (maior peso)
+- URL do gateway muda a cada `deploy-all`: no PDF, citar a URL da gravacao e o comando para reproduzir
 
-### TS-11: PDF contem os links de documentacao
-- **Type:** Manual
-- **Acceptance criterion:** Arquitetura, RFCs, ADRs, ER, Swagger/Postman
-- **Steps:**
-  1. Conferir cada link (diagramas, RFCs [f3-doc-01](../user-stories/f3-doc-01-rfcs.md), ADRs [f3-doc-02](../user-stories/f3-doc-02-adrs.md), ER [f3-doc-04](../user-stories/f3-doc-04-justificativa-banco-er.md), Swagger/Postman)
-- **Expected result:** Todos os links funcionam e apontam para o conteudo certo
+## Rastreabilidade
 
-### TS-12: PDF confirma soat-architecture nos 4 repos
-- **Type:** Manual
-- **Steps:**
-  1. Conferir a secao do PDF que afirma a adicao do usuario
-  2. Cruzar com a checagem real em cada repositorio (Settings > Collaborators)
-- **Expected result:** Declaracao do PDF bate com a realidade nos 4 repos
-
-### TS-13: Usuario soat-architecture efetivamente colaborador nos 4 repos
-- **Type:** Manual — mesmo cenario de [QA_PLAN_US-F3-07](QA_PLAN_US-F3-07.md) TS-07
-- **Steps:**
-  1. Verificar em cada um dos 4 repositorios
-- **Expected result:** Presente nos 4
-
-### TS-14: main/master protegida em todos (evidencia no PDF/README)
-- **Type:** Manual — mesmo cenario de [QA_PLAN_US-F3-07](QA_PLAN_US-F3-07.md) TS-02
-- **Steps:**
-  1. Confirmar que o PDF ou os READMEs trazem evidencia (print/descricao) da protecao de branch
-- **Expected result:** Evidencia presente e condizente com a configuracao real
-
-### TS-15: Links de deploy ativo validados
-- **Type:** Manual
-- **Steps:**
-  1. Acessar cada link de ambiente ativo citado na documentacao (gateway, dashboards) pouco antes da submissao
-- **Expected result:** Links funcionando no momento da entrega (nao apenas historicamente)
-
-### TS-16: Bloco TODO do video substituido no README principal
-- **Type:** Manual
-- **Steps:**
-  1. Abrir o README principal e localizar a secao de video (ver [f3-doc-06](../user-stories/f3-doc-06-indice-docs-readme.md))
-- **Expected result:** Link final presente, sem bloco `TODO` remanescente
-
-## Edge Cases
-- Link do video ou de um repositorio ficando privado/removido entre a gravacao do PDF e a correcao — validar tudo de novo pouco antes do envio
-- PDF gerado a partir de um markdown com links relativos que nao funcionam fora do repositorio — usar sempre URLs absolutas no PDF final
-- Video ultrapassando 15 min por poucos segundos — cortar antes de publicar, nao arriscar desclassificacao
-
-## Traceability
-
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| Video: autenticacao com CPF | TS-01 |
-| Video: pipeline CI/CD | TS-02 |
-| Video: deploy automatizado | TS-03 |
-| Video: consumo de APIs protegidas | TS-04 |
-| Video: dashboard ao vivo | TS-05 |
-| Video: logs e traces | TS-06 |
-| Video: ate 15 min | TS-07 |
-| Video: publico/nao listado | TS-08 |
-| PDF: links dos 4 repos | TS-09 |
-| PDF: link do video | TS-10 |
-| PDF: links de documentacao | TS-11 |
-| PDF: confirmacao soat-architecture | TS-12 |
-| soat-architecture nos 4 repos | TS-13 |
-| Branch protegida (evidencia) | TS-14 |
-| Links de deploy ativo validados | TS-15 |
-| Bloco TODO do video substituido | TS-16 |
+| Autenticacao com CPF | TS-01 |
+| Pipeline CI/CD | TS-02 |
+| Deploy automatizado | TS-03 |
+| APIs protegidas | TS-04 |
+| Dashboard ao vivo | TS-05 |
+| Logs e traces | TS-06 |
+| Video <= 15 min publicado | TS-07 |
+| PDF (repos, video, docs, confirmacao) | TS-08 |
+| `soat-architecture` + `main` protegida + deploy ativo | TS-09 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Checklist executada na integra pouco antes da submissao no Portal do Aluno
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Instrucoes claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-# Nao ha comando automatizado — esta story e validada manualmente,
-# como checklist final de conferencia antes da entrega.
+caffeinate -i scripts/aws-resume.sh   # repo infra-k8s — retoma o ambiente pausado em ~7 min
 ```

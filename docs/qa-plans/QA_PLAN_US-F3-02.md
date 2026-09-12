@@ -1,135 +1,120 @@
 # QA Plan — US-F3-02: API Gateway e Protecao de Rotas Sensiveis
 
-## Summary
-Valida o AWS API Gateway (`soat-fiap-oficina-infra-k8s/gateway`, Terraform) como ponto de entrada unico: rota publica `/auth` integrada a Lambda, rotas sensiveis protegidas pelo Lambda Authorizer (JWT), rotas publicas do backend liberadas, throttling, CORS e roteamento para o backend no EKS via VPC Link.
+## Resumo
+Valida o AWS API Gateway (HTTP API, stage `gateway/` do repo infra-k8s) como **unica entrada publica**: rota `/auth` na Lambda, Lambda Authorizer nas rotas sensiveis, rotas publicas explicitas, throttling, roteamento por VPC Link ate o NLB interno do EKS, CORS e access logs.
 
-## Prerequisites
-- Terraform 1.9.8 instalado; acesso as credenciais AWS (para `plan`/`apply` reais) ou apenas `init -backend=false` para validacao estrutural
-- Lambda de autenticacao ja deployada (`auth_lambda_arn` disponivel) — ver [QA_PLAN_US-F3-01](QA_PLAN_US-F3-01.md)
-- NLB interno do backend no EKS no ar (`backend_listener_arn`) — ver [QA_PLAN_US-F3-06](QA_PLAN_US-F3-06.md) (US-F3-06)
-- `curl`/Postman e um JWT valido (obtido via `POST {gateway}/auth`) e um invalido/expirado para os testes negativos
+## Pre-requisitos
+- Ambiente no ar (`scripts/aws-deploy-all.sh`); `GW` = URL impressa pelo script (`https://<id>.execute-api.us-east-1.amazonaws.com`)
+- Seeds carregados; tokens de TS-04/TS-05 do QA_PLAN_US-F3-01
+- `aws` CLI (profile `oficina`), `curl`, `jq`, `k6` (throttling)
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: Terraform valida e formata sem erros
-- **Type:** Automated (CI)
-- **Acceptance criterion:** API Gateway provisionado por Terraform
-- **Steps:**
-  1. `terraform -chdir=gateway fmt -check -diff`
-  2. `terraform -chdir=gateway init -backend=false -input=false`
-  3. `terraform -chdir=gateway validate`
-- **Expected result:** Todos os comandos retornam sucesso (mesmo gate do `ci.yml`)
+### TS-01: Gateway provisionado por Terraform e e o unico endpoint publico
+- **Tipo:** Manual
+- **Criterio:** API Gateway por Terraform como ponto de entrada unico
+- **Passos:**
+  1. `aws apigatewayv2 get-apis --query 'Items[].[Name,ApiEndpoint,ProtocolType]'`
+  2. `aws elbv2 describe-load-balancers --query 'LoadBalancers[].[Scheme,DNSName]'`
+  3. `aws ec2 describe-instances --query 'Reservations[].Instances[].PublicIpAddress'`
+- **Resultado esperado:** 1 HTTP API; o unico LB e `internal`; nenhuma instancia com IP publico; o run `apply (gateway)` do `cd.yml` e a origem (17 recursos)
 
-### TS-02: Rota publica de autenticacao roteia para a Lambda
-- **Type:** Manual / Automated (smoke pos-deploy)
-- **Acceptance criterion:** Rota publica `/auth` integrada a Lambda de CPF
-- **Steps:**
-  1. `curl -X POST {gateway_url}/auth -d '{"cpf":"<cpf válido>"}' -H "Content-Type: application/json"`
-- **Expected result:** Resposta identica ao contrato da Lambda (200 com JWT, ou erro 400/403/404/422 conforme o caso) — sem exigir Authorization
+### TS-02: `POST /auth` chega na Lambda
+- **Tipo:** Ambos
+- **Criterio:** Rota publica de autenticacao integrada a Lambda
+- **Passos:**
+  1. `curl -s -X POST $GW/auth -H 'content-type: application/json' -d '{"cpf":"11111111111"}' -w ' -> %{http_code}'`
+- **Resultado esperado:** `422 CPF_INVALIDO` com `requestId` do gateway — resposta veio da Lambda, sem authorizer
 
-### TS-03: Rota sensivel exige JWT valido
-- **Type:** Manual / Automated (smoke)
-- **Acceptance criterion:** Rotas sensiveis exigem JWT valido; mecanismo de protecao (Lambda Authorizer)
-- **Steps:**
-  1. Chamar uma rota sensivel (ex.: `GET /clientes`) sem header `Authorization`
-  2. Chamar a mesma rota com `Authorization: Bearer <token invalido>`
-  3. Chamar com `Authorization: Bearer <token valido>`
-- **Expected result:** 401/403 nos dois primeiros casos (authorizer nega); 200 (ou o status do backend) no terceiro
+### TS-03: Rotas sensiveis exigem JWT valido (Lambda Authorizer)
+- **Tipo:** Ambos
+- **Criterio:** Rotas sensiveis protegidas; mecanismo = Lambda Authorizer
+- **Passos:**
+  1. `curl -s $GW/clientes -w ' -> %{http_code}'` (sem token)
+  2. `curl -s $GW/clientes -H 'Authorization: Bearer abc.def.ghi' -w ' -> %{http_code}'`
+  3. `curl -s $GW/clientes -H "Authorization: Bearer $TOKEN_ADMIN" -w ' -> %{http_code}'`
+- **Resultado esperado:** `401 {"message":"Unauthorized"}` (gateway, sem header) · `403` (authorizer nega) · `200` com a lista
+- **Evidencia (12/09/2026):** 401 / 403 / 200 respectivamente; `aws apigatewayv2 get-authorizers --api-id <id>` mostra o authorizer REQUEST apontando para `oficina-auth-prod:prod`
 
-### TS-04: Rotas publicas do backend liberadas sem token
-- **Type:** Manual / Automated (smoke)
-- **Acceptance criterion:** Rotas publicas explicitamente liberadas (health, status de OS, webhooks)
-- **Steps:**
-  1. `curl {gateway_url}/health` sem token
-  2. `curl {gateway_url}/ordens-servico/status/{numero}` sem token (consulta publica de status)
-- **Expected result:** 200, sem exigir Authorization — confirma que `local.public_backend_route_keys` cobre exatamente essas rotas
+### TS-04: Rotas publicas liberadas explicitamente
+- **Tipo:** Ambos
+- **Criterio:** Rotas publicas (status de OS, `/health`)
+- **Passos:**
+  1. `curl -s $GW/health` e `curl -s $GW/health/ready` -> 200
+  2. Abrir uma OS (QA_PLAN_US-F3-06) e chamar `curl -s "$GW/ordens-servico/numero/<numero>/status"` sem token -> 200
+  3. `aws apigatewayv2 get-routes --api-id <id> --query 'Items[].[RouteKey,AuthorizerId]'`
+- **Resultado esperado:** somente `GET /health`, `GET /health/ready`, `GET /ordens-servico/numero/{numero}/status` e os 3 webhooks de aprovacao sem `AuthorizerId`; o catch-all `ANY /{proxy+}` com authorizer
 
-### TS-05: Catch-all protegido nao vaza rota nao mapeada
-- **Type:** Manual
-- **Acceptance criterion:** Rotas sensiveis protegidas por padrao
-- **Steps:**
-  1. Chamar uma rota qualquer nao listada como publica (ex.: `GET /produtos`) sem token
-- **Expected result:** Negada pelo authorizer (401/403) — comprova que o padrao e "protegido", nao "liberado por omissao"
+### TS-05: Throttling / rate limiting
+- **Tipo:** Ambos
+- **Criterio:** Throttling configurado no gateway
+- **Passos:**
+  1. `aws apigatewayv2 get-stage --api-id <id> --stage-name '$default' --query 'DefaultRouteSettings'`
+  2. Rajada acima do burst: `k6 run perf/spike.js -e BASE_URL=$GW -e JWT_SECRET=<segredo> -e VUS=900 -e DURATION=30s`
+- **Resultado esperado:** `ThrottlingRateLimit 400`, `ThrottlingBurstLimit 800`; sob a rajada aparecem `429` no gateway (access log `status: 429`) e o backend nao recebe o excedente
 
-### TS-06: Throttling / rate limiting
-- **Type:** Manual/config
-- **Acceptance criterion:** Throttling configurado no gateway
-- **Steps:**
-  1. Inspecionar `gateway.tf`/`variables.tf` para o `throttle_burst_limit`/`throttle_rate_limit` configurado no stage
-  2. (Opcional, carga) Disparar rajada de requisicoes acima do limite configurado
-- **Expected result:** Configuracao presente no Terraform; em teste de carga, requisicoes excedentes recebem 429
+### TS-06: Roteamento ao EKS por VPC Link
+- **Tipo:** Manual
+- **Criterio:** Roteamento para o Service do EKS
+- **Passos:**
+  1. `aws apigatewayv2 get-vpc-links --query 'Items[].[VpcLinkStatus,SubnetIds,SecurityGroupIds]'`
+  2. `aws apigatewayv2 get-integrations --api-id <id> --query 'Items[].[IntegrationType,ConnectionType,IntegrationUri]'`
+  3. `for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code} %{time_total}\n' $GW/health; done`
+- **Resultado esperado:** VPC Link `AVAILABLE` nas subnets privadas; integracao `HTTP_PROXY` + `VPC_LINK` com o ARN do listener do NLB (`backend_listener_arn`); 10/10 `200` em < 1 s (evidencia: ~0,44 s)
 
-### TS-07: CORS configurado para as UIs
-- **Type:** Manual
-- **Acceptance criterion:** CORS configurado
-- **Steps:**
-  1. `curl -X OPTIONS {gateway_url}/auth -H "Origin: <origem da UI>" -H "Access-Control-Request-Method: POST"`
-- **Expected result:** Resposta com headers `Access-Control-Allow-Origin`/`-Methods` cobrindo as origens das UIs admin/cliente
+### TS-07: CORS para as UIs
+- **Tipo:** Ambos
+- **Criterio:** CORS configurado
+- **Passos:**
+  1. `curl -s -i -X OPTIONS $GW/clientes -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: GET' | grep -i access-control`
+- **Resultado esperado:** `access-control-allow-origin`, `-methods` e `-headers` (incluindo `authorization`) presentes; `aws apigatewayv2 get-api --api-id <id> --query CorsConfiguration` confere
 
-### TS-08: Roteamento para o backend via VPC Link
-- **Type:** Manual / Automated (smoke)
-- **Acceptance criterion:** Roteamento do gateway para o Service/Ingress do EKS
-- **Steps:**
-  1. Confirmar em `gateway.tf` que `aws_apigatewayv2_vpc_link.eks` aponta para o NLB interno correto
-  2. Chamar uma rota protegida com token valido de ponta a ponta e confirmar que a resposta vem da aplicacao (ex.: payload/versao conhecida)
-- **Expected result:** Requisicao chega ao pod da aplicacao no EKS
+### TS-08: Access logs exportados
+- **Tipo:** Manual
+- **Criterio:** Logs de acesso habilitados e exportados
+- **Passos:**
+  1. Executar TS-03
+  2. `aws logs tail /aws/apigateway/oficina-mecanica-gateway --since 5m`
+- **Resultado esperado:** uma linha JSON por requisicao com `requestId`, `routeKey`, `status`, `latencyMs`, `authorizerError`, `integrationError` — campos consumidos pelo painel de borda (US-F3-10)
 
-### TS-09: Logs de acesso do gateway habilitados
-- **Type:** Manual/config
-- **Acceptance criterion:** Logs de acesso exportados para observabilidade
-- **Steps:**
-  1. Verificar configuracao de access logs do stage no Terraform/console AWS
-  2. Confirmar que os logs alimentam o pipeline de observabilidade (US-F3-10)
-- **Expected result:** Access logs habilitados e visiveis na plataforma de observabilidade escolhida
+### TS-09: Diagrama e README
+- **Tipo:** Manual
+- **Criterio:** Diagrama de sequencia; README com a URL publica
+- **Passos:**
+  1. Conferir `docs/arquitetura/` (diagramas, US-F3-DOC-03) e o README do repo infra-k8s (secao CI/CD: "Deploy ativo" = output `api_base_url`)
+- **Resultado esperado:** diagrama `cliente -> API Gateway -> Lambda -> JWT -> API protegida` presente; README explica como obter a URL (ambiente efemero — ADR-0008)
 
-### TS-10: README documenta a URL publica do gateway
-- **Type:** Manual
-- **Acceptance criterion:** Documentado no README com a URL publica do gateway
-- **Steps:**
-  1. Abrir o README do repo `soat-fiap-oficina-infra-k8s` (secao do gateway)
-  2. Confirmar presenca da URL publica do gateway (ou placeholder claro, se ainda nao implantado)
-- **Expected result:** README documenta a URL publica do gateway, atualizada
+## Casos de Borda
+- Token expirado (`exp` no passado) -> 403 no authorizer (cache do authorizer de 300 s pode manter uma decisao por ate 5 min — documentado)
+- Metodo nao mapeado numa rota publica (ex.: `POST /health`) -> cai no catch-all protegido -> 401
+- Payload > 10 MB / timeout de integracao (30 s) -> 413/504 do gateway
+- Primeiras requisicoes apos o deploy podem dar 503 enquanto os alvos do NLB convergem (~1 min) — o script de deploy aguarda
 
-## Edge Cases
-- Token expirado (`exp` no passado) chegando na rota sensivel -> negado
-- Header `Authorization` sem prefixo `Bearer` -> `extractBearerToken` deve tratar (ver testes da Lambda) e o authorizer deve negar se malformado
-- Rota `/auth` chamada com metodo diferente de POST (ex.: GET) -> deve retornar erro de metodo nao suportado, nao cair no catch-all protegido
-- Cache do authorizer (`authorizer_cache_ttl_seconds`) mascarando revogacao — usuario desativado ainda acessa até o TTL expirar
+## Rastreabilidade
 
-## Traceability
-
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| API Gateway provisionado por Terraform | TS-01 |
-| Rota publica /auth integrada a Lambda | TS-02 |
-| Rotas sensiveis exigem JWT valido | TS-03, TS-05 |
-| Mecanismo Lambda Authorizer | TS-03, TS-05 |
-| Rotas publicas explicitamente liberadas | TS-04 |
-| Throttling / rate limiting | TS-06 |
-| Roteamento para o Service/Ingress do EKS | TS-08 |
-| CORS configurado | TS-07 |
-| Logs de acesso exportados | TS-09 |
-| Diagrama de sequencia do fluxo | (verificar em [f3-doc-03](../user-stories/f3-doc-03-arquitetura-diagramas.md)) |
-| Documentado no README com a URL publica do gateway | TS-10 |
+| API Gateway por Terraform, entrada unica | TS-01 |
+| `/auth` integrado a Lambda | TS-02 |
+| Rotas sensiveis exigem JWT | TS-03 |
+| Lambda Authorizer | TS-03 |
+| Rotas publicas explicitas | TS-04 |
+| Throttling | TS-05 |
+| Roteamento ao EKS | TS-06 |
+| CORS | TS-07 |
+| Access logs exportados | TS-08 |
+| Diagrama de sequencia | TS-09 |
+| README com URL | TS-09 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Fluxos de erro documentados
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Fluxos de erro documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-# Validacao estrutural (sem AWS)
-terraform -chdir=gateway fmt -check -diff
-terraform -chdir=gateway init -backend=false -input=false
-terraform -chdir=gateway validate
-
-# Plan real (com credenciais AWS configuradas)
-terraform -chdir=gateway plan
-
-# Smoke test pos-deploy
-curl {gateway_url}/health
-curl -X POST {gateway_url}/auth -d '{"cpf":"<cpf>"}' -H "Content-Type: application/json"
-curl {gateway_url}/clientes -H "Authorization: Bearer <token>"
+API=$(aws apigatewayv2 get-apis --query 'Items[0].ApiId' --output text)
+aws apigatewayv2 get-routes --api-id $API --query 'Items[].[RouteKey,AuthorizerId]' --output table
+aws logs tail /aws/apigateway/oficina-mecanica-gateway --since 10m --format short
 ```

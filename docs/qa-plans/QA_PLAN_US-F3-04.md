@@ -1,144 +1,124 @@
 # QA Plan — US-F3-04: Terraform — Banco de Dados Gerenciado (RDS)
 
-## Summary
-Valida o provisionamento do RDS for PostgreSQL via Terraform (`soat-fiap-oficina-infra-db`): Multi-AZ, isolamento de rede (subnets privadas + security group), segredo no Secrets Manager, backups/deletion protection, remote state e o contrato de `DATABASE_URL` esperado pela aplicacao.
+## Resumo
+Valida o repo `soat-fiap-oficina-infra-db`: RDS for PostgreSQL 16 **Multi-AZ**, em subnets privadas com SG restrito, senha gerada e guardada no Secrets Manager, outputs consumidos pela app/Lambda, backups/manutencao/`deletion_protection`, parametrizacao por ambiente, remote state e CI/CD.
 
-## Prerequisites
-- Terraform 1.9.8, acesso as credenciais AWS (conta AWS Academy/Learner Lab)
-- Acesso ao repositorio `soat-fiap-oficina-infra-db`
-- Para validacao end-to-end: cluster EKS ja provisionado ([QA_PLAN_US-F3-05](QA_PLAN_US-F3-05.md)) para testar o security group
+## Pre-requisitos
+- `aws` CLI (profile `oficina`), `gh` logado, `terraform` 1.9+
+- Vars do repo preenchidas (`VPC_ID`, `DB_SUBNET_IDS`, `DB_ALLOWED_CIDRS`, `DB_BACKUP_RETENTION_DAYS`) — o `aws-deploy-all.sh` grava
+- Para os cenarios de nuvem: ambiente no ar (`scripts/aws-deploy-all.sh`)
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: Terraform fmt/validate/plan no CI
-- **Type:** Automated (CI)
-- **Acceptance criterion:** terraform fmt/validate/plan no CI; apply no deploy automatico
-- **Steps:**
-  1. `terraform fmt -check -diff`
-  2. `terraform init -backend=false -input=false`
-  3. `terraform validate`
-- **Expected result:** Sucesso nos 3 passos (gate do PR)
+### TS-01: RDS PostgreSQL provisionado por Terraform (versao compativel)
+- **Tipo:** Ambos
+- **Criterio:** Terraform provisiona RDS for PostgreSQL compativel com as migrations Prisma
+- **Passos:**
+  1. `aws rds describe-db-instances --db-instance-identifier oficina-mecanica-prod --query 'DBInstances[0].[Engine,EngineVersion,DBInstanceClass,DBInstanceStatus]'`
+  2. Conferir que o Job `oficina-migrations` do app completou (`kubectl -n oficina get job`)
+- **Resultado esperado:** `postgres 16.x`, `db.t3.micro`, `available`; 18 migrations aplicadas (log do pod do app: "Applying migration ...")
 
-### TS-02: RDS PostgreSQL provisionado com versao compativel
-- **Type:** Manual/config
-- **Acceptance criterion:** RDS for PostgreSQL, versao compativel com as migrations Prisma
-- **Steps:**
-  1. `terraform plan` e revisar `engine_version` do `aws_db_instance`
-  2. Comparar com a versao do Postgres usada no `docker-compose` local (Fase 2) e com o `provider` do Prisma
-- **Expected result:** Versao igual ou superior a usada em dev, sem quebrar as migrations existentes
+### TS-02: Multi-AZ
+- **Tipo:** Manual
+- **Criterio:** Multi-AZ habilitado
+- **Passos:**
+  1. `aws rds describe-db-instances --query 'DBInstances[0].[MultiAZ,AvailabilityZone,SecondaryAvailabilityZone]'`
+- **Resultado esperado:** `True`, AZ primaria e secundaria distintas (evidencia 12/09/2026: `True us-east-1a/us-east-1b`)
 
-### TS-03: Multi-AZ habilitado
-- **Type:** Manual/config
-- **Steps:**
-  1. Revisar `multi_az = true` no recurso `aws_db_instance`
-  2. (Se aplicado) Console AWS -> RDS -> confirmar "Multi-AZ" no describe da instancia
-- **Expected result:** Multi-AZ ativo
+### TS-03: Sem exposicao publica; acesso so da VPC
+- **Tipo:** Ambos
+- **Criterio:** subnet group privado + SG restrito
+- **Passos:**
+  1. `aws rds describe-db-instances --query 'DBInstances[0].[PubliclyAccessible,DBSubnetGroup.Subnets[].SubnetIdentifier,VpcSecurityGroups[].VpcSecurityGroupId]'`
+  2. `aws ec2 describe-security-group-rules --filters Name=group-id,Values=<sg> --query 'SecurityGroupRules[?IsEgress==`false`].[FromPort,CidrIpv4,ReferencedGroupInfo.GroupId]'`
+  3. Do seu computador: `nc -zv -w 3 <endpoint> 5432`
+- **Resultado esperado:** `PubliclyAccessible=False`; subnets = privadas do cluster; ingress 5432 apenas do CIDR da VPC (`10.0.0.0/16`) e/ou SGs informados; conexao externa falha (timeout)
 
-### TS-04: Isolamento de rede — subnets privadas e security group
-- **Type:** Manual/config
-- **Acceptance criterion:** db_subnet_group em subnets privadas + SG restringindo acesso ao EKS
-- **Steps:**
-  1. Revisar `aws_db_subnet_group` — subnets sem rota direta a Internet Gateway
-  2. Revisar `aws_security_group` do RDS — ingress apenas do SG/CIDR do cluster EKS na porta 5432
-  3. Tentar conectar ao endpoint do RDS de fora da VPC (deve falhar/timeout)
-- **Expected result:** RDS inacessivel publicamente; acessivel apenas a partir do EKS
+### TS-04: Senha gerada e guardada no Secrets Manager, fora do state/outputs
+- **Tipo:** Ambos
+- **Criterio:** `random_password` + Secrets Manager; nunca em texto plano
+- **Passos:**
+  1. `aws secretsmanager get-secret-value --secret-id oficina-mecanica-prod/database --query SecretString --output text | jq 'keys'`
+  2. `terraform output` (no CD ou local) — conferir que nao ha senha em output
+  3. `aws s3 cp s3://<bucket>/oficina-infra-db/prod.tfstate - | jq '.outputs | keys'`
+- **Resultado esperado:** chaves `DATABASE_URL, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD`; outputs sao `db_endpoint`, `secret_arn`, `secret_name`, ... (sem senha; o state contem a senha por natureza e por isso o bucket e privado/criptografado)
 
-### TS-05: Senha via Secrets Manager, nunca em texto plano
-- **Type:** Manual/config
-- **Acceptance criterion:** Senha gerada por random_password e armazenada no Secrets Manager
-- **Steps:**
-  1. Revisar o recurso `random_password` e o `aws_secretsmanager_secret`/`_version`
-  2. `terraform show`/`state show` no recurso do RDS — confirmar que a senha nao aparece em texto plano no state nem em outputs
-  3. `grep` no output do `terraform plan`/`apply` por senha em texto plano (nao deve aparecer)
-- **Expected result:** Senha marcada como sensitive; nunca exposta em logs, state legivel ou outputs
+### TS-05: Contrato consumido pela app e pela Lambda
+- **Tipo:** Ambos
+- **Criterio:** Output com endpoint e referencia ao secret; contrato de `DATABASE_URL`
+- **Passos:**
+  1. CD do app (`cd-aws.yml`, step "Sincronizar Secrets") le `DB_SECRET_ID=oficina-mecanica-prod/database` e cria o Secret k8s `oficina-db`
+  2. `kubectl -n oficina get secret oficina-db -o jsonpath='{.data.DATABASE_URL}' | base64 -d | sed 's/:[^:@]*@/:***@/'`
+  3. `GET $GW/health/ready` -> 200 (`checks.database.status = ok`)
+- **Resultado esperado:** `postgresql://oficina:***@<endpoint>:5432/oficina_mecanica?schema=public`; readiness ok (TLS ligado por `DB_SSL=true` — o RDS exige `rds.force_ssl`)
 
-### TS-06: Output do endpoint consumido pela aplicacao
-- **Type:** Manual/config
-- **Acceptance criterion:** Output com endpoint + referencia ao secret
-- **Steps:**
-  1. `terraform output` — conferir `rds_endpoint` (ou nome equivalente) e ARN/nome do secret
-  2. Confirmar que o pipeline do repo da app (CD) consome esse output (via SSM Parameter Store / remote state data source) para popular o Secret `oficina-db` do K8s
-- **Expected result:** Endpoint e secret corretamente propagados; `DATABASE_URL` final no cluster aponta para o RDS
+### TS-06: Backups, manutencao e `deletion_protection`
+- **Tipo:** Manual
+- **Criterio:** Backups automaticos + janela de manutencao + `deletion_protection` em prod
+- **Passos:**
+  1. `aws rds describe-db-instances --query 'DBInstances[0].[BackupRetentionPeriod,PreferredBackupWindow,PreferredMaintenanceWindow,DeletionProtection]'`
+- **Resultado esperado:** retencao `1` no plano Free (`DB_BACKUP_RETENTION_DAYS`; default 7 em conta paga), janelas `03:00-04:00` / `mon:04:30-mon:05:30`, `DeletionProtection=True` em prod (o `aws-destroy-all.sh` desliga antes do destroy)
 
-### TS-07: Backups, janela de manutencao e deletion protection
-- **Type:** Manual/config
-- **Steps:**
-  1. Revisar `backup_retention_period`, `maintenance_window`, `backup_window`
-  2. Revisar `deletion_protection = true` no ambiente de producao (`prod.tfvars` ou workspace `prod`)
-- **Expected result:** Backups automaticos configurados; `deletion_protection` ativo em prod (pode ser `false` em homolog, documentar a diferenca)
+### TS-07: Parametrizacao por ambiente
+- **Tipo:** Ambos
+- **Criterio:** homolog/prod via tfvars/TF_VAR
+- **Passos:**
+  1. `cd.yml`: push em `homolog` -> `TF_ENV=homolog` (skip_final_snapshot, sem deletion_protection); `main` -> `prod`
+  2. `terraform plan -var environment=homolog ...` local: `deletion_protection=false`, `skip_final_snapshot=true`
+- **Resultado esperado:** `locals.tf` deriva os defaults seguros por ambiente; state key por ambiente (`oficina-infra-db/<env>.tfstate`)
 
-### TS-08: Parametrizacao por ambiente
-- **Type:** Manual/config
-- **Steps:**
-  1. Conferir `terraform.tfvars.example` e a estrategia de workspaces/tfvars para homolog vs. producao
-  2. Rodar `terraform workspace list` (se workspaces) ou conferir os arquivos `*.tfvars` por ambiente
-- **Expected result:** Variaveis (tamanho da instancia, multi-AZ, retention) parametrizaveis sem duplicar codigo
+### TS-08: Remote state (S3 + DynamoDB)
+- **Tipo:** Manual
+- **Criterio:** Remote state com lock
+- **Passos:**
+  1. `aws s3 ls s3://soat-oficina-tfstate-<conta>/oficina-infra-db/`
+  2. `aws dynamodb describe-table --table-name soat-oficina-tflock --query Table.TableStatus`
+- **Resultado esperado:** `prod.tfstate` versionado; tabela de lock `ACTIVE` (criada pelo `aws-account-bootstrap.sh`)
 
-### TS-09: Remote state (S3 + DynamoDB lock)
-- **Type:** Manual/config
-- **Acceptance criterion:** Remote state configurado
-- **Steps:**
-  1. Revisar `backend "s3"` em `versions.tf`/`providers.tf` — bucket e `dynamodb_table` para lock
-  2. Rodar `terraform init` real (com backend) e confirmar que o state fica no S3, nao local
-- **Expected result:** State remoto com lock funcionando (2 `apply` simultaneos devem serializar, nao corromper)
+### TS-09: CI (`fmt`/`validate`/`plan`) e CD (`apply`)
+- **Tipo:** Automatizado
+- **Criterio:** CI no PR; apply no deploy automatico
+- **Passos:**
+  1. Abrir um PR no repo: `ci.yml` roda `fmt -check`, `validate` e comenta o `plan`
+  2. Merge em `main`: `cd.yml` faz `apply` (run "CD - Terraform apply")
+- **Resultado esperado:** checks verdes; run de CD com `Apply complete` (evidencia 12/09/2026: 7 recursos)
 
-### TS-10: Contrato de DATABASE_URL mantido
-- **Type:** Automated (integration, no repo da app) / Manual
-- **Acceptance criterion:** Mantido o contrato de DATABASE_URL esperado pela app e pelo Job de migrations
-- **Steps:**
-  1. Rodar `prisma migrate deploy` (Job de migrations) apontando para o RDS provisionado
-  2. Rodar a suite `test:integration` da app contra o RDS (ambiente de homologacao)
-- **Expected result:** Migrations aplicam sem erro; testes de integracao passam
+### TS-10: README
+- **Tipo:** Manual
+- **Criterio:** README com recursos, como aplicar, diagrama, variaveis, custo
+- **Passos:** ler `README.md` do repo
+- **Resultado esperado:** secoes presentes, inclusive as vars do CI e a nota do plano Free
 
-### TS-11: README do repo completo
-- **Type:** Manual — ver tambem [f3-doc-05](../user-stories/f3-doc-05-readmes-por-repo.md)
-- **Acceptance criterion:** README do repo: recursos criados, como aplicar, diagrama, variaveis, custo estimado
-- **Steps:**
-  1. Abrir o README do repo `soat-fiap-oficina-infra-db`
-  2. Confirmar presenca de: recursos criados, como aplicar o Terraform, diagrama, variaveis disponiveis, custo estimado
-- **Expected result:** README completo, cobrindo todos os itens acima
+## Casos de Borda
+- Plano Free da AWS: `backup_retention_period` > 1 falha com `FreeTierRestrictionError` — configuravel por var
+- Descricao do SG com caracteres fora de ASCII e rejeitada pela EC2 (corrigido)
+- Recriar o secret com o mesmo nome apos destroy: `recovery_window_in_days = 0`
+- Destroy em prod: precisa desligar `deletion_protection` (apply) antes do destroy
 
-## Edge Cases
-- `terraform destroy` acidental em producao — validar que `deletion_protection` bloqueia
-- Rotacao do secret no Secrets Manager sem atualizar o Secret do K8s — app deve falhar de forma visivel (CrashLoop com log claro), nao silenciosamente
-- Falha de rede entre EKS e RDS (SG mal configurado) — health check `/health/ready` deve refletir a falha
+## Rastreabilidade
 
-## Traceability
-
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| Terraform provisiona RDS PostgreSQL compativel | TS-01, TS-02 |
-| Multi-AZ | TS-03 |
-| Subnets privadas + SG restrito | TS-04 |
-| Senha via Secrets Manager | TS-05 |
-| Output endpoint + secret | TS-06 |
-| Backups + manutencao + deletion protection | TS-07 |
-| Parametrizacao por ambiente | TS-08 |
-| Remote state (S3 + DynamoDB lock) | TS-09 |
-| Contrato de DATABASE_URL mantido | TS-10 |
-| README do repo | TS-11 |
+| RDS PostgreSQL compativel | TS-01 |
+| Multi-AZ | TS-02 |
+| Subnets privadas + SG restrito | TS-03 |
+| Senha no Secrets Manager | TS-04 |
+| Outputs endpoint/secret consumidos | TS-05 |
+| Backups, manutencao, deletion_protection | TS-06 |
+| Parametrizacao por ambiente | TS-07 |
+| Remote state | TS-08 |
+| CI plan / CD apply | TS-09 |
+| README | TS-10 |
+| Contrato `DATABASE_URL` | TS-05 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Fluxos de erro documentados
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Fluxos de erro documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-terraform fmt -check -diff
-terraform init -backend=false -input=false
-terraform validate
-
-# Com credenciais AWS reais
-terraform init
-terraform plan
-terraform output
-
-# No repo da aplicacao, apos o RDS estar no ar
-npm run prisma:deploy
-npm run test:integration
+aws rds describe-db-instances --db-instance-identifier oficina-mecanica-prod --output table
+gh workflow run cd.yml -R guilhermeqmaia/soat-fiap-oficina-infra-db -f action=plan
 ```
-
-## Status
-Nao implementado ainda no repositorio no momento da escrita deste plano (`docs/qa-plans/`, `README.md`, `CLAUDE.md` presentes, sem arquivos `.tf`) — este QA Plan serve de guia de teste para quando a US-F3-04 for implementada.
