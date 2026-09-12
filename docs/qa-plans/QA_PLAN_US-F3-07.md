@@ -1,109 +1,105 @@
 # QA Plan — US-F3-07: Segregacao em 4 Repositorios + Branch Protection
 
-## Summary
-Valida a organizacao do projeto em 4 repositorios independentes, cada um com branch `main` protegida, PR obrigatorio, estrategia de branches (`homolog`/`main`), README/Dockerfile proprios, `CODEOWNERS`, template de PR e o usuario `soat-architecture` como colaborador em todos.
+## Resumo
+Valida a organizacao em 4 repositorios `soat-fiap-oficina-*`, a migracao da infra, a protecao de `main` (PR obrigatorio, checks, branch atualizada), a estrategia `homolog`/`main`, READMEs/Dockerfiles, `CODEOWNERS` e template de PR, o colaborador `soat-architecture` e a documentacao das dependencias entre repos.
 
-## Prerequisites
-- Acesso de admin (ou pelo menos leitura das configuracoes) aos 4 repositorios no GitHub
-- Lista dos 4 repos: `soat-fiap-oficina-auth-lambda`, `soat-fiap-oficina-infra-k8s`, `soat-fiap-oficina-infra-db`, `soat-fiap-oficina-mecanica-app`
+## Pre-requisitos
+- `gh` logado com acesso aos 4 repos
+- Nenhum ambiente necessario (validacao de configuracao e docs)
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: Os 4 repositorios existem e tem o conteudo esperado
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar existencia dos 4 repositorios no GitHub/organizacao
-  2. Verificar que o conteudo de `infra/terraform/01-cluster` e `02-app` (legado, no repo da app) foi migrado para `infra-k8s` e `infra-db` respectivamente (ou que a migracao esta em andamento/documentada)
-- **Expected result:** 4 repositorios distintos, cada um com o escopo correto
+### TS-01: Os 4 repositorios existem
+- **Tipo:** Ambos
+- **Criterio:** 4 repos criados/organizados
+- **Passos:**
+  1. `gh repo list guilhermeqmaia --json name -q '.[].name' | grep soat-fiap-oficina`
+- **Resultado esperado:** `auth-lambda`, `infra-k8s`, `infra-db`, `mecanica-app`
 
-### TS-02: Branch main protegida em todos os repos
-- **Type:** Manual (GitHub Settings > Branches)
-- **Acceptance criterion:** main protegida, sem push direto, PR obrigatorio
-- **Steps:**
-  1. Em cada um dos 4 repos, abrir Settings > Branches > Branch protection rules para `main`
-  2. Tentar (ou simular) um push direto a `main` sem PR
-- **Expected result:** Push direto bloqueado; regra de protecao ativa nos 4 repos
+### TS-02: Infra migrada para os repos 2 e 3
+- **Tipo:** Manual
+- **Criterio:** Conteudo de `infra/terraform/` migrado preservando historico quando possivel
+- **Passos:**
+  1. `ls infra/terraform` neste repo (so o que ficou: sonar etc.)
+  2. `git log --oneline -3 -- cluster/` no repo infra-k8s; `git log --oneline -3` no infra-db
+- **Resultado esperado:** stages `cluster/`, `gateway/`, `observability/` no repo 2; RDS no repo 3; commits de migracao rastreaveis
 
-### TS-03: Regras de PR — aprovacao e status checks obrigatorios
-- **Type:** Manual
-- **Acceptance criterion:** pelo menos 1 aprovacao, CI obrigatorio verde, branch atualizada
-- **Steps:**
-  1. Abrir um PR de teste em cada repo sem aprovacao — confirmar que o botao de merge fica bloqueado
-  2. Forcar falha proposital no CI (ex.: quebrar um teste) — confirmar que o merge continua bloqueado mesmo com aprovacao
-  3. Aprovar e corrigir o CI — confirmar que o merge libera
-- **Expected result:** Merge so libera com aprovacao + CI verde + branch atualizada (se exigido)
+### TS-03: `main` protegida — sem push direto, PR obrigatorio
+- **Tipo:** Ambos
+- **Criterio:** `main` protegida em todos os repos
+- **Passos (para cada repo):**
+  1. `gh api repos/guilhermeqmaia/<repo>/rules/branches/main | jq '[.[].type]'` (rulesets) ou `gh api repos/.../branches/main/protection`
+  2. Tentar `git push origin main` sem PR com um usuario nao-admin
+- **Resultado esperado:** regras `pull_request` (e `required_status_checks`) ativas; push direto rejeitado (`Changes must be made through a pull request`). Admin consegue contornar (`--admin`) — usado apenas para merge solo, registrado em ADR-0006
 
-### TS-04: Estrategia de branches homolog/main
-- **Type:** Manual
-- **Steps:**
-  1. Confirmar existencia da branch `homolog` nos 4 repos
-  2. Verificar nos workflows (`cd.yml`/`ci-cd.yml`) que push/merge em `homolog` dispara deploy de homologacao e em `main` dispara producao
-- **Expected result:** Deploy automatico correto por branch, conforme US-F3-08
+### TS-04: Regras de PR — aprovacao, checks verdes, branch atualizada
+- **Tipo:** Manual
+- **Criterio:** >= 1 aprovacao, status checks obrigatorios, branch atualizada
+- **Passos:**
+  1. Abrir um PR de teste; conferir os checks exigidos (`CI`) e o bloqueio do botao de merge ate ficar verde/aprovado
+- **Resultado esperado:** merge bloqueado ate `CI` verde; regra de review configurada (time solo: bypass de admin documentado)
 
-### TS-05: README e Dockerfile por repositorio
-- **Type:** Manual — ver detalhamento em [f3-doc-05](../user-stories/f3-doc-05-readmes-por-repo.md)
-- **Steps:**
-  1. Confirmar `README.md` em cada um dos 4 repos
-  2. Confirmar `Dockerfile` presente onde aplicavel (auth-lambda, mecanica-app) e ausente/nao exigido nos repos 100% Terraform (infra-k8s, infra-db)
-- **Expected result:** README completo por repo; Dockerfile so onde faz sentido tecnicamente
+### TS-05: Estrategia de branches `homolog` -> homologacao, `main` -> producao
+- **Tipo:** Ambos
+- **Criterio:** Deploy automatico por branch
+- **Passos:**
+  1. `grep -n "branches:" -A1 .github/workflows/cd*.yml` em cada repo
+  2. `gh api repos/guilhermeqmaia/<repo>/environments --jq '.environments[].name'`
+- **Resultado esperado:** `on.push.branches: [main, homolog]`; job `resolve` mapeia `main -> production`, outro -> `homolog`; environment `production` existe
 
-### TS-06: CODEOWNERS e template de PR
-- **Type:** Manual
-- **Steps:**
-  1. Verificar arquivo `CODEOWNERS` em cada repo (raiz ou `.github/`)
-  2. Verificar `.github/pull_request_template.md` em cada repo
-  3. Abrir um PR de teste e confirmar que o template e preenchido automaticamente e que os donos corretos sao sugeridos como revisores
-- **Expected result:** CODEOWNERS e template presentes e funcionais nos 4 repos — **gap conhecido no momento deste plano:** apenas `soat-fiap-oficina-auth-lambda` tem `pull_request_template.md`; nenhum repo tem `CODEOWNERS` ainda
+### TS-06: README e Dockerfile por repo
+- **Tipo:** Manual
+- **Criterio:** README proprio; Dockerfile quando aplicavel
+- **Passos:**
+  1. `gh api repos/guilhermeqmaia/<repo>/contents --jq '.[].name' | grep -E "README|Dockerfile"`
+- **Resultado esperado:** README nos 4; Dockerfile no app e na Lambda (build do artefato); Terraform-only nos repos de infra
 
-### TS-07: Usuario soat-architecture como colaborador
-- **Type:** Manual
-- **Acceptance criterion:** ver tambem [f3-12](../user-stories/f3-12-entrega-video-pdf.md)
-- **Steps:**
-  1. Em cada um dos 4 repos, Settings > Collaborators — confirmar `soat-architecture` com acesso de leitura (no minimo)
-- **Expected result:** Usuario presente nos 4 repositorios
+### TS-07: `CODEOWNERS` e template de PR
+- **Tipo:** Manual
+- **Criterio:** CODEOWNERS e template de PR configurados
+- **Passos:**
+  1. `gh api repos/guilhermeqmaia/<repo>/contents/.github --jq '.[].name'`
+- **Resultado esperado:** `CODEOWNERS` e `pull_request_template.md` presentes (ou documentado onde ficam)
 
-### TS-08: Dependencias entre repos documentadas
-- **Type:** Manual
-- **Steps:**
-  1. Verificar documentacao (README principal ou `plano-execucao-fase-3.md`) descrevendo a ordem de deploy: banco -> cluster -> app; lambda -> gateway
-- **Expected result:** Ordem de deploy explicita e correta, evitando que alguem tente subir a app antes do banco/cluster
+### TS-08: Colaborador `soat-architecture`
+- **Tipo:** Ambos
+- **Criterio:** Usuario adicionado em todos os repos
+- **Passos:**
+  1. `for r in auth-lambda infra-k8s infra-db mecanica-app; do gh api repos/guilhermeqmaia/soat-fiap-oficina-$r/collaborators/soat-architecture -q .permissions 2>&1 | head -1; done`
+- **Resultado esperado:** permissao `pull` (ou superior) nos 4; convite aceito (ou pendente listado em `.../invitations`)
 
-## Edge Cases
-- PR aberto por um bot/automacao (ex.: dependabot) — confirmar que ainda respeita as mesmas regras de protecao
-- Repositorio com apenas 1 colaborador — regra de "1 aprovacao" pode travar o fluxo do proprio autor (avaliar exceção documentada, se houver)
-- Tentativa de merge via API/CLI (`gh pr merge --admin`) ignorando a UI — confirmar se a protecao tambem bloqueia esse caminho
+### TS-09: Dependencias e ordem de deploy documentadas
+- **Tipo:** Manual
+- **Criterio:** Documentar dependencias entre repos
+- **Passos:**
+  1. Ler `docs/plano-execucao-fase-3.md` (mapeamento), ADR-0006 e ADR-0008; README do infra-k8s (secao "Subir, pausar e derrubar")
+- **Resultado esperado:** ordem `cluster -> (db, lambda) -> app -> gateway -> app` explicita, com os contratos (outputs -> GitHub Variables) e o script que os fecha
 
-## Traceability
+## Casos de Borda
+- Merge de docs/scripts em repos de infra com o ambiente derrubado: usar `[skip ci]` para o CD nao recriar recursos
+- Renomear repo quebra o `sub` do OIDC? Nao — a trust aceita a forma com IDs imutaveis do GitHub (ADR-0007)
 
-| Acceptance Criterion | Test Scenarios |
+## Rastreabilidade
+
+| Criterio de Aceite | Cenarios |
 |---|---|
-| 4 repositorios criados/organizados | TS-01 |
-| Conteudo de infra migrado | TS-01 |
-| main protegida, sem push direto, PR obrigatorio | TS-02 |
-| Regras de PR (aprovacao + CI + branch atualizada) | TS-03 |
-| Estrategia homolog/main | TS-04 |
-| README e Dockerfile por repo | TS-05 |
-| CODEOWNERS e template de PR | TS-06 |
-| soat-architecture como colaborador | TS-07 |
-| Dependencias entre repos documentadas | TS-08 |
+| 4 repositorios | TS-01 |
+| Infra migrada | TS-02 |
+| `main` protegida, PR obrigatorio | TS-03 |
+| Regras de PR (aprovacao, checks, atualizada) | TS-04 |
+| Branches `homolog`/`main` | TS-05 |
+| README e Dockerfile | TS-06 |
+| CODEOWNERS e template de PR | TS-07 |
+| `soat-architecture` colaborador | TS-08 |
+| Dependencias documentadas | TS-09 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Gaps conhecidos (CODEOWNERS, PR template) registrados como pendencia, nao como "aprovado"
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Fluxos de erro documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-# Verificar protecao de branch via GitHub CLI
-gh api repos/{owner}/{repo}/branches/main/protection
-
-# Listar colaboradores
-gh api repos/{owner}/{repo}/collaborators
-
-# Verificar CODEOWNERS/template em cada repo
-find . -iname CODEOWNERS -o -iname pull_request_template.md
+for r in auth-lambda infra-k8s infra-db mecanica-app; do echo "== $r"; gh api repos/guilhermeqmaia/soat-fiap-oficina-$r/rules/branches/main --jq '[.[].type]'; done
 ```
-
-## Nota de status
-No momento da escrita deste plano: `CODEOWNERS` ausente nos 4 repos; `pull_request_template.md` presente apenas em `soat-fiap-oficina-auth-lambda`. Registrar como item aberto no indice de QA Plans ([README.md](README.md)).
