@@ -46,3 +46,8 @@ cluster que deveriam proteger e não teriam integração nativa com Lambda.
 - Zero operação de gateway para o time (gerenciado pela AWS).
 - Dependência do formato de eventos/authorizer do API Gateway na Lambda
   (payload 2.0, simple responses) — contrato registrado no repo da Lambda.
+- O **throttling fica só no gateway**: atrás do VPC Link + NLB a aplicação
+  enxerga um único IP de origem, então o rate limit por IP do monolito viraria
+  um limite global para todos os clientes (constatado em teste de carga,
+  12/09/2026). No overlay `k8s-aws` a app sobe com `THROTTLER_DISABLED=true`;
+  localmente/kind o throttler continua ativo.
