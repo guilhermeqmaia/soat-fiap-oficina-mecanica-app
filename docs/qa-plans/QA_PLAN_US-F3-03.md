@@ -1,155 +1,114 @@
 # QA Plan — US-F3-03: Aplicacao como Resource Server (validacao de JWT)
 
-## Summary
-Valida que o monolito (`soat-fiap-oficina-mecanica-app`) deixou de emitir tokens e passou a apenas validar o JWT emitido pela Lambda de CPF: remocao do `POST /auth/login`, `JwtStrategy` validando assinatura/`iss`/`exp`, `RolesGuard` autorizando por claim, rotas publicas preservadas e regras de arquitetura (`architecture.spec.ts`) intactas.
+## Resumo
+Valida que o monolito **nao emite tokens**: `/auth/login` removido, guard valida tokens da Lambda (segredo, `iss`, `exp`), `@Public()` preservado, autorizacao por role/claim, codigo morto removido, Swagger e docs atualizados, `architecture.spec.ts` verde.
 
-## Prerequisites
-- App rodando localmente (`docker compose up -d` + `npm run start:dev`) ou testes automatizados via `npm run test:unit` / `npm run test:integration`
-- `JWT_SECRET` e `JWT_ISSUER` configurados iguais aos usados pela Lambda (`oficina-auth-lambda` por padrao)
-- Tokens de teste: gerar via `src/auth/testing/token-factory.ts` (helper de testes) para cada role (ADMIN, ATENDENTE, MECANICO, ESTOQUISTA, CLIENTE)
+## Pre-requisitos
+- Local: `npm ci`, Docker (testcontainers) — para os testes automatizados
+- Nuvem (opcional): ambiente no ar com `GW`; tokens do QA_PLAN_US-F3-01
+- `JWT_SECRET`/`JWT_ISSUER` da app iguais aos da Lambda (no EKS: Secret `oficina-app` sincronizado do Secrets Manager; `JWT_ISSUER=oficina-auth-lambda` no ConfigMap)
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: POST /auth/login removido
-- **Type:** Automated (e2e) / Manual
-- **Acceptance criterion:** Remover POST /auth/login e a logica de emissao de token
-- **Steps:**
-  1. `curl -X POST {app_url}/auth/login -d '{"email":"x","senha":"y"}'`
-  2. Verificar Swagger (`/api` ou `/docs`) e confirmar ausencia do endpoint
-- **Expected result:** 404 (rota nao existe) e endpoint ausente do Swagger
+### TS-01: `POST /auth/login` nao existe mais
+- **Tipo:** Ambos
+- **Criterio:** Remover `/auth/login` e a emissao de token
+- **Passos:**
+  1. `grep -rn "auth/login\|sign(" src --include='*.ts' | grep -v spec | grep -v testing`
+  2. Com a app no ar: `curl -s -X POST $GW/auth/login -d '{}' -w ' -> %{http_code}'` (ou `http://localhost:3000/auth/login`)
+- **Resultado esperado:** nenhuma rota/servico de login; resposta `404` (local) ou `401` (via gateway, catch-all protegido)
 
-### TS-02: GET /auth/me retorna identidade do token da Lambda
-- **Type:** Automated (e2e)
-- **Acceptance criterion:** Guard/estrategia valida tokens emitidos pela Lambda
-- **Precondition:** Token valido gerado com o mesmo segredo/`iss` da Lambda
-- **Steps:**
-  1. `GET /auth/me` com `Authorization: Bearer <token>`
-  2. Verificar resposta com `id`, `nome`, `cpf`, `role` extraidos das claims
-- **Expected result:** 200 com os dados do payload do token, sem consulta ao banco
+### TS-02: Token da Lambda e aceito
+- **Tipo:** Ambos
+- **Criterio:** Guard valida tokens emitidos pela Lambda (mesmo segredo, `iss`, `exp`)
+- **Passos:**
+  1. `TOKEN=$(curl -s -X POST $GW/auth -H 'content-type: application/json' -d '{"cpf":"52998224725","senha":"admin123"}' | jq -r .accessToken)`
+  2. `curl -s $GW/clientes -H "Authorization: Bearer $TOKEN" -w ' -> %{http_code}'`
+- **Resultado esperado:** `200` — a app validou assinatura HS256 + `iss` sem chamar a Lambda
+- **Automatizado:** `src/auth/auth.e2e.spec.ts` "aceita token valido emitido com o segredo/issuer compartilhados"
 
-### TS-03: Token com `iss` diferente e rejeitado
-- **Type:** Automated (unit — `jwt.strategy.spec.ts`)
-- **Acceptance criterion:** Checagem de `iss` e `exp`
-- **Steps:**
-  1. Gerar token com `iss` diferente de `oficina-auth-lambda` (mesmo segredo)
-  2. `GET /auth/me` com esse token
-- **Expected result:** 401 Unauthorized
+### TS-03: Token com issuer diferente e rejeitado
+- **Tipo:** Automatizado
+- **Criterio:** Checagem de `iss`
+- **Passos:**
+  1. `npx jest src/auth/auth.e2e.spec.ts -t "issuer"`
+- **Resultado esperado:** token assinado com o mesmo segredo mas `iss: "monolito-antigo"` -> `401`
 
-### TS-04: Token expirado e rejeitado
-- **Type:** Automated (unit/integration)
-- **Steps:**
-  1. Gerar token com `exp` no passado
-  2. Chamar rota protegida
-- **Expected result:** 401 Unauthorized
+### TS-04: Token expirado / assinatura invalida
+- **Tipo:** Automatizado
+- **Criterio:** Checagem de `exp` e assinatura
+- **Passos:**
+  1. `npx jest src/auth -t "expirad|invalid|assinatura"`
+- **Resultado esperado:** `401` em ambos; mensagem sem detalhes internos
 
-### TS-05: Token sem claims obrigatorias (`sub`/`role`)
-- **Type:** Automated (unit — `jwt.strategy.spec.ts`)
-- **Acceptance criterion:** `validate()` exige `sub` e `role` validos
-- **Steps:**
-  1. Gerar token sem `sub` ou com `role` fora do enum `Role`
-  2. Chamar rota protegida
-- **Expected result:** 401 "Token sem as claims obrigatorias (sub/role)"
+### TS-05: Rotas publicas continuam publicas
+- **Tipo:** Ambos
+- **Criterio:** `@Public()` mantido
+- **Passos:**
+  1. `curl -s $GW/health` -> 200; `curl -s "$GW/ordens-servico/numero/<numero>/status"` -> 200, ambos sem token
+- **Resultado esperado:** 200; no gateway essas rotas tambem estao sem authorizer (QA_PLAN_US-F3-02 TS-04)
 
-### TS-06: Rotas publicas continuam acessiveis sem token
-- **Type:** Automated (e2e)
-- **Acceptance criterion:** `@Public()` mantido para rotas publicas (ex.: consulta de status de OS)
-- **Steps:**
-  1. Chamar endpoint `@Public()` (ex.: consulta de status de OS, `/health`, `/metrics`) sem token
-- **Expected result:** 200
+### TS-06: Autorizacao por role/claim
+- **Tipo:** Ambos
+- **Criterio:** `CLIENTE` so acessa as proprias OS; roles de staff
+- **Passos:**
+  1. Token de cliente (`{"cpf":"39053344705"}`): `GET $GW/clientes` -> `403 role insuficiente`
+  2. `GET $GW/clientes/39053344705/ordens-servico` -> `200`
+  3. `GET $GW/clientes/11144477735/ordens-servico` -> `403 CPF/CNPJ nao pertence ao usuario autenticado`
+  4. Token de mecanico: `POST $GW/ordens-servico/<id>/atribuir-mecanico` -> 200/201
+- **Resultado esperado:** conforme os passos (evidencia 12/09/2026: 403 / 200 / 403 / 200)
+- **Automatizado:** `src/auth/role-based-access.e2e.spec.ts`
 
-### TS-07: Autorizacao por role/claim — CLIENTE so acessa as proprias OS
-- **Type:** Automated (e2e — `role-based-access.e2e.spec.ts`)
-- **Acceptance criterion:** Autorizacao por role/claim derivada do token
-- **Steps:**
-  1. Autenticar como CLIENTE A (token com `sub`=id do cliente A)
-  2. Tentar acessar OS pertencente ao cliente B
-  3. Acessar OS pertencente ao proprio cliente A
-- **Expected result:** 403 (ou 404, conforme politica) no passo 2; 200 no passo 3
+### TS-07: Codigo morto de login removido sem quebrar `usuario`
+- **Tipo:** Automatizado
+- **Criterio:** Remover/reaproveitar codigo de login; `architecture.spec.ts` verde
+- **Passos:**
+  1. `grep -rln "bcrypt\|senha_hash" src | grep -v spec` — restos so onde `usuario` ainda precisa (seed/dominio)
+  2. `npx jest src/architecture.spec.ts`
+- **Resultado esperado:** sem `AuthService.login`/`LocalStrategy`; regra de dependencia preservada
 
-### TS-08: Roles de staff preservadas (ADMIN/ATENDENTE/MECANICO/ESTOQUISTA)
-- **Type:** Automated (e2e — reaproveita `role-based-access.e2e.spec.ts`)
-- **Steps:**
-  1. Repetir os cenarios de `RolesGuard` (equivalente ao TS-08/09/10 do QA_PLAN_US-19) usando tokens emitidos no novo formato (claims da Lambda)
-- **Expected result:** Mesmo comportamento de autorizacao por role de antes, agora com token de origem diferente
+### TS-08: Swagger e docs atualizados
+- **Tipo:** Manual
+- **Criterio:** Swagger sem `/auth/login`, header `Authorization: Bearer`; `docs/curls-usuario.md` atualizado
+- **Passos:**
+  1. Abrir `http://localhost:3000/api` (ou `$GW/api` com token) e procurar `auth/login`
+  2. `grep -rn "auth/login" docs/ README.md`
+- **Resultado esperado:** ausente no Swagger; `bearerAuth` configurado; docs apontam para `POST /auth` do gateway (CPF)
 
-### TS-09: Codigo morto de login removido sem quebrar o dominio de usuario
-- **Type:** Automated (unit) / Manual (code review)
-- **Acceptance criterion:** Remover/reaproveitar codigo morto de login sem quebrar `usuario`
-- **Steps:**
-  1. Rodar suite completa de testes do modulo `auth` e `usuario`
-  2. Revisar se hashing de senha (bcrypt) permanece apenas onde ainda faz sentido (ex.: se staff ainda loga com senha em algum fluxo local/administrativo)
-- **Expected result:** Testes verdes; nenhuma referencia orfã a `POST /auth/login`
+### TS-09: Migracao do staff documentada
+- **Tipo:** Manual
+- **Criterio:** Como o staff passa a autenticar
+- **Passos:**
+  1. Conferir RFC de autenticacao (`docs/arquitetura/rfcs/`) e README da Lambda (fluxo `{cpf, senha}`; seeds com CPFs validos por role)
+- **Resultado esperado:** documentado que staff autentica pela Lambda com CPF + senha (`usuario.cpf` + `senha_hash`)
 
-### TS-10: architecture.spec.ts continua verde
-- **Type:** Automated (unit)
-- **Acceptance criterion:** Regra de dependencia preservada
-- **Steps:**
-  1. `npx jest architecture --verbose` (ou o comando equivalente do `architecture.spec.ts`)
-- **Expected result:** Todas as regras de camada/dependencia OK apos a remocao do login
+## Casos de Borda
+- Header `Authorization` sem `Bearer ` -> 401
+- Token de cliente cujo `sub` nao existe mais no banco -> 401/403 (conforme guard), nunca 500
+- Duas apps (app + Lambda) com segredos diferentes apos rotacao -> todos 401: rotacionar via `JWT_SECRET_ID` e redeploy dos dois
 
-### TS-11: Swagger atualizado
-- **Type:** Manual
-- **Acceptance criterion:** Atualizar Swagger (remover /auth/login, documentar Bearer)
-- **Steps:**
-  1. Abrir `/api` (Swagger UI) e conferir que `/auth/login` nao aparece e que `GET /auth/me` documenta `ApiBearerAuth`
-- **Expected result:** Documentacao condizente com o novo contrato
+## Rastreabilidade
 
-### TS-12: Docs auxiliares atualizadas
-- **Type:** Manual
-- **Acceptance criterion:** Atualizar docs/curls-usuario.md e afins
-- **Steps:**
-  1. Revisar `docs/curls-usuario.md` (e arquivos similares) em busca de exemplos com `/auth/login`
-- **Expected result:** Exemplos atualizados para o fluxo `POST {gateway}/auth` + `Authorization: Bearer`
-
-### TS-13: Documentacao da migracao de autenticacao do staff
-- **Type:** Manual
-- **Acceptance criterion:** Migracao de dados/documentacao: como o staff passa a autenticar (conforme RFC de auth)
-- **Steps:**
-  1. Revisar a documentacao (README/docs) que descreve como o staff (ADMIN/ATENDENTE/MECANICO/ESTOQUISTA) passa a autenticar apos a remocao do login local
-  2. Confirmar que a documentacao esta alinhada com a RFC de autenticacao ([f3-doc-01](../user-stories/f3-doc-01-rfcs.md))
-- **Expected result:** Fluxo de autenticacao do staff documentado e consistente com a RFC
-
-## Edge Cases
-- Token assinado com segredo diferente (adulterado) — deve falhar na verificacao de assinatura antes mesmo de checar `iss`
-- Token valido de CLIENTE tentando acessar rota exclusiva de staff — 403
-- Requisicao sem header `Authorization` em rota nao marcada `@Public()` — 401
-- UIs (`web/admin`, `web/cliente`) ainda apontando para o `/auth/login` antigo — deve ser tratado como risco documentado (ver Notas da US), nao um bug do backend
-
-## Traceability
-
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| Remover POST /auth/login | TS-01 |
-| Guard valida tokens da Lambda (iss/exp) | TS-02, TS-03, TS-04, TS-05 |
-| Rotas publicas mantidas | TS-06 |
-| Autorizacao por role/claim | TS-07, TS-08 |
-| Remocao de codigo morto sem quebrar dominio | TS-09 |
-| architecture.spec.ts verde | TS-10 |
-| Swagger atualizado | TS-11 |
-| Docs atualizadas | TS-12 |
-| Migracao de dados/documentacao: como staff autentica | TS-13 |
+| Remover `/auth/login` e emissao de token | TS-01 |
+| Guard valida tokens da Lambda (segredo, `iss`, `exp`) | TS-02, TS-03, TS-04 |
+| Rotas sensiveis exigem token; `@Public()` mantido | TS-02, TS-05 |
+| Autorizacao por role/claim | TS-06 |
+| Codigo morto removido sem quebrar `usuario` | TS-07 |
+| Migracao/documentacao do staff | TS-09 |
+| `architecture.spec.ts` verde | TS-07 |
+| Swagger atualizado | TS-08 |
+| Testes do guard atualizados | TS-03, TS-04, TS-06 |
+| Docs (`curls-usuario.md`) atualizados | TS-08 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Fluxos de erro documentados
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Fluxos de erro documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-# Testes unitarios e de integracao
-npm run test:unit
-npm run test:integration
-npm run test:all:cov
-
-# e2e de auth e RBAC
-npx jest auth.e2e --verbose
-npx jest role-based-access.e2e --verbose
-
-# Regras de arquitetura
-npx jest architecture --verbose
-
-# Subir app localmente
-docker compose up -d
-npm run start:dev
+npx jest src/auth src/architecture.spec.ts
 ```

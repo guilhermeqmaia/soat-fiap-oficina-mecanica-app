@@ -1,182 +1,131 @@
 # QA Plan — US-F3-01: Function Serverless de Autenticacao por CPF
 
-## Summary
-Valida a Lambda de autenticacao (`soat-fiap-oficina-auth-lambda`), unica emissora de JWT do sistema. Cobre os dois fluxos do handler `POST /auth` — cliente (`{cpf}`) e staff (`{cpf, senha}`) — incluindo validacao de CPF, consulta de existencia/status na base, geracao do JWT e o contrato de erros (`400/403/404/422/500`).
+## Resumo
+Valida a Lambda `oficina-auth-prod` (repo `soat-fiap-oficina-auth-lambda`) como **unico emissor de JWT**: validacao de CPF, consulta ao RDS, regras de status (404/403/422), claims do token, segredo no Secrets Manager, fluxo staff (CPF + senha), logs mascarados e testes automatizados. Os cenarios de ponta a ponta passam pelo API Gateway (`POST /auth`), que e o unico caminho publico.
 
-## Prerequisites
-- Node.js 20+, dependencias instaladas (`npm install`)
-- Banco Postgres acessivel (local ou testcontainer) com tabelas `cliente` e `usuario` seedadas
-- Variaveis de ambiente: segredo JWT resolvido via `soat-fiap-oficina-auth-lambda/src/infra/secrets.ts` (Secrets Manager em nuvem; `.env` local para testes)
-- Para teste manual: `npm run docker:build && npm run docker:run` (Lambda local na porta 9000) ou `npm run invoke:local`
-- Massa de dados: 1 cliente ativo, 1 cliente inativo/bloqueado, 1 CPF sem cadastro, 1 usuario staff ativo, 1 usuario staff inativo
+## Pre-requisitos
+- Ambiente no ar: `scripts/aws-deploy-all.sh` (repo infra-k8s) — imprime a URL do gateway (`GW`) e carrega os seeds de teste
+- Seeds: `prisma/seeds/01_test_data.sql` (clientes) e `03_test_users.sql` (staff) aplicados
+- `aws` CLI com o profile `oficina`; `jq`
+- Dados de teste: cliente CPF `39053344705` (Joao da Silva), CPF valido inexistente `12345678909`, admin CPF `52998224725` / `admin123`, mecanico `16899535009` / `mecanico123`
 
-## Test Scenarios
+## Cenarios de Teste
 
-### TS-01: Autenticacao de cliente com CPF valido e existente
-- **Type:** Automated (unit + integration) / Manual
-- **Acceptance criterion:** Endpoint recebe CPF; consulta existencia/status; gera JWT
-- **Precondition:** Cliente ativo cadastrado com CPF conhecido
-- **Steps:**
-  1. `POST /auth` com `{ "cpf": "<cpf válido e cadastrado>" }`
-  2. Verificar status 200
-  3. Verificar resposta com `accessToken`, `tokenType: "Bearer"`, `expiresAt`, `cliente.{id,nome,cpf,role}`
-  4. Decodificar o JWT e verificar claims `sub`, `cpf`, `role`, `iss`, `exp`
-- **Expected result:** 200 com JWT valido e CPF mascarado na resposta (`***.***.***-XX`)
-- **Alternative result (error):** N/A
+### TS-01: CPF com formato invalido e rejeitado antes do banco
+- **Tipo:** Ambos
+- **Criterio:** Valida o formato do CPF (digitos verificadores); CPF invalido -> 422
+- **Passos:**
+  1. `curl -s -X POST $GW/auth -H 'content-type: application/json' -d '{"cpf":"11111111111"}' -w ' -> %{http_code}'`
+- **Resultado esperado:** `422` com `{"error":"CPF_INVALIDO", ...}`; nenhuma consulta ao banco (log da Lambda sem `query`)
+- **Resultado alternativo (erro):** 200 ou 404 indicam validacao ausente/ordem errada
 
-### TS-02: CPF ausente no body
-- **Type:** Automated (unit)
-- **Acceptance criterion:** Contrato de erro 400
-- **Steps:**
-  1. `POST /auth` com body `{}` ou body vazio
-- **Expected result:** 400, `code: CPF_AUSENTE`
+### TS-02: Cliente inexistente -> 404
+- **Tipo:** Ambos
+- **Criterio:** Consulta a existencia do cliente; inexistente -> 404
+- **Passos:**
+  1. `POST /auth` com `{"cpf":"12345678909"}` (CPF valido, sem cadastro)
+- **Resultado esperado:** `404` `{"error":"CLIENTE_NAO_ENCONTRADO"}`
 
-### TS-03: CPF com formato invalido (digitos verificadores)
-- **Type:** Automated (unit)
-- **Acceptance criterion:** Validacao de CPF antes de consultar a base; contrato 422
-- **Steps:**
-  1. `POST /auth` com `{ "cpf": "11111111111" }` (sequencia repetida)
-  2. `POST /auth` com `{ "cpf": "12345678900" }` (digito verificador errado)
-- **Expected result:** 422, `code: CPF_INVALIDO` nos dois casos, sem consultar o banco
+### TS-03: Cliente inativo/bloqueado -> 403
+- **Tipo:** Manual
+- **Criterio:** Regras de status: inativo/bloqueado -> 403
+- **Pre-condicao:** `CLIENTE_STATUS_COLUMN` configurada na Lambda (var do CI) e um cliente com a coluna de status = inativo
+- **Passos:**
+  1. Marcar um cliente como inativo (`UPDATE cliente SET <coluna> = false WHERE cpf_cnpj = '11144477735'`) via `kubectl -n oficina exec deploy/oficina-app -c app -- npx prisma db execute --stdin`
+  2. `POST /auth` com esse CPF
+- **Resultado esperado:** `403` `{"error":"CLIENTE_INATIVO"}`
+- **Resultado alternativo:** sem a coluna configurada todo cliente encontrado e considerado ativo (documentado no README da Lambda)
 
-### TS-04: Cliente inexistente
-- **Type:** Automated (integration)
-- **Acceptance criterion:** Regra de status: cliente inexistente -> 404
-- **Steps:**
-  1. `POST /auth` com CPF valido (digitos corretos) mas nao cadastrado
-- **Expected result:** 404, `code: CLIENTE_NAO_ENCONTRADO`
+### TS-04: Cliente valido recebe JWT com as claims exigidas
+- **Tipo:** Ambos
+- **Criterio:** Gera JWT valido (`sub`, `cpf`, `role`, `iss`, `exp`) assinado com segredo compartilhado
+- **Passos:**
+  1. `TOKEN=$(curl -s -X POST $GW/auth -H 'content-type: application/json' -d '{"cpf":"39053344705"}' | jq -r .accessToken)`
+  2. Decodificar o payload: `echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq .`
+- **Resultado esperado:** `200`; payload com `sub` = id do cliente (`11111111-...`), `cpf`, `role: "CLIENTE"`, `iss: "oficina-auth-lambda"`, `exp` ~1h a frente
+- **Evidencia (12/09/2026):** token de 305 chars, claims conforme acima, aceito pela app (`GET /clientes/39053344705/ordens-servico` -> 200)
 
-### TS-05: Cliente inativo/bloqueado
-- **Type:** Automated (integration)
-- **Acceptance criterion:** Regra de status: cliente inativo -> 403
-- **Precondition:** Cliente cadastrado com `ativo=false`
-- **Steps:**
-  1. `POST /auth` com o CPF desse cliente
-- **Expected result:** 403, `code: CLIENTE_INATIVO`
+### TS-05: Staff autentica com CPF + senha e recebe a role
+- **Tipo:** Ambos
+- **Criterio:** Decisao de auth de staff conforme a RFC — a Lambda cobre o fluxo `{cpf, senha}`
+- **Passos:**
+  1. `POST /auth` com `{"cpf":"52998224725","senha":"admin123"}` -> 200, `role: "ADMIN"`
+  2. `POST /auth` com `{"cpf":"52998224725","senha":"errada"}` -> 403
+  3. `POST /auth` com `{"cpf":"16899535009","senha":"mecanico123"}` -> 200, `role: "MECANICO"`, `sub` = id do usuario
+- **Resultado esperado:** conforme cada passo; a mesma function atende cliente (sem senha) e staff
 
-### TS-06: Autenticacao de staff (CPF + senha) com sucesso
-- **Type:** Automated (integration)
-- **Acceptance criterion:** Fluxo staff (RFC-0003) resolvido pela Lambda
-- **Precondition:** Usuario staff ativo com CPF e senha (hash bcrypt) cadastrados
-- **Steps:**
-  1. `POST /auth` com `{ "cpf": "<cpf>", "senha": "<senha correta>" }`
-  2. Verificar status 200 e `usuario.role` igual a role do usuario no banco (nao "cliente")
-- **Expected result:** 200, JWT com a role real do staff (ADMIN/ATENDENTE/MECANICO/ESTOQUISTA)
+### TS-06: Segredo de assinatura vem do Secrets Manager
+- **Tipo:** Manual
+- **Criterio:** Segredo via AWS Secrets Manager (nunca hardcoded)
+- **Passos:**
+  1. `aws lambda get-function-configuration --function-name oficina-auth-prod --query 'Environment.Variables'`
+  2. `aws secretsmanager describe-secret --secret-id oficina-auth-prod/jwt`
+- **Resultado esperado:** a env contem apenas `JWT_SECRET_ID` (ARN), nunca o valor; o secret existe e e o mesmo referenciado pelo app (`JWT_SECRET_ID` no CD do app); `grep -rn "JWT_SECRET\s*=" src/` na Lambda nao encontra literal
 
-### TS-07: Staff — senha ausente
-- **Type:** Automated (unit)
-- **Steps:**
-  1. `POST /auth` com `{ "cpf": "<cpf staff>", "senha": "" }`
-- **Expected result:** 400, `code: SENHA_AUSENTE`
+### TS-07: Conexao ao RDS reaproveitada, timeout e cold start
+- **Tipo:** Manual
+- **Criterio:** Cold start e timeout adequados; pooling
+- **Passos:**
+  1. `aws lambda get-function-configuration --function-name oficina-auth-prod --query '[Timeout,MemorySize,VpcConfig.SubnetIds]'`
+  2. Disparar 10 chamadas seguidas de `POST /auth` e medir `%{time_total}`
+- **Resultado esperado:** timeout 15 s / 512 MB, function na VPC (subnets privadas); 1a chamada (cold) < 3 s, seguintes < 300 ms (pool reutilizado — `pg.Pool` fora do handler)
 
-### TS-08: Staff — usuario inexistente ou inativo
-- **Type:** Automated (integration)
-- **Steps:**
-  1. `POST /auth` com CPF + senha de usuario nao cadastrado -> esperar 404 `USUARIO_NAO_ENCONTRADO`
-  2. `POST /auth` com CPF + senha de usuario com `ativo=false` -> esperar 403 `USUARIO_INATIVO`
-- **Expected result:** Codigos acima, sem revelar qual credencial especifica falhou
+### TS-08: Logs estruturados sem CPF completo
+- **Tipo:** Manual
+- **Criterio:** Logs JSON, CPF mascarado
+- **Passos:**
+  1. Executar TS-04
+  2. `aws logs tail /aws/lambda/oficina-auth-prod --since 5m --format short`
+- **Resultado esperado:** linhas JSON (`level`, `msg`, `requestId`); CPF aparece mascarado (`390.***.***-05` ou equivalente); nenhum token no log
 
-### TS-09: Staff — senha incorreta
-- **Type:** Automated (integration)
-- **Steps:**
-  1. `POST /auth` com CPF de staff valido e senha errada
-- **Expected result:** 403, `code: CREDENCIAIS_INVALIDAS` (mensagem generica, sem indicar se o CPF existe)
+### TS-09: Testes automatizados e contrato do token
+- **Tipo:** Automatizado
+- **Criterio:** Testes unitarios + contrato do payload
+- **Passos:**
+  1. No repo da Lambda: `npm ci && npm run test:cov`
+- **Resultado esperado:** suites verdes (validacao de CPF, geracao de JWT, cenarios 404/403/422, contrato das claims); cobertura >= 80%; o `cd.yml` so promove o alias apos smoke test (`422` para CPF invalido)
 
-### TS-10: Segredo de assinatura via Secrets Manager
-- **Type:** Manual/config
-- **Acceptance criterion:** Segredo nunca hardcoded
-- **Steps:**
-  1. Inspecionar `soat-fiap-oficina-auth-lambda/src/infra/secrets.ts` e `soat-fiap-oficina-auth-lambda/src/config/env.ts` — confirmar que o segredo vem do AWS Secrets Manager (ou variavel de ambiente injetada em runtime), nunca literal no codigo
-  2. `grep -r` no repo por padroes de segredo hardcoded (deve retornar vazio)
-- **Expected result:** Nenhum segredo em texto plano no codigo-fonte
+### TS-10: Artefato de deploy e README
+- **Tipo:** Manual
+- **Criterio:** Artefato documentado; README com proposito, como testar/deployar e diagrama
+- **Passos:**
+  1. `npm run package` gera `lambda.zip`; `infra.yml` (Terraform) e `cd.yml` (publish-version + alias) documentados no README secao 6
+- **Resultado esperado:** README cobre proposito, tecnologias, testes, deploy e diagrama do fluxo
 
-### TS-11: Logs estruturados sem vazar CPF completo
-- **Type:** Automated (unit) / Manual
-- **Acceptance criterion:** Logs JSON mascarando CPF
-- **Steps:**
-  1. Rodar `authHandler` com CPF valido e capturar a saida do `Logger`
-  2. Verificar que o campo `cpf` no log usa `maskCpf` (formato `***.***.***-XX`)
-- **Expected result:** CPF nunca aparece completo nos logs
+## Casos de Borda
+- CPF com pontuacao (`390.533.447-05`) — normalizado antes da validacao
+- CNPJ (14 digitos) de cliente PJ (`11222333000181`) — aceito/recusado conforme a RFC (documentar)
+- Body vazio / JSON invalido -> 400/422, nunca 500
+- Segredo rotacionado no Secrets Manager: a Lambda le no cold start; o app tambem — ambos precisam de rollout
 
-### TS-12: Lambda Authorizer valida token emitido
-- **Type:** Automated (unit)
-- **Acceptance criterion:** Contrato do token consumido pelas rotas protegidas
-- **Steps:**
-  1. Gerar token via `authHandler` (fluxo cliente)
-  2. Chamar `authorizerHandler` com header `Authorization: Bearer <token>`
-  3. Chamar novamente sem header, e com `Bearer <token invalido/adulterado>`
-- **Expected result:** `isAuthorized: true` + `context.{clienteId,role,cpf,nome}` no caso valido; `isAuthorized: false` nos demais, sem lancar excecao
+## Rastreabilidade
 
-### TS-13: Cold start e timeout / connection pooling (config)
-- **Type:** Manual/config
-- **Steps:**
-  1. Revisar configuracao de timeout e memoria da Lambda no deploy (`infra`/console AWS)
-  2. Revisar `soat-fiap-oficina-auth-lambda/src/container.ts` para confirmar reuso de conexao ao RDS entre invocacoes (fora do handler)
-- **Expected result:** Timeout compativel com latencia do RDS; conexao nao recriada a cada invocacao
-
-### TS-14: Dockerfile ou artefato de deploy documentado
-- **Type:** Manual
-- **Acceptance criterion:** Dockerfile (se empacotada como imagem) ou artefato de deploy documentado
-- **Steps:**
-  1. Verificar presenca de `Dockerfile` no repo `soat-fiap-oficina-auth-lambda` (se a Lambda for empacotada como imagem de container)
-  2. Caso nao use imagem, confirmar que o artefato de deploy (zip/pacote) e o processo de build estao documentados no README
-- **Expected result:** Dockerfile presente e funcional (build local) ou artefato de deploy alternativo claramente documentado
-
-### TS-15: README do repo completo
-- **Type:** Manual — ver tambem [f3-doc-05](../user-stories/f3-doc-05-readmes-por-repo.md)
-- **Acceptance criterion:** README do repo: proposito, tecnologias, como testar/deployar, diagrama do fluxo
-- **Steps:**
-  1. Abrir o `README.md` de `soat-fiap-oficina-auth-lambda`
-  2. Confirmar presenca de: proposito, tecnologias usadas, pre-requisitos, como testar localmente, como fazer deploy, diagrama do fluxo de autenticacao
-- **Expected result:** README completo, cobrindo todos os itens acima
-
-## Edge Cases
-- `cpf` numerico (`123.456.789-09` sem digito verificador ou como number no JSON) — deve ser tratado por `normalizeCpf`/checagem de tipo
-- Body em base64 (`event.isBase64Encoded=true`) — `parseBody` deve decodificar corretamente
-- Body com JSON malformado — deve cair no `catch` de `parseBody` e resultar em `CPF_AUSENTE` (400), nao erro 500
-- Falha de conexao com o RDS — deve retornar 500 `ERRO_INTERNO` com log de erro, nunca vazar stack trace ao cliente
-- CPF valido de cliente mas enviado no fluxo staff (com senha) e vice-versa — usuario/cliente nao encontrado no repositorio certo
-
-## Traceability
-
-| Acceptance Criterion | Test Scenarios |
+| Criterio de Aceite | Cenarios |
 |---|---|
-| Function serverless em repositorio proprio | (estrutural — verificar `soat-fiap-oficina-auth-lambda`) |
-| Endpoint recebe CPF no body | TS-01, TS-02 |
-| Valida formato do CPF antes de consultar a base | TS-03 |
-| Consulta existencia/status do cliente na base | TS-01, TS-04, TS-05 |
-| Regras de status (404/403/422) | TS-03, TS-04, TS-05, TS-08, TS-09 |
-| Gera JWT valido com claims corretas | TS-01, TS-06, TS-12 |
-| Segredo via Secrets Manager | TS-10 |
-| Fluxo staff resolvido pela Lambda | TS-06, TS-07, TS-08, TS-09 |
-| Cold start / connection pooling | TS-13 |
-| Logs estruturados sem vazar CPF | TS-11 |
-| Testes unitarios de validacao/JWT/status | TS-01 a TS-09 (specs em `tests/`) |
-| Dockerfile / artefato de deploy documentado | TS-14 |
-| README do repo | TS-15 |
+| Function serverless em repo proprio | TS-10 |
+| `POST /auth` recebe CPF no body | TS-01, TS-04 |
+| Valida formato do CPF antes do banco | TS-01 |
+| Consulta existencia e status no RDS | TS-02, TS-03 |
+| 404 / 403 / 422 | TS-02, TS-03, TS-01 |
+| JWT com claims `sub`, `cpf`, `role`, `iss`, `exp` | TS-04, TS-05 |
+| Segredo via Secrets Manager | TS-06 |
+| Auth de staff conforme RFC | TS-05 |
+| Cold start / timeout / pooling | TS-07 |
+| Logs JSON com CPF mascarado | TS-08 |
+| Testes unitarios + contrato | TS-09 |
+| Artefato de deploy documentado | TS-10 |
+| README | TS-10 |
 
-## Validation Checklist
-- [ ] Todos os criterios de aceite cobertos
-- [ ] Edge cases documentados
-- [ ] Fluxos de erro documentados (400/403/404/422/500)
-- [ ] Instrucoes de setup claras
+## Checklist de Validacao
+- [x] Todos os criterios cobertos
+- [x] Casos de borda documentados
+- [x] Fluxos de erro (422/404/403) documentados
+- [x] Instrucoes de setup claras
 
-## Useful Commands
+## Comandos Uteis
 ```bash
-# Testes unitarios
-npm test
-
-# Testes com cobertura
+# repo soat-fiap-oficina-auth-lambda
 npm run test:cov
-
-# Typecheck e lint (gates de CI)
-npm run typecheck
-npm run lint
-
-# Invocar a Lambda localmente
-npm run invoke:local
-
-# Build da imagem e execucao via Docker
-npm run docker:build
-npm run docker:run
+aws lambda invoke --function-name oficina-auth-prod:prod --cli-binary-format raw-in-base64-out \
+  --payload '{"body":"{\"cpf\":\"11111111111\"}"}' /dev/stdout
 ```
