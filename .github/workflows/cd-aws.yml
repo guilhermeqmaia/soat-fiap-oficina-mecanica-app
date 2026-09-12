@@ -194,6 +194,10 @@ jobs:
           kubectl -n oficina delete job oficina-migrations --ignore-not-found
           kubectl apply -k .
           kubectl -n oficina wait --for=condition=complete job/oficina-migrations --timeout=300s
+          # ConfigMap/Secret via envFrom so entram em pods novos: quando o deploy
+          # e re-disparado no mesmo commit (ex.: GATEWAY_URL nova), a imagem nao
+          # muda e nada reiniciaria. Rolling restart e zero-downtime (maxUnavailable 0).
+          kubectl -n oficina rollout restart deployment/oficina-app
           kubectl -n oficina rollout status deployment/oficina-app --timeout=300s
 
       - name: Smoke test (/health e /health/ready)
