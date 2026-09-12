@@ -12,6 +12,10 @@ RUN npx prisma generate && npm run build
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
+# O npm 10 embutido no node:20 traz tar 6.2.1 (CVE-2026-59873, CRITICAL) e
+# bloqueia o scan do Trivy no CD; o npm 11 traz tar >= 7.5.19 e suporta node 20.
+RUN npm install -g npm@11 && npm cache clean --force
+
 COPY --chown=node:node package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
