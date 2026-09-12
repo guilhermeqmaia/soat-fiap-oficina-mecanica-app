@@ -116,6 +116,8 @@ jobs:
       - name: Instalar kustomize
         if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
         run: |
+          # O runner ubuntu-latest ja traz kustomize; o instalador recusa sobrescrever.
+          if command -v kustomize >/dev/null; then kustomize version; exit 0; fi
           curl -sfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
             | bash -s -- 5.4.3 /usr/local/bin
 
