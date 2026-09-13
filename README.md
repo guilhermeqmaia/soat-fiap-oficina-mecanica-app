@@ -591,6 +591,8 @@ US-F3-06).
 `scripts/aws-deploy-all.sh` do repo infra-k8s sobe tudo (~30 min) e imprime a
 URL pública do API Gateway; `aws-pause.sh`/`aws-resume.sh` entre gravações;
 `aws-destroy-all.sh` ao final. Conta própria + OIDC: [ADR-0007](docs/arquitetura/adr/ADR-0007-conta-aws-propria-oidc.md).
+Para a demo, `scripts/demo-trafego.sh [minutos]` gera OS percorrendo o ciclo completo
+(com rejeições, leituras e notificações) e popula os dashboards do Datadog.
 
 ## Documentação
 
