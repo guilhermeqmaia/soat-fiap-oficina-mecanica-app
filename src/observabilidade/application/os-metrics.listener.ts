@@ -1,7 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
-import { OsStatusAlteradoEvent } from '../../ordem-de-servico/domain/events/os-status-alterado.event';
-import { integracaoResultados, osTransicoes } from '../metrics.registry';
+import { Injectable } from "@nestjs/common";
+import { OnEvent } from "@nestjs/event-emitter";
+import { OsStatusAlteradoEvent } from "../../ordem-de-servico/domain/events/os-status-alterado.event";
+import {
+  integracaoResultados,
+  osTransicoes,
+  inicializarSeriesDeNegocio,
+} from "../metrics.registry";
 
 /**
  * Traduz eventos de dominio em metricas de negocio (US-F3-10) — volume de OS
@@ -12,6 +16,10 @@ import { integracaoResultados, osTransicoes } from '../metrics.registry';
  */
 @Injectable()
 export class OsMetricsListener {
+  constructor() {
+    inicializarSeriesDeNegocio(); // series com 0 desde o boot (dashboards sem "No Data")
+  }
+
   @OnEvent(OsStatusAlteradoEvent.EVENT_NAME)
   onStatusAlterado(event: OsStatusAlteradoEvent): void {
     osTransicoes.inc({
@@ -21,7 +29,10 @@ export class OsMetricsListener {
   }
 
   /** Chamado pelos adapters de integracao para marcar sucesso/falha. */
-  static registrarIntegracao(integracao: string, resultado: 'sucesso' | 'falha'): void {
+  static registrarIntegracao(
+    integracao: string,
+    resultado: "sucesso" | "falha",
+  ): void {
     integracaoResultados.inc({ integracao, resultado });
   }
 }
