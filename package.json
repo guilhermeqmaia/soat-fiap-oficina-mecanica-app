@@ -49,6 +49,7 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "dd-trace": "^5.127.0",
     "helmet": "^8.2.0",
     "nestjs-pino": "^4.6.1",
     "nodemailer": "^9.0.3",
