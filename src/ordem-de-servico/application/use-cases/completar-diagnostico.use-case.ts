@@ -1,17 +1,17 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { Inject, Injectable } from "@nestjs/common";
+import { UseCase } from "../../../shared/application/use-case";
 import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
-} from '../../../shared/application/domain-event-publisher';
-import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
-import { OrcamentoProntoEvent } from '../../domain/events/orcamento-pronto.event';
+} from "../../../shared/application/domain-event-publisher";
+import { OrdemDeServico } from "../../domain/ordem-de-servico.entity";
+import { OrcamentoProntoEvent } from "../../domain/events/orcamento-pronto.event";
 import {
   ORDEM_DE_SERVICO_GATEWAY,
   OrdemDeServicoGateway,
-} from '../gateways/ordem-de-servico.gateway';
-import { carregarOrdemOuFalhar } from './carregar-ordem';
-import { publicarMudancaDeStatus } from './publicar-mudanca-de-status';
+} from "../gateways/ordem-de-servico.gateway";
+import { carregarOrdemOuFalhar } from "./carregar-ordem";
+import { publicarMudancaDeStatus } from "./publicar-mudanca-de-status";
 
 export interface CompletarDiagnosticoInput {
   id: string;
@@ -19,9 +19,10 @@ export interface CompletarDiagnosticoInput {
 }
 
 @Injectable()
-export class CompletarDiagnosticoUseCase
-  implements UseCase<CompletarDiagnosticoInput, OrdemDeServico>
-{
+export class CompletarDiagnosticoUseCase implements UseCase<
+  CompletarDiagnosticoInput,
+  OrdemDeServico
+> {
   constructor(
     @Inject(ORDEM_DE_SERVICO_GATEWAY)
     private readonly gateway: OrdemDeServicoGateway,
@@ -32,17 +33,24 @@ export class CompletarDiagnosticoUseCase
   async execute(input: CompletarDiagnosticoInput): Promise<OrdemDeServico> {
     const ordem = await carregarOrdemOuFalhar(this.gateway, input.id);
     const statusAnterior = ordem.status;
+    // updatedAt antes da mutacao ~ momento em que a OS entrou no status atual
+    const entradaNoStatusAnterior = ordem.updatedAt ?? ordem.createdAt;
     ordem.completarDiagnostico(input.diagnostico);
     const updated = await this.gateway.update(ordem);
 
-    publicarMudancaDeStatus(this.events, updated, statusAnterior);
+    publicarMudancaDeStatus(
+      this.events,
+      updated,
+      statusAnterior,
+      entradaNoStatusAnterior,
+    );
 
     this.events.publish(
       new OrcamentoProntoEvent(
         updated.id!,
         updated.numero,
         updated.clienteId,
-        updated.diagnostico ?? '',
+        updated.diagnostico ?? "",
         updated.valorTotalServicos(),
       ),
     );
