@@ -1,21 +1,21 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { Inject, Injectable } from "@nestjs/common";
+import { UseCase } from "../../../shared/application/use-case";
 import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
-} from '../../../shared/application/domain-event-publisher';
-import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
+} from "../../../shared/application/domain-event-publisher";
+import { OrdemDeServico } from "../../domain/ordem-de-servico.entity";
 import {
   ORDEM_DE_SERVICO_GATEWAY,
   OrdemDeServicoGateway,
-} from '../gateways/ordem-de-servico.gateway';
+} from "../gateways/ordem-de-servico.gateway";
 import {
   CLIENTE_CONSULTA_GATEWAY,
   ClienteConsultaGateway,
-} from '../gateways/consulta.gateways';
-import { carregarOrdemOuFalhar } from './carregar-ordem';
-import { assertOsPertenceAoCliente } from './assert-os-pertence-ao-cliente';
-import { publicarMudancaDeStatus } from './publicar-mudanca-de-status';
+} from "../gateways/consulta.gateways";
+import { carregarOrdemOuFalhar } from "./carregar-ordem";
+import { assertOsPertenceAoCliente } from "./assert-os-pertence-ao-cliente";
+import { publicarMudancaDeStatus } from "./publicar-mudanca-de-status";
 
 export interface RejeitarOrcamentoInput {
   id: string;
@@ -24,9 +24,10 @@ export interface RejeitarOrcamentoInput {
 }
 
 @Injectable()
-export class RejeitarOrcamentoUseCase
-  implements UseCase<RejeitarOrcamentoInput, OrdemDeServico>
-{
+export class RejeitarOrcamentoUseCase implements UseCase<
+  RejeitarOrcamentoInput,
+  OrdemDeServico
+> {
   constructor(
     @Inject(ORDEM_DE_SERVICO_GATEWAY)
     private readonly gateway: OrdemDeServicoGateway,
@@ -47,9 +48,16 @@ export class RejeitarOrcamentoUseCase
     }
     const ordem = await carregarOrdemOuFalhar(this.gateway, input.id);
     const statusAnterior = ordem.status;
+    // updatedAt antes da mutacao ~ momento em que a OS entrou no status atual
+    const entradaNoStatusAnterior = ordem.updatedAt ?? ordem.createdAt;
     ordem.rejeitar();
     const updated = await this.gateway.update(ordem);
-    publicarMudancaDeStatus(this.events, updated, statusAnterior);
+    publicarMudancaDeStatus(
+      this.events,
+      updated,
+      statusAnterior,
+      entradaNoStatusAnterior,
+    );
     return updated;
   }
 }

@@ -1,17 +1,17 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { Inject, Injectable } from "@nestjs/common";
+import { UseCase } from "../../../shared/application/use-case";
 import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
-} from '../../../shared/application/domain-event-publisher';
-import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
-import { OsFinalizadaEvent } from '../../domain/events/os-finalizada.event';
+} from "../../../shared/application/domain-event-publisher";
+import { OrdemDeServico } from "../../domain/ordem-de-servico.entity";
+import { OsFinalizadaEvent } from "../../domain/events/os-finalizada.event";
 import {
   ORDEM_DE_SERVICO_GATEWAY,
   OrdemDeServicoGateway,
-} from '../gateways/ordem-de-servico.gateway';
-import { carregarOrdemOuFalhar } from './carregar-ordem';
-import { publicarMudancaDeStatus } from './publicar-mudanca-de-status';
+} from "../gateways/ordem-de-servico.gateway";
+import { carregarOrdemOuFalhar } from "./carregar-ordem";
+import { publicarMudancaDeStatus } from "./publicar-mudanca-de-status";
 
 export interface ConcluirServicoInput {
   id: string;
@@ -20,9 +20,10 @@ export interface ConcluirServicoInput {
 }
 
 @Injectable()
-export class ConcluirServicoUseCase
-  implements UseCase<ConcluirServicoInput, OrdemDeServico>
-{
+export class ConcluirServicoUseCase implements UseCase<
+  ConcluirServicoInput,
+  OrdemDeServico
+> {
   constructor(
     @Inject(ORDEM_DE_SERVICO_GATEWAY)
     private readonly gateway: OrdemDeServicoGateway,
@@ -33,12 +34,19 @@ export class ConcluirServicoUseCase
   async execute(input: ConcluirServicoInput): Promise<OrdemDeServico> {
     const ordem = await carregarOrdemOuFalhar(this.gateway, input.id);
     const statusAnterior = ordem.status;
+    // updatedAt antes da mutacao ~ momento em que a OS entrou no status atual
+    const entradaNoStatusAnterior = ordem.updatedAt ?? ordem.createdAt;
     ordem.concluirServico(input.servicoId, input.horasTrabalhadas);
     const updated = await this.gateway.update(ordem);
 
-    publicarMudancaDeStatus(this.events, updated, statusAnterior);
+    publicarMudancaDeStatus(
+      this.events,
+      updated,
+      statusAnterior,
+      entradaNoStatusAnterior,
+    );
 
-    if (updated.status === 'FINALIZADA') {
+    if (updated.status === "FINALIZADA") {
       this.events.publish(
         new OsFinalizadaEvent(updated.id!, updated.numero, updated.clienteId),
       );

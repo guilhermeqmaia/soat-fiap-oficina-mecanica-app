@@ -26,6 +26,17 @@ export class OsMetricsListener {
       de: String(event.statusAnterior),
       para: String(event.statusAtual),
     });
+    // Tempo que a OS ficou no status anterior (dashboard "tempo medio por status").
+    if (event.entradaNoStatusAnterior) {
+      const segundos =
+        (event.timestamp.getTime() - event.entradaNoStatusAnterior.getTime()) /
+        1000;
+      if (segundos >= 0)
+        osTempoNoStatus.observe(
+          { status: String(event.statusAnterior) },
+          segundos,
+        );
+    }
   }
 
   /** Chamado pelos adapters de integracao para marcar sucesso/falha. */

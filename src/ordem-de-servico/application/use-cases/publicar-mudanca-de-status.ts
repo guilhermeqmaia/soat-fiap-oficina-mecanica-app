@@ -1,7 +1,7 @@
-import { DomainEventPublisher } from '../../../shared/application/domain-event-publisher';
-import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
-import { StatusOS } from '../../domain/value-objects/status-os.vo';
-import { OsStatusAlteradoEvent } from '../../domain/events/os-status-alterado.event';
+import { DomainEventPublisher } from "../../../shared/application/domain-event-publisher";
+import { OrdemDeServico } from "../../domain/ordem-de-servico.entity";
+import { StatusOS } from "../../domain/value-objects/status-os.vo";
+import { OsStatusAlteradoEvent } from "../../domain/events/os-status-alterado.event";
 
 /**
  * Helper interno compartilhado pelos use cases de mutacao: publica o evento
@@ -12,6 +12,7 @@ export function publicarMudancaDeStatus(
   events: DomainEventPublisher,
   ordem: OrdemDeServico,
   statusAnterior: StatusOS,
+  entradaNoStatusAnterior?: Date,
 ): void {
   if (!ordem.id || ordem.status === statusAnterior) {
     return;
@@ -24,6 +25,8 @@ export function publicarMudancaDeStatus(
       ordem.clienteId,
       statusAnterior,
       ordem.status,
+      new Date(),
+      entradaNoStatusAnterior,
     ),
   );
 }
