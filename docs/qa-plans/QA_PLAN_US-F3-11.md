@@ -68,7 +68,7 @@ Valida os tres dashboards exigidos (volume diario de OS, tempo medio por status,
 - **Criterio:** Healthcheck falhando
 - **Passos:**
   1. `scripts/aws-pause.sh` (ou escalar a app para 0)
-- **Resultado esperado:** monitor sintetico "API publica fora do ar" dispara em < 5 min; `aws-resume.sh` recupera
+- **Resultado esperado:** monitor do teste sintetico `[Synthetics] oficina — /health (liveness)` dispara em < 5 min; `aws-resume.sh` recupera
 
 ### TS-09: Alerta — falha de entrega de notificacao
 - **Tipo:** Manual
@@ -96,7 +96,7 @@ Valida os tres dashboards exigidos (volume diario de OS, tempo medio por status,
 - **Criterio:** Dashboards prontos para a demo
 - **Passos:**
   1. Ensaiar o roteiro do video: `aws-resume.sh` -> k6 smoke -> abrir os dois dashboards -> mostrar um alerta
-- **Resultado esperado:** dados em tempo real (< 1 min). **Status:** pendente de conta Datadog (`DD_API_KEY` + APP key); alternativa Grafana valida os sinais, nao os monitores do Datadog
+- **Resultado esperado:** dados em tempo real (< 1 min). **Status:** validado em 13/09/2026 pela API (ver `evidencias/US-F3-10-datadog-2026-09-13.md`); resta a gravacao
 
 ### TS-13: README
 - **Tipo:** Manual

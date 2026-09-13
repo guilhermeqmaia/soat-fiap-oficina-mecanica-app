@@ -78,7 +78,7 @@ Valida os sinais exigidos independentemente do fornecedor: APM/tracing com laten
 - **Criterio:** Validado que os dados aparecem em tempo real
 - **Passos:**
   1. Com o coletor instalado, gerar trafego com k6 por 2 min e acompanhar o dashboard tecnico (latencia, 5xx, CPU) atualizando
-- **Resultado esperado:** atraso < 1 min entre a requisicao e o painel. **Status:** depende de conta Datadog (`DD_API_KEY`); sem ela, validar com Grafana (`scripts/aws-observability.sh prometheus`, port-forward impresso pelo script)
+- **Resultado esperado:** atraso < 1 min entre a requisicao e o painel. **Status:** validado em 13/09/2026 (`evidencias/US-F3-10-datadog-2026-09-13.md`); sem conta Datadog, Grafana cobre os sinais (`scripts/aws-observability.sh prometheus`)
 
 ### TS-10: README
 - **Tipo:** Manual
