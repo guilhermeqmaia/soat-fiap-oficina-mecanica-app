@@ -5,6 +5,7 @@ import {
   integracaoResultados,
   osTransicoes,
   inicializarSeriesDeNegocio,
+  osTempoNoStatus,
 } from "../metrics.registry";
 
 /**
