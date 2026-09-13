@@ -26,3 +26,12 @@ spec:
         - name: app
           # Tag por commit (imutavel) — Always garante o pull no rollout.
           imagePullPolicy: Always
+          env:
+            # APM (US-F3-10): o agente Datadog e um DaemonSet que escuta na
+            # porta 8126 do NO (hostPort); o dd-trace precisa do IP do host.
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"

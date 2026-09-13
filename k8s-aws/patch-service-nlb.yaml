@@ -12,6 +12,11 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
     service.beta.kubernetes.io/aws-load-balancer-internal: "true"
     service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    # Scrape do /metrics (OpenMetrics) pelo agente Datadog / Prometheus
+    # (US-F3-10) — o mapeamento de nomes fica nos values do agente (repo infra-k8s).
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
 spec:
   type: LoadBalancer
   # Preserva o IP de origem e evita saltos extras entre nodes.
