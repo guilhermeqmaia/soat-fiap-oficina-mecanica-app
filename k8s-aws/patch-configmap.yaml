@@ -21,11 +21,12 @@ data:
   # do VPC Link) e o throttler por IP (100 req/60 s) viraria um limite GLOBAL
   # para todos os clientes — visto no teste de carga (4.684 x 429 em 5 min).
   THROTTLER_DISABLED: "true"
-  # Notificacoes por webhook (US-F2-06/US-F3-11): destino publico de demo que
-  # exibe as entregas ao vivo e alimenta oficina_integracoes_total no painel de
-  # erros de integracao. SMTP sem senha nao entrega nada em producao.
+  # Notificacoes por webhook (US-F2-06/US-F3-11): receptor publico estavel
+  # (echo, 200) que alimenta oficina_integracoes_total no painel de integracoes.
+  # webhook.site gratuito limita (429) e virava "falha" em todas as entregas.
+  # SMTP sem senha nao entrega nada em producao.
   NOTIFICATION_PROVIDER: "webhook"
-  NOTIFICATION_WEBHOOK_URL: "https://webhook.site/a7f10fce-c6ef-46e8-b7bb-04f13f04aeaf"
+  NOTIFICATION_WEBHOOK_URL: "https://postman-echo.com/post"
   # Emissor aceito nos tokens — a Lambda de CPF (US-F3-01/03).
   JWT_ISSUER: "oficina-auth-lambda"
   # APM (US-F3-10): o agente do Datadog roda no cluster (repo infra-k8s,
