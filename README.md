@@ -587,12 +587,20 @@ US-F3-06).
 **Vars adicionais do overlay `k8s-aws`:** `DB_SSL=true` (RDS exige TLS) e
 `JWT_ISSUER` já vêm do ConfigMap; `GATEWAY_URL` é gravada pelo script de deploy.
 
-**Deploy ativo:** o ambiente é **efêmero** ([ADR-0008](docs/arquitetura/adr/ADR-0008-ambiente-efemero.md)):
-`scripts/aws-deploy-all.sh` do repo infra-k8s sobe tudo (~30 min) e imprime a
-URL pública do API Gateway; `aws-pause.sh`/`aws-resume.sh` entre gravações;
-`aws-destroy-all.sh` ao final. Conta própria + OIDC: [ADR-0007](docs/arquitetura/adr/ADR-0007-conta-aws-propria-oidc.md).
-Para a demo, `scripts/demo-trafego.sh [minutos]` gera OS percorrendo o ciclo completo
-(com rejeições, leituras e notificações) e popula os dashboards do Datadog.
+**Deploy ativo (desde 15/09/2026, EKS 1.36):** `https://3jpje9so5m.execute-api.us-east-1.amazonaws.com`
+
+| O que | Como |
+|---|---|
+| Saúde | `curl https://3jpje9so5m.execute-api.us-east-1.amazonaws.com/health` · `https://3jpje9so5m.execute-api.us-east-1.amazonaws.com/health/ready` |
+| Autenticar (cliente, só CPF) | `curl -X POST https://3jpje9so5m.execute-api.us-east-1.amazonaws.com/auth -H 'content-type: application/json' -d '{"cpf":"390.533.447-05"}'` |
+| Autenticar (staff, CPF + senha) | `-d '{"cpf":"529.982.247-25","senha":"admin123"}'` (ADMIN) · mecânico `168.995.350-09`/`mecanico123` · atendente `248.301.457-73`/`atendente123` |
+| Consumir APIs protegidas | `curl https://3jpje9so5m.execute-api.us-east-1.amazonaws.com/clientes -H "Authorization: Bearer <accessToken>"` — sem token o gateway devolve 401; CPF inválido 422; cliente em rota de staff 403 |
+| Status público de uma OS | `GET https://3jpje9so5m.execute-api.us-east-1.amazonaws.com/ordens-servico/numero/<numero>/status` (sem token) |
+| Dashboards (Datadog, org "Oficina Mecanica ORG") | [Operação (negócio)](https://app.datadoghq.com/dashboard/h6d-7ck-wpt/oficina--operacao-negocio) · [Saúde técnica](https://app.datadoghq.com/dashboard/n6g-am5-bat/oficina--saude-tecnica) — acesso mediante convite; evidências em `docs/qa-plans/evidencias/` |
+
+O ambiente é **efêmero** ([ADR-0008](docs/arquitetura/adr/ADR-0008-ambiente-efemero.md)): se a URL acima não
+responder, `scripts/aws-deploy-all.sh` do repo infra-k8s recria tudo em ~30 min e imprime a nova URL.
+Conta própria + OIDC: [ADR-0007](docs/arquitetura/adr/ADR-0007-conta-aws-propria-oidc.md).
 
 ## Documentação
 
