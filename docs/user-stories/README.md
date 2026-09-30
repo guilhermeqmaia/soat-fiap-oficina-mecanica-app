@@ -77,3 +77,33 @@ e [`plano-execucao-fase-3.md`](../plano-execucao-fase-3.md).
 ## Apoio
 
 - [Manifesto de importação das histórias da Fase 3 para o Notion](f3-notion-import.md)
+
+## Fase 4 — Microsserviços, Saga e Automação (`f4-*`)
+
+Plano: [`docs/plano-execucao-fase-4.md`](../plano-execucao-fase-4.md) · Manifesto Notion: [f4-notion-import.md](f4-notion-import.md)
+
+| # | História | Status |
+|---|---|---|
+| US-F4-DOC-01 | [RFCs — Decomposicao, Saga, Mensageria e NoSQL](f4-doc-01-rfcs.md) | To Do |
+| US-F4-DOC-02 | [ADRs — Outbox, Kit Compartilhado, SonarCloud, Mercado Pago e Gateway Multi-servico](f4-doc-02-adrs.md) | To Do |
+| US-F4-DOC-03 | [Contratos de Eventos e Comandos (AsyncAPI)](f4-doc-03-contratos-eventos.md) | To Do |
+| US-F4-01 | [Kit Compartilhado dos Servicos (`@soat-fiap/oficina-kit`)](f4-01-kit-compartilhado.md) | To Do |
+| US-F4-02 | [Mensageria — SNS + SQS FIFO com DLQ (Terraform)](f4-02-mensageria.md) | To Do |
+| US-F4-03 | [Bancos por Servico — Postgres (OS, Billing) e DynamoDB (Execucao)](f4-03-bancos-por-servico.md) | To Do |
+| US-F4-04 | [Repositorios dos Servicos com CI/CD Independente (Build, Testes, Sonar, Deploy EKS)](f4-04-repos-e-cicd-por-servico.md) | To Do |
+| US-F4-05 | [API Gateway Multi-servico e Webhook Publico do Mercado Pago](f4-05-gateway-multi-servico.md) | To Do |
+| US-F4-06 | [OS Service — Evolucao do Monolito (Strangler) e Publicacao de Eventos](f4-06-os-service-strangler.md) | To Do |
+| US-F4-07 | [Execucao Service — Fila de Execucao, Diagnostico, Catalogo e Estoque em DynamoDB](f4-07-execucao-service.md) | To Do |
+| US-F4-08 | [Billing Service — Orcamento, Aprovacao e Rejeicao](f4-08-billing-orcamento.md) | To Do |
+| US-F4-12 | [Notificacoes ao Cliente a partir dos Eventos](f4-12-notificacoes-por-eventos.md) | To Do |
+| US-F4-09 | [Billing Service — Pagamento com Mercado Pago (Checkout + Webhook)](f4-09-billing-mercado-pago.md) | To Do |
+| US-F4-10 | [Saga Orquestrada da Ordem de Servico](f4-10-saga-orquestrada.md) | To Do |
+| US-F4-11 | [Compensacoes e Rollback Seguro da Saga](f4-11-compensacoes-rollback.md) | To Do |
+| US-F4-13 | [Testes Unitarios >= 80% por Servico e Quality Gate no CI](f4-13-cobertura-e-sonar.md) | To Do |
+| US-F4-14 | [BDD do Fluxo Completo da OS (Cucumber)](f4-14-bdd-fluxo-completo.md) | To Do |
+| US-F4-15 | [Testes de Contrato dos Eventos](f4-15-testes-de-contrato.md) | To Do |
+| US-F4-16 | [Observabilidade Distribuida — Traces atraves das Mensagens, Dashboards por Servico e Alertas de Fila](f4-16-observabilidade-distribuida.md) | To Do |
+| US-F4-DOC-04 | [Diagrama Geral da Arquitetura e Sequencias da Saga](f4-doc-04-diagramas.md) | To Do |
+| US-F4-DOC-05 | [READMEs por Servico com Evidencias de Cobertura e Swagger](f4-doc-05-readmes-por-servico.md) | To Do |
+| US-F4-DOC-06 | [QA Plans da Fase 4](f4-doc-06-qa-plans.md) | To Do |
+| US-F4-17 | [Entrega da Fase 4 — Video, PDF e Diagrama Geral](f4-17-entrega-video-pdf.md) | To Do |

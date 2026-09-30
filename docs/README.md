@@ -71,3 +71,8 @@ documentos abaixo detalham cada tema.
 ## Entrega
 
 - [entrega-fase-3.md](entrega-fase-3.md) — documento de entrega da Fase 3 (fonte do PDF): repositórios, evidências de proteção de branch, roteiro do vídeo, links da documentação e URLs de deploy
+
+## Fase 4
+
+- [plano-execucao-fase-4.md](plano-execucao-fase-4.md) — plano da Fase 4 (insights de mercado, decisões, ondas, 23 histórias)
+- [tech-challenges/fase-4-tech-challenge.pdf](tech-challenges/fase-4-tech-challenge.pdf) — enunciado
