@@ -138,7 +138,7 @@ AWS, [Padrão Saga — Prescriptive Guidance](https://docs.aws.amazon.com/pt_br/
 
 ---
 
-## Decisões propostas (a formalizar em RFC/ADR na Onda 0)
+## Decisões (aprovadas pelo time em 30/09/2026; formalizadas em RFC-0004..0007 e ADR-0009..0013)
 
 | # | Decisão | Proposta | Por quê (e insight que sustenta) |
 |---|---|---|---|
@@ -165,9 +165,9 @@ AWS, [Padrão Saga — Prescriptive Guidance](https://docs.aws.amazon.com/pt_br/
 | `soat-fiap-oficina-infra-k8s` (2) | VPC, EKS, gateway, observabilidade | + stage **`messaging/`** (SNS/SQS/DLQ), **`dynamodb/`**, gateway multi-serviço, NLB com 3 listeners, ECR ×3, dashboards do fluxo distribuído |
 | `soat-fiap-oficina-infra-db` (3) | RDS + secret | + banco/usuário do **Billing**, secrets por serviço |
 | `soat-fiap-oficina-mecanica-app` (4) | monólito + docs | → **`soat-fiap-oficina-os-service`**: OS Service + orquestrador da saga + notificação + **hub de docs/BDD** |
-| **`soat-fiap-oficina-billing-service`** (5, novo) | — | Orçamento, aprovação, Mercado Pago, ledger — **Postgres** |
-| **`soat-fiap-oficina-execucao-service`** (6, novo) | — | Fila de execução, diagnóstico, catálogo, estoque — **DynamoDB** |
-| **`soat-fiap-oficina-kit`** (7, novo) | — | `@soat-fiap/oficina-kit` + template de serviço + schemas dos eventos |
+| [`soat-fiap-oficina-billing-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-billing-service) (5, criado 30/09) | — | Orçamento, aprovação, Mercado Pago, ledger — **Postgres** |
+| [`soat-fiap-oficina-execucao-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-execucao-service) (6, criado 30/09) | — | Fila de execução, diagnóstico, catálogo, estoque — **DynamoDB** |
+| [`soat-fiap-oficina-kit`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) (7, criado 30/09) | — | `@soat-fiap/oficina-kit` + template de serviço + schemas dos eventos |
 
 ---
 
