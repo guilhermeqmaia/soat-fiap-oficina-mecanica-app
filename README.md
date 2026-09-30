@@ -44,6 +44,8 @@ flowchart LR
 | [3 · infra-db](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db) | RDS PostgreSQL gerenciado |
 | **4 · este repo** | **API NestJS, manifestos K8s e documentação da arquitetura** |
 
+> **Próxima fase:** o planejamento da Fase 4 (microsserviços + saga) está em [`docs/plano-execucao-fase-4.md`](docs/plano-execucao-fase-4.md).
+
 ### Entregáveis da Fase 3
 
 | Entregável | Onde |

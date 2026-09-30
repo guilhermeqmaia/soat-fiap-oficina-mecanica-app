@@ -136,6 +136,18 @@ Notion import manifest: `docs/user-stories/f3-notion-import.md`.
 **Phase 3 repos:** `soat-fiap-oficina-auth-lambda` (1), `soat-fiap-oficina-infra-k8s` (2),
 `soat-fiap-oficina-infra-db` (3), `soat-fiap-oficina-mecanica-app` (4, this repo).
 
+### Fase 4 — Microservices, Saga & Full Automation (`f4-*`)
+
+Split into 3 microservices (OS Service = this repo evolved, Billing with
+Mercado Pago, Execução with DynamoDB), SNS+SQS messaging, orchestrated saga
+with compensations, BDD, SonarCloud, per-service CI/CD. Plan (market insights,
+12 proposed decisions, 7-repo map, waves): `docs/plano-execucao-fase-4.md`.
+Stories: `docs/user-stories/f4-*.md`. Notion manifest: `docs/user-stories/f4-notion-import.md`.
+
+**Phase 4 repos (planned):** `soat-fiap-oficina-os-service` (4, renamed from this repo),
+`soat-fiap-oficina-billing-service` (5), `soat-fiap-oficina-execucao-service` (6),
+`soat-fiap-oficina-kit` (7); repos 1–3 from Phase 3 evolve in place.
+
 ## Working with user stories
 
 When starting a task, read the corresponding file in `docs/user-stories/` for full context.
