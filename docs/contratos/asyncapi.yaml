@@ -1,0 +1,316 @@
+asyncapi: 3.0.0
+info:
+  title: Oficina Mecânica — Contratos de Eventos e Comandos (Fase 4)
+  version: 1.0.0
+  description: |
+    Catálogo de todas as mensagens trocadas pelos microsserviços via SNS + SQS FIFO
+    (RFC-0006). **Eventos** são fatos publicados pelo serviço dono; **comandos** são
+    ordens enviadas pelo orquestrador da saga (OS Service, RFC-0005). Todas as
+    mensagens usam o envelope da ADR-0009 e são validadas contra estes schemas no
+    produtor (antes do outbox) e no consumidor (entrada).
+
+    Regra de versionamento: campos novos opcionais = `version` +1 compatível;
+    remoção/renomeação = novo `type` sufixado (`.v2`) e canal novo.
+  contact:
+    name: Time SOAT
+
+defaultContentType: application/json
+
+servers:
+  aws:
+    host: sns.us-east-1.amazonaws.com
+    protocol: sns
+    description: Tópicos SNS FIFO por domínio produtor; filas SQS FIFO por consumidor.
+  local:
+    host: localhost:4566
+    protocol: sns
+    description: LocalStack (docker-compose.fase4.yml).
+
+channels:
+  oficina-os:
+    address: oficina-os.fifo
+    description: Tópico do OS Service (eventos do ciclo de vida da OS).
+    messages:
+      osAberta: { $ref: '#/components/messages/osAberta' }
+      osCancelada: { $ref: '#/components/messages/osCancelada' }
+      osFinalizada: { $ref: '#/components/messages/osFinalizada' }
+      osEntregue: { $ref: '#/components/messages/osEntregue' }
+  oficina-execucao:
+    address: oficina-execucao.fifo
+    description: Tópico do Execução Service.
+    messages:
+      execucaoEnfileirada: { $ref: '#/components/messages/execucaoEnfileirada' }
+      execucaoRecusada: { $ref: '#/components/messages/execucaoRecusada' }
+      execucaoDiagnosticoConcluido: { $ref: '#/components/messages/execucaoDiagnosticoConcluido' }
+      execucaoIniciada: { $ref: '#/components/messages/execucaoIniciada' }
+      execucaoFinalizada: { $ref: '#/components/messages/execucaoFinalizada' }
+      execucaoReservasLiberadas: { $ref: '#/components/messages/execucaoReservasLiberadas' }
+  oficina-billing:
+    address: oficina-billing.fifo
+    description: Tópico do Billing Service.
+    messages:
+      billingOrcamentoGerado: { $ref: '#/components/messages/billingOrcamentoGerado' }
+      billingOrcamentoAprovado: { $ref: '#/components/messages/billingOrcamentoAprovado' }
+      billingOrcamentoRejeitado: { $ref: '#/components/messages/billingOrcamentoRejeitado' }
+      billingPagamentoAprovado: { $ref: '#/components/messages/billingPagamentoAprovado' }
+      billingPagamentoRecusado: { $ref: '#/components/messages/billingPagamentoRecusado' }
+      billingOrcamentoCancelado: { $ref: '#/components/messages/billingOrcamentoCancelado' }
+  execucao-comandos:
+    address: execucao-comandos.fifo
+    description: Fila SQS de comandos consumida pelo Execução Service (produzidos pelo orquestrador).
+    messages:
+      execucaoEnfileirar: { $ref: '#/components/messages/execucaoEnfileirar' }
+      execucaoIniciar: { $ref: '#/components/messages/execucaoIniciar' }
+      execucaoLiberarReservas: { $ref: '#/components/messages/execucaoLiberarReservas' }
+  billing-comandos:
+    address: billing-comandos.fifo
+    description: Fila SQS de comandos consumida pelo Billing Service.
+    messages:
+      billingGerarOrcamento: { $ref: '#/components/messages/billingGerarOrcamento' }
+      billingCancelarOrcamento: { $ref: '#/components/messages/billingCancelarOrcamento' }
+
+operations:
+  # ---- OS Service (orquestrador) ----
+  osPublicaCicloDeVida:
+    action: send
+    channel: { $ref: '#/channels/oficina-os' }
+    summary: OS Service publica fatos do ciclo de vida (via outbox Postgres).
+  osEnviaComandosExecucao:
+    action: send
+    channel: { $ref: '#/channels/execucao-comandos' }
+    summary: Orquestrador envia comandos ao Execução Service.
+  osEnviaComandosBilling:
+    action: send
+    channel: { $ref: '#/channels/billing-comandos' }
+    summary: Orquestrador envia comandos ao Billing Service.
+  osConsomeExecucao:
+    action: receive
+    channel: { $ref: '#/channels/oficina-execucao' }
+    summary: Orquestrador avança a saga com os eventos da Execução (fila `os-eventos`).
+  osConsomeBilling:
+    action: receive
+    channel: { $ref: '#/channels/oficina-billing' }
+    summary: Orquestrador avança a saga com os eventos do Billing (fila `os-eventos`).
+  # ---- Execução Service ----
+  execucaoConsomeComandos:
+    action: receive
+    channel: { $ref: '#/channels/execucao-comandos' }
+  execucaoPublica:
+    action: send
+    channel: { $ref: '#/channels/oficina-execucao' }
+    summary: Publica via DynamoDB Streams → SNS.
+  # ---- Billing Service ----
+  billingConsomeComandos:
+    action: receive
+    channel: { $ref: '#/channels/billing-comandos' }
+  billingPublica:
+    action: send
+    channel: { $ref: '#/channels/oficina-billing' }
+  # ---- Notificação (coreografada, dentro do OS Service) ----
+  notificacaoConsome:
+    action: receive
+    channel: { $ref: '#/channels/oficina-billing' }
+    summary: Fila `notificacao-eventos` assina orçamento gerado, pagamento aprovado/recusado (+ os.finalizada/os.cancelada do tópico oficina-os).
+
+components:
+  schemas:
+    Envelope:
+      type: object
+      description: Envelope comum (ADR-0009). `type`, `correlationId` e `traceparent` também vão em message attributes.
+      required: [id, type, version, occurredAt, correlationId, producer, data]
+      properties:
+        id: { type: string, format: uuid, description: UUID v7; usado como MessageDeduplicationId e chave de idempotência }
+        type: { type: string, pattern: '^[a-z]+\.[a-z-]+$', examples: [os.aberta, billing.orcamento-gerado] }
+        version: { type: integer, minimum: 1, default: 1 }
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string, description: Número da OS (MessageGroupId) }
+        causationId: { type: string, format: uuid, description: id da mensagem que originou esta }
+        producer: { type: string, enum: [os-service, billing-service, execucao-service] }
+        traceparent: { type: string, description: W3C Trace Context }
+        data: { type: object }
+    Dinheiro:
+      type: string
+      pattern: '^\d+\.\d{2}$'
+      description: Decimal como string com 2 casas (nunca float).
+    Item:
+      type: object
+      required: [tipo, referenciaId, nome, quantidade, precoUnitario]
+      properties:
+        tipo: { type: string, enum: [SERVICO, PRODUTO] }
+        referenciaId: { type: string }
+        nome: { type: string }
+        quantidade: { type: integer, minimum: 1 }
+        precoUnitario: { $ref: '#/components/schemas/Dinheiro' }
+    NumeroOS:
+      type: object
+      required: [numeroOS]
+      properties:
+        numeroOS: { type: string, examples: [OS-2026-000123] }
+
+  messages:
+    # ===== Eventos do OS Service =====
+    osAberta:
+      name: os.aberta
+      title: OS aberta
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              data:
+                type: object
+                required: [numeroOS, cliente, veiculo, descricaoProblema]
+                properties:
+                  numeroOS: { type: string }
+                  cliente: { type: object, required: [id, nome, cpfMascarado], properties: { id: {type: string}, nome: {type: string}, cpfMascarado: {type: string, examples: ['***.***.***-25']} } }
+                  veiculo: { type: object, required: [id, placa, modelo], properties: { id: {type: string}, placa: {type: string}, modelo: {type: string} } }
+                  descricaoProblema: { type: string }
+    osCancelada:
+      name: os.cancelada
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties: { data: { type: object, required: [numeroOS, motivo], properties: { numeroOS: {type: string}, motivo: {type: string, enum: [EXECUCAO_RECUSADA, ORCAMENTO_REJEITADO, PAGAMENTO_RECUSADO, TIMEOUT_APROVACAO, TIMEOUT_PAGAMENTO, FALHA_INICIO_EXECUCAO, OPERADOR]} } } }
+    osFinalizada:
+      name: os.finalizada
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
+    osEntregue:
+      name: os.entregue
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
+
+    # ===== Comandos para o Execução Service =====
+    execucaoEnfileirar:
+      name: execucao.enfileirar
+      title: 'Comando: enfileirar a OS para execução'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties: { data: { type: object, required: [numeroOS, veiculoId, descricaoProblema], properties: { numeroOS: {type: string}, veiculoId: {type: string}, descricaoProblema: {type: string} } } }
+    execucaoIniciar:
+      name: execucao.iniciar
+      title: 'Comando: iniciar execução (baixa efetiva do estoque)'
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
+    execucaoLiberarReservas:
+      name: execucao.liberar-reservas
+      title: 'Compensação: devolver reservas de estoque'
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
+
+    # ===== Eventos do Execução Service =====
+    execucaoEnfileirada:
+      name: execucao.enfileirada
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, posicaoFila], properties: { numeroOS: {type: string}, posicaoFila: {type: integer} } } } } ]
+    execucaoRecusada:
+      name: execucao.recusada
+      title: Enfileiramento recusado (ex. veículo já em execução)
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, motivo], properties: { numeroOS: {type: string}, motivo: {type: string} } } } } ]
+    execucaoDiagnosticoConcluido:
+      name: execucao.diagnostico-concluido
+      title: Diagnóstico concluído com itens e preços congelados
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              data:
+                type: object
+                required: [numeroOS, mecanicoId, diagnostico, itens]
+                properties:
+                  numeroOS: { type: string }
+                  mecanicoId: { type: string }
+                  diagnostico: { type: string }
+                  itens: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Item' } }
+    execucaoIniciada:
+      name: execucao.iniciada
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
+    execucaoFinalizada:
+      name: execucao.finalizada
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, finalizadaEm], properties: { numeroOS: {type: string}, finalizadaEm: {type: string, format: date-time} } } } } ]
+    execucaoReservasLiberadas:
+      name: execucao.reservas-liberadas
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
+
+    # ===== Comandos para o Billing Service =====
+    billingGerarOrcamento:
+      name: billing.gerar-orcamento
+      title: 'Comando: gerar orçamento a partir do diagnóstico'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              data:
+                type: object
+                required: [numeroOS, clienteId, itens]
+                properties:
+                  numeroOS: { type: string }
+                  clienteId: { type: string }
+                  itens: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Item' } }
+    billingCancelarOrcamento:
+      name: billing.cancelar-orcamento
+      title: 'Compensação: cancelar orçamento e cobrança (estornar se pago)'
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, motivo], properties: { numeroOS: {type: string}, motivo: {type: string} } } } } ]
+
+    # ===== Eventos do Billing Service =====
+    billingOrcamentoGerado:
+      name: billing.orcamento-gerado
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              data:
+                type: object
+                required: [numeroOS, orcamentoId, total, validoAte]
+                properties:
+                  numeroOS: { type: string }
+                  orcamentoId: { type: string }
+                  total: { $ref: '#/components/schemas/Dinheiro' }
+                  validoAte: { type: string, format: date-time }
+    billingOrcamentoAprovado:
+      name: billing.orcamento-aprovado
+      title: Cliente aprovou; cobrança criada no Mercado Pago
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              data:
+                type: object
+                required: [numeroOS, orcamentoId, cobrancaId, linkPagamento]
+                properties:
+                  numeroOS: { type: string }
+                  orcamentoId: { type: string }
+                  cobrancaId: { type: string }
+                  linkPagamento: { type: string, format: uri }
+    billingOrcamentoRejeitado:
+      name: billing.orcamento-rejeitado
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, orcamentoId], properties: { numeroOS: {type: string}, orcamentoId: {type: string}, motivo: {type: string} } } } } ]
+    billingPagamentoAprovado:
+      name: billing.pagamento-aprovado
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              data:
+                type: object
+                required: [numeroOS, cobrancaId, pagamentoExternoId, valor]
+                properties:
+                  numeroOS: { type: string }
+                  cobrancaId: { type: string }
+                  pagamentoExternoId: { type: string, description: payment.id do Mercado Pago }
+                  valor: { $ref: '#/components/schemas/Dinheiro' }
+    billingPagamentoRecusado:
+      name: billing.pagamento-recusado
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, cobrancaId, motivo], properties: { numeroOS: {type: string}, cobrancaId: {type: string}, motivo: {type: string} } } } } ]
+    billingOrcamentoCancelado:
+      name: billing.orcamento-cancelado
+      title: Compensação concluída (inclui estorno quando houve pagamento)
+      payload:
+        allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, orcamentoId, estornado], properties: { numeroOS: {type: string}, orcamentoId: {type: string}, estornado: {type: boolean} } } } } ]

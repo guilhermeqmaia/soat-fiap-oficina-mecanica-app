@@ -144,7 +144,7 @@ with compensations, BDD, SonarCloud, per-service CI/CD. Plan (market insights,
 12 proposed decisions, 7-repo map, waves): `docs/plano-execucao-fase-4.md`.
 Stories: `docs/user-stories/f4-*.md`. Notion manifest: `docs/user-stories/f4-notion-import.md`.
 
-**Phase 4 repos (planned):** `soat-fiap-oficina-os-service` (4, renamed from this repo),
+**Phase 4 repos (5–7 created 2026-09-30; rename of this repo happens in US-F4-06):** `soat-fiap-oficina-os-service` (4, renamed from this repo),
 `soat-fiap-oficina-billing-service` (5), `soat-fiap-oficina-execucao-service` (6),
 `soat-fiap-oficina-kit` (7); repos 1–3 from Phase 3 evolve in place.
 

@@ -1,6 +1,6 @@
 # ADR-0001: Padrão de comunicação entre componentes
 
-**Status:** Aceita
+**Status:** Aceita — complementada por [ADR-0009](ADR-0009-outbox-e-consumidor-idempotente.md) (Fase 4: eventos in-process → outbox + broker)
 **Data:** 2026-08-24
 
 ## Contexto
