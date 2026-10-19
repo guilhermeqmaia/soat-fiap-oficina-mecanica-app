@@ -87,7 +87,7 @@ Plano: [`docs/plano-execucao-fase-4.md`](../plano-execucao-fase-4.md) · Manifes
 | US-F4-DOC-01 | [RFCs — Decomposicao, Saga, Mensageria e NoSQL](f4-doc-01-rfcs.md) | Concluída |
 | US-F4-DOC-02 | [ADRs — Outbox, Kit Compartilhado, SonarCloud, Mercado Pago e Gateway Multi-servico](f4-doc-02-adrs.md) | Concluída |
 | US-F4-DOC-03 | [Contratos de Eventos e Comandos (AsyncAPI)](f4-doc-03-contratos-eventos.md) | Em revisão |
-| US-F4-01 | [Kit Compartilhado dos Servicos (`@soat-fiap/oficina-kit`)](f4-01-kit-compartilhado.md) | To Do |
+| US-F4-01 | [Kit Compartilhado dos Servicos (`@guilhermeqmaia/oficina-kit`)](f4-01-kit-compartilhado.md) | Em andamento |
 | US-F4-02 | [Mensageria — SNS + SQS FIFO com DLQ (Terraform)](f4-02-mensageria.md) | To Do |
 | US-F4-03 | [Bancos por Servico — Postgres (OS, Billing) e DynamoDB (Execucao)](f4-03-bancos-por-servico.md) | To Do |
 | US-F4-04 | [Repositorios dos Servicos com CI/CD Independente (Build, Testes, Sonar, Deploy EKS)](f4-04-repos-e-cicd-por-servico.md) | To Do |

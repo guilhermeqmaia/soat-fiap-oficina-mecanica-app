@@ -146,7 +146,7 @@ AWS, [Padrão Saga — Prescriptive Guidance](https://docs.aws.amazon.com/pt_br/
 | D2 | **Saga** | **Orquestrada**, orquestrador no OS Service, estado persistido em `saga_os` e consultável por API | O fluxo tem 6+ passos e compensações cruzadas; orquestração torna o estado **explícito, observável e testável** (o vídeo exige "rastreamento"). Coreografia com 3 participantes seria viável, mas as compensações ficariam implícitas — exatamente a dor relatada pela Uber. Notificação fica **coreografada** (só assina fatos) para mostrar os dois estilos (RFC-0005). |
 | D3 | **Mensageria** | **Amazon SNS + SQS FIFO** com DLQ, `MessageGroupId` = número da OS | AWS-nativo (regra do projeto), serverless, quase grátis no nosso volume, DLQ nativa, Terraform trivial, LocalStack local. Amazon MQ custa ~US$ 20/mês e MSK ~US$ 150/mês parados. O enunciado cita SQS. *iFood usa SNS/SQS no Connection.* (RFC-0006) |
 | D4 | **NoSQL** | **DynamoDB** no Execução Service (single-table: execução da OS com timeline, catálogo, estoque com *conditional writes*) | Serverless, free tier, Streams para o outbox; a "execução" é naturalmente um documento com linha do tempo. *iFood e Uber usam DynamoDB para exatamente isso.* (RFC-0007) |
-| D5 | **Código comum** | Pacote **`@soat-fiap/oficina-kit`** (GitHub Packages) + **template de serviço**: auth resource server, logs, métricas, mensageria, outbox, consumer idempotente | Três serviços iguais no que não é domínio. *Mercado Livre (Fury) e Nubank ("every service is similar").* (ADR-0010) |
+| D5 | **Código comum** | Pacote **`@guilhermeqmaia/oficina-kit`** (GitHub Packages) + **template de serviço**: auth resource server, logs, métricas, mensageria, outbox, consumer idempotente | Três serviços iguais no que não é domínio. *Mercado Livre (Fury) e Nubank ("every service is similar").* (ADR-0010) |
 | D6 | **Confiabilidade de mensagens** | **Transactional Outbox** + **consumidor idempotente** (`processed_messages`) + **DLQ com runbook** de reprocessamento | O trio que todas as quatro empresas adotam. Nunca publicar fora da transação; nunca descartar mensagem. (ADR-0009) |
 | D7 | **Qualidade no CI** | **SonarCloud** (grátis para repos públicos) com quality gate bloqueante | "SonarQube ou similar" sem hospedar nada; badge = evidência de cobertura exigida. (ADR-0011) |
 | D8 | **Pagamento** | **Mercado Pago Checkout Pro** + webhook assinado; **pagamento acontece na aprovação do orçamento** (novo status `AGUARDANDO_PAGAMENTO`); ledger append-only | Cartões de teste do sandbox produzem aprovado/recusado de forma determinística — a demo de compensação fica reproduzível. *Uber: ordens imutáveis, idempotência por ID, retries longos.* (ADR-0012) |
@@ -167,7 +167,7 @@ AWS, [Padrão Saga — Prescriptive Guidance](https://docs.aws.amazon.com/pt_br/
 | `soat-fiap-oficina-mecanica-app` (4) | monólito + docs | → **`soat-fiap-oficina-os-service`**: OS Service + orquestrador da saga + notificação + **hub de docs/BDD** |
 | [`soat-fiap-oficina-billing-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-billing-service) (5, criado 30/09) | — | Orçamento, aprovação, Mercado Pago, ledger — **Postgres** |
 | [`soat-fiap-oficina-execucao-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-execucao-service) (6, criado 30/09) | — | Fila de execução, diagnóstico, catálogo, estoque — **DynamoDB** |
-| [`soat-fiap-oficina-kit`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) (7, criado 30/09) | — | `@soat-fiap/oficina-kit` + template de serviço + schemas dos eventos |
+| [`soat-fiap-oficina-kit`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) (7, criado 30/09) | — | `@guilhermeqmaia/oficina-kit` + template de serviço + schemas dos eventos |
 
 ---
 
@@ -255,7 +255,7 @@ US-F4-17 (vídeo + PDF).
 | US-F4-DOC-01 | [RFCs — decomposição, saga, mensageria, NoSQL](user-stories/f4-doc-01-rfcs.md) | 3 | 0 | hub |
 | US-F4-DOC-02 | [ADRs — outbox, kit, SonarCloud, Mercado Pago, gateway](user-stories/f4-doc-02-adrs.md) | 2 | 0 | hub |
 | US-F4-DOC-03 | [Contratos de eventos (AsyncAPI)](user-stories/f4-doc-03-contratos-eventos.md) | 3 | 0 | hub |
-| US-F4-01 | [Kit compartilhado `@soat-fiap/oficina-kit`](user-stories/f4-01-kit-compartilhado.md) | 8 | 1 | kit |
+| US-F4-01 | [Kit compartilhado `@guilhermeqmaia/oficina-kit`](user-stories/f4-01-kit-compartilhado.md) | 8 | 1 | kit |
 | US-F4-02 | [Mensageria SNS+SQS FIFO com DLQ](user-stories/f4-02-mensageria.md) | 5 | 1 | infra-k8s |
 | US-F4-03 | [Bancos por serviço (Postgres ×2, DynamoDB)](user-stories/f4-03-bancos-por-servico.md) | 5 | 1 | infra-db / infra-k8s |
 | US-F4-04 | [Repos + CI/CD por serviço (Sonar, deploy EKS)](user-stories/f4-04-repos-e-cicd-por-servico.md) | 8 | 1 | todos |
