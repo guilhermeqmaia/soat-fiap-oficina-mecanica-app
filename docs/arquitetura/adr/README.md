@@ -18,7 +18,7 @@ Template: [TEMPLATE.md](TEMPLATE.md)
 | [ADR-0007](ADR-0007-conta-aws-propria-oidc.md) | Conta AWS própria com OIDC (Academy como fallback) | Aceita | 2026-09-12 |
 | [ADR-0008](ADR-0008-ambiente-efemero.md) | Ambiente efêmero — subir, pausar e derrubar por script | Aceita | 2026-09-12 |
 | [ADR-0009](ADR-0009-outbox-e-consumidor-idempotente.md) | Transactional Outbox e consumidor idempotente | Aceita | 2026-09-30 |
-| [ADR-0010](ADR-0010-kit-compartilhado.md) | Kit compartilhado `@soat-fiap/oficina-kit` | Aceita | 2026-09-30 |
+| [ADR-0010](ADR-0010-kit-compartilhado.md) | Kit compartilhado `@guilhermeqmaia/oficina-kit` | Aceita | 2026-09-30 |
 | [ADR-0011](ADR-0011-qualidade-sonarcloud.md) | Validação de qualidade no CI com SonarCloud | Aceita | 2026-09-30 |
 | [ADR-0012](ADR-0012-pagamento-mercado-pago.md) | Pagamento com Mercado Pago (Checkout Pro + webhook) | Aceita | 2026-09-30 |
 | [ADR-0013](ADR-0013-api-gateway-multi-servico.md) | API Gateway multi-serviço | Aceita | 2026-09-30 |

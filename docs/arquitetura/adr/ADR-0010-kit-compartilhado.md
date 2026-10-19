@@ -1,4 +1,4 @@
-# ADR-0010: Kit compartilhado `@soat-fiap/oficina-kit`
+# ADR-0010: Kit compartilhado `@guilhermeqmaia/oficina-kit`
 
 **Status:** Aceita
 **Data:** 2026-09-30
@@ -15,8 +15,14 @@ pessoas trocarem de time.
 
 ## Decisão
 
-- Pacote npm **`@soat-fiap/oficina-kit`** no repositório `soat-fiap-oficina-kit`,
-  publicado no **GitHub Packages**, versionado por **semver** com CHANGELOG.
+- Pacote npm **`@guilhermeqmaia/oficina-kit`** no repositório `soat-fiap-oficina-kit`,
+  publicado no **npmjs.org** (público), versionado por **semver** com CHANGELOG.
+  *Revisão 19/10/2026:* o nome planejado `@soat-fiap/...` não é possível — a org
+  GitHub `soat-fiap` pertence a outro grupo e, no GitHub Packages, o scope precisa
+  ser o dono do repositório. Escolheu-se o **npmjs.org** em vez do GitHub Packages
+  porque este exige token até para *instalar* (máquina de cada integrante, CI dos 3
+  serviços e `docker build`); no npmjs a instalação é anônima. Publicação por tag
+  `v*` via GitHub Actions (`NPM_TOKEN` na 1ª versão → Trusted Publishing/OIDC).
 - **Entra no kit:** `AuthModule` (resource server: `JwtStrategy`, `AuthenticatedUser`,
   `RolesGuard`, decorators), `ObservabilityModule` (Pino + correlation-id, prom-client,
   health, dd-trace opcional, tracer-bridge), `MessagingModule` (publisher SNS com

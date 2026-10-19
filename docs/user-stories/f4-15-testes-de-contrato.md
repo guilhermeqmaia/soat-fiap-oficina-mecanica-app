@@ -16,7 +16,7 @@ AsyncAPI ([US-F4-DOC-03](f4-doc-03-contratos-eventos.md)) sao a fonte.
 
 ## Criterios de Aceite
 
-- [ ] Schemas JSON publicados no kit (`@soat-fiap/oficina-kit/contracts`) a partir do AsyncAPI
+- [ ] Schemas JSON publicados no kit (`@guilhermeqmaia/oficina-kit/contracts`) a partir do AsyncAPI
 - [ ] Produtores validam a mensagem contra o schema antes de gravar no outbox (falha = erro de programacao, nunca chega ao broker)
 - [ ] Consumidores validam na entrada; mensagem invalida -> DLQ com motivo
 - [ ] Teste no CI de cada servico: fixtures de todos os eventos que o servico produz/consome passam no schema da versao publicada
