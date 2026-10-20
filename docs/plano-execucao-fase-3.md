@@ -51,7 +51,7 @@ automático. Este repositório atual vira o **Repo 4 (Aplicação)**.
 | 1 | `soat-fiap-oficina-auth-lambda` | Function Serverless de autenticação por CPF (código + testes) | AWS Lambda (via API Gateway) | não (a infra da Lambda pode ficar aqui ou no repo 2) |
 | 2 | `soat-fiap-oficina-infra-k8s` | Terraform do **cluster EKS** (VPC, node groups, IAM, add-ons, HPA/metrics-server) | AWS EKS | sim |
 | 3 | `soat-fiap-oficina-infra-db` | Terraform do **banco gerenciado** (RDS PostgreSQL, subnet group, security groups, secret) | AWS RDS | sim |
-| 4 | `soat-fiap-oficina-mecanica-app` (este repo) | Aplicação NestJS + manifestos K8s + CI/CD de deploy no EKS | AWS EKS | não (consome outputs dos repos 2 e 3) |
+| 4 | `soat-fiap-oficina-os-service` (este repo) | Aplicação NestJS + manifestos K8s + CI/CD de deploy no EKS | AWS EKS | não (consome outputs dos repos 2 e 3) |
 
 **Regras de proteção (todos os repos):** `main` protegida (sem push direto),
 **PR obrigatório** para merge, **deploy automático** das branches de homologação

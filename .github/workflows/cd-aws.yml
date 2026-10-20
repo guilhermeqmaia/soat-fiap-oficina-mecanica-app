@@ -183,6 +183,14 @@ jobs:
             sed -i "s|__GATEWAY_URL__|http://localhost:3000|g" k8s-aws/patch-configmap.yaml
           fi
 
+      # Contrato do stage messaging/ (RFC-0006): vars propagadas do SSM pelo
+      # scripts/messaging-vars.sh do infra-k8s. Sem elas a app sobe sem broker.
+      - name: Mensageria (SNS/SQS) no overlay
+        if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
+        run: |
+          sed -i "s|__SNS_TOPIC_ARN__|${{ vars.SNS_TOPIC_ARN }}|g; s|__SQS_QUEUE_URL__|${{ vars.SQS_QUEUE_URL }}|g" k8s-aws/patch-configmap.yaml
+          [ -n "${{ vars.SNS_TOPIC_ARN }}" ] || echo "::warning::var SNS_TOPIC_ARN ausente — o OS Service sobe sem broker (outbox acumula, consumer desligado)."
+
       - name: Deploy (kustomize) + migrations
         if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
         run: |
@@ -207,19 +215,19 @@ jobs:
             --image=curlimages/curl:8.10.1 -- \
             sh -c 'curl -fsS http://oficina-app:3000/health && curl -fsS http://oficina-app:3000/health/ready'
 
-      # Fecha o contrato com o stage `gateway/`: o listener do NLB interno e a
-      # entrada `backend_listener_arn` la (repo soat-fiap-oficina-infra-k8s).
-      - name: Publicar endpoint interno para o API Gateway
+      # Contrato com o stage `gateway/` (ADR-0013): o NLB interno unico ja aponta
+      # o target group do OS Service para o NodePort 30080 — nada a copiar para la.
+      - name: Publicar NodePort para o API Gateway
         if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
         run: |
-          NLB_DNS=$(kubectl -n oficina get svc oficina-app \
-                     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          echo "### Backend interno (entrada do stage gateway/)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- NLB: \`${NLB_DNS:-pendente}\`" >> "$GITHUB_STEP_SUMMARY"
-          if [ -n "$NLB_DNS" ]; then
-            LB_ARN=$(aws elbv2 describe-load-balancers \
-                      --query "LoadBalancers[?DNSName=='${NLB_DNS}'].LoadBalancerArn" --output text)
-            LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$LB_ARN" \
-                            --query 'Listeners[0].ListenerArn' --output text 2>/dev/null || true)
-            echo "- \`backend_listener_arn\` = \`${LISTENER_ARN}\`" >> "$GITHUB_STEP_SUMMARY"
+          NODE_PORT=$(kubectl -n oficina get svc oficina-app -o jsonpath='{.spec.ports[0].nodePort}')
+          echo "### Backend interno (target group `os` do stage gateway/)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Service: \`oficina-app\` · NodePort: \`${NODE_PORT:-pendente}\` (esperado 30080)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`backend_listener_arn\` do gateway deve ficar VAZIO a partir da US-F4-06" >> "$GITHUB_STEP_SUMMARY"
+          TG=$(aws elbv2 describe-target-groups --query "TargetGroups[?Port==\`30080\`].TargetGroupArn" --output text 2>/dev/null | head -n1 || true)
+          if [ -n "$TG" ]; then
+            echo "- Target group: \`$TG\`" >> "$GITHUB_STEP_SUMMARY"
+            aws elbv2 describe-target-health --target-group-arn "$TG" \
+              --query 'TargetHealthDescriptions[].[Target.Id,TargetHealth.State]' --output text \
+              | sed 's/^/  - /' >> "$GITHUB_STEP_SUMMARY" || true
           fi

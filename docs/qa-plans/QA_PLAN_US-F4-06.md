@@ -90,7 +90,17 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 - **Passos:** `docker compose --profile messaging up -d localstack`; `.env` com `AWS_ENDPOINT`/`SNS_TOPIC_ARN`/`SQS_QUEUE_URL`; `npm run start:dev`; `POST /ordens-servico`; `awslocal sqs receive-message --queue-url .../notificacao-eventos.fifo`; publicar `execucao.enfileirada` em `oficina-execucao.fifo` com `awslocal sns publish --message-group-id <numero> --message-deduplication-id <uuid>`
 - **Resultado esperado:** linha do outbox vira ENVIADA; `os.aberta` chega na fila de notificacao; a OS vai para EM_DIAGNOSTICO e o id entra em `processed_messages`; republicar o mesmo envelope nao reprocessa (log `duplicate: true`)
 
-### TS-14..TS-15 (PR 3): Service NodePort 30080 atras do NLB unico (US-F4-05 TS-06); repositorio renomeado com CI/CD verde — *a preencher no PR 3*
+### TS-14: Service NodePort 30080 atras do NLB unico
+- **Tipo:** Automatizado (CI: `kubectl kustomize k8s-aws`) + Manual (EKS)
+- **Criterio:** Deploy compativel com o gateway multi-servico (US-F4-05)
+- **Passos:** `kubectl kustomize k8s-aws | grep -A8 'kind: Service'`; apos deploy: `kubectl -n oficina get svc oficina-app -o jsonpath='{.spec.ports[0].nodePort}'`; `aws elbv2 describe-target-health --target-group-arn <tg os>`; `curl $GW/health`
+- **Resultado esperado:** `type: NodePort`, `nodePort: 30080`; targets `healthy`; gateway responde pelo NLB unico com `backend_listener_arn` vazio; ConfigMap com `SNS_TOPIC_ARN`/`SQS_QUEUE_URL` preenchidos pelo CD (vars) ou aviso quando ausentes
+
+### TS-15: Repositorio renomeado com CI/CD verde
+- **Tipo:** Manual
+- **Criterio:** `soat-fiap-oficina-os-service`
+- **Passos:** `gh repo view guilhermeqmaia/soat-fiap-oficina-os-service`; `git ls-remote https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app` (redirect); disparar o CD (`workflow_dispatch`) e conferir o passo "Credenciais AWS"
+- **Resultado esperado:** repo acessivel pelos dois nomes; `AssumeRoleWithWebIdentity` aceito (sub `repo:guilhermeqmaia/soat-fiap-oficina-os-service:*` na trust do `github-actions-oficina`); nenhum link quebrado nos READMEs dos 7 repos
 
 ## Casos de Borda
 - Itens antigos (pre-migration) ficam com `nome = ''` — exibidos como vazio ate o Execucao reemitir o diagnostico
@@ -114,4 +124,5 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 - [x] TS-01..TS-10 (20/10/2026, PR 1)
 - [x] TS-11, TS-12 (20/10/2026, PR 2)
 - [ ] TS-13 — manual com LocalStack (ou no EKS apos PR 3)
-- [ ] TS-14..TS-15 (PR 3)
+- [x] TS-14 (kustomize no CI, 20/10/2026); validacao no EKS no proximo ciclo de deploy
+- [x] TS-15 (20/10/2026)

@@ -15,13 +15,13 @@
 | 1 | https://github.com/guilhermeqmaia/soat-fiap-oficina-auth-lambda | Function serverless de autenticação por CPF (AWS Lambda + Lambda Authorizer) | CI (lint/test/build) · CD (versão + alias com smoke test) · Infra (Terraform) |
 | 2 | https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s | Terraform: VPC, EKS, API Gateway, observabilidade (agentes, dashboards, alertas) | CI (`fmt`/`validate`/`plan` comentado no PR) · CD (`apply` por branch) |
 | 3 | https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db | Terraform: RDS PostgreSQL Multi-AZ + segredo de conexão | CI (`fmt`/`validate`/`plan`) · CD (`apply` por branch) |
-| 4 | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app | Aplicação NestJS (resource server), manifestos K8s/EKS, documentação da arquitetura | CI (testes, gate 80%, kind) · CD AWS (ECR + EKS + migrations + smoke) |
+| 4 | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service | Aplicação NestJS (resource server), manifestos K8s/EKS, documentação da arquitetura | CI (testes, gate 80%, kind) · CD AWS (ECR + EKS + migrations + smoke) |
 
 ### Proteção da branch `main` (evidência coletada via API do GitHub)
 
 | Repositório | Regras | `soat-architecture` |
 |---|---|---|
-| `soat-fiap-oficina-mecanica-app` | PR obrigatório (1 aprovação) · force-push bloqueado · deleção bloqueada | colaborador ✅ |
+| `soat-fiap-oficina-os-service` | PR obrigatório (1 aprovação) · force-push bloqueado · deleção bloqueada | colaborador ✅ |
 | `soat-fiap-oficina-auth-lambda` | PR obrigatório (1 aprovação) · force-push bloqueado · deleção bloqueada | convite pendente ⏳ |
 | `soat-fiap-oficina-infra-k8s` | PR obrigatório (1 aprovação) · force-push bloqueado · deleção bloqueada | convite pendente ⏳ |
 | `soat-fiap-oficina-infra-db` | PR obrigatório (1 aprovação) · force-push bloqueado · deleção bloqueada | convite pendente ⏳ |
@@ -55,18 +55,18 @@ Roteiro (ordem do enunciado):
 
 | Documento | Link |
 |---|---|
-| Índice geral da documentação | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/README.md |
-| Arquitetura (componentes, sequência de auth e de OS, fluxo de deploy) | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/arquitetura/arquitetura-fase3.md |
-| RFCs — nuvem, banco, autenticação | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/arquitetura/rfcs/README.md |
-| ADRs — comunicação, HPA, resource server, observabilidade, gateway, 4 repos | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/arquitetura/adr/README.md |
-| Justificativa do banco + modelo relacional + ER | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/arquitetura/banco-de-dados.md |
-| Modelo ER (DBML, importável no dbdiagram.io) | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/schema.dbml |
-| Plano de execução da Fase 3 (ondas, decisões, mapa dos repos) | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/plano-execucao-fase-3.md |
-| User stories da Fase 3 | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/user-stories/README.md |
-| QA Plans (Fase 3, backfill e integração cross-story) | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/docs/qa-plans/README.md |
+| Índice geral da documentação | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/README.md |
+| Arquitetura (componentes, sequência de auth e de OS, fluxo de deploy) | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/arquitetura/arquitetura-fase3.md |
+| RFCs — nuvem, banco, autenticação | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/arquitetura/rfcs/README.md |
+| ADRs — comunicação, HPA, resource server, observabilidade, gateway, 4 repos | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/arquitetura/adr/README.md |
+| Justificativa do banco + modelo relacional + ER | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/arquitetura/banco-de-dados.md |
+| Modelo ER (DBML, importável no dbdiagram.io) | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/schema.dbml |
+| Plano de execução da Fase 3 (ondas, decisões, mapa dos repos) | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/plano-execucao-fase-3.md |
+| User stories da Fase 3 | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/user-stories/README.md |
+| QA Plans (Fase 3, backfill e integração cross-story) | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/docs/qa-plans/README.md |
 | Swagger / OpenAPI | `{app_url}/api` (local: http://localhost:3000/api) — ⏳ URL pública via gateway |
 | Contrato da Lambda (CPF → JWT, authorizer) | https://github.com/guilhermeqmaia/soat-fiap-oficina-auth-lambda#contrato |
-| Deploy no EKS (overlay, rollback, contrato com o gateway) | https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/blob/main/k8s-aws/README.md |
+| Deploy no EKS (overlay, rollback, contrato com o gateway) | https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/blob/main/k8s-aws/README.md |
 | Observabilidade no cluster (agentes, dashboards, alertas, runbooks) | https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s/blob/main/observability/README.md |
 
 ---

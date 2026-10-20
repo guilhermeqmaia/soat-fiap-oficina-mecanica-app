@@ -4,10 +4,10 @@
 
 **Prioridade:** Alta
 **Story Points:** 8
-**Status:** Em andamento — PR 1 (domínio/API/banco, #87) e PR 2 (outbox + consumidores SQS) entregues; PR 3 (NodePort, rename do repo) a seguir. QA: [QA_PLAN_US-F4-06](../qa-plans/QA_PLAN_US-F4-06.md)
+**Status:** Em andamento — concluída — PR 1 (domínio/API/banco, #87), PR 2 (outbox + consumidores SQS, #88) e PR 3 (NodePort 30080, SNS/SQS no deploy, rename do repo). Pendência fora desta story: UIs apontarem para Execução/Billing (US-F4-07/08). QA: [QA_PLAN_US-F4-06](../qa-plans/QA_PLAN_US-F4-06.md)
 **DDD Domain:** Atendimento (OrdemDeServico, Cliente, Veiculo) + Notificacao
 **DDD Layer:** Domain + Application + Infrastructure
-**Repositorio:** `soat-fiap-oficina-mecanica-app` -> OS Service
+**Repositorio:** `soat-fiap-oficina-os-service` -> OS Service
 
 ## Contexto
 
@@ -26,8 +26,8 @@ servico. `@OnEvent` in-process vira publicacao via outbox (ADR-0001 previu isso)
 - [x] Consome: `execucao.diagnostico-concluido` (grava snapshot dos itens), `billing.orcamento-gerado`, `billing.pagamento-aprovado`, `execucao.finalizada` — consumidores idempotentes (fila `os-eventos.fifo`, 12 handlers em `infrastructure/messaging/`, dedup em `processed_messages`; `pagamento-aprovado`/`orcamento-cancelado`/`reservas-liberadas` so logam ate o orquestrador da US-F4-10)
 - [x] Endpoints de mutacao removidos: adicionar servico/produto, aprovar/rejeitar, iniciar/concluir servico (agora nos outros servicos) — Swagger atualizado; novo `POST /ordens-servico/:id/cancelar`
 - [ ] UIs `admin`/`cliente` apontam para os novos servicos *(depende dos endpoints da Execucao/Billing — US-F4-07/08)*
-- [ ] Notificacao ao cliente continua aqui, alimentada pelos eventos ([US-F4-12](f4-12-notificacoes-por-eventos.md))
-- [ ] Usa o kit ([US-F4-01](f4-01-kit-compartilhado.md)); cobertura >= 80%; repositorio renomeado para `soat-fiap-oficina-os-service` (GitHub redireciona; decisao registrada)
+- [x] Notificacao ao cliente continua aqui, alimentada pelos eventos in-process (`OsStatusAlteradoEvent`, `OrcamentoProntoEvent`, `OsFinalizadaEvent`); links e consumo de `billing.*` na [US-F4-12](f4-12-notificacoes-por-eventos.md)
+- [x] Usa o kit ([US-F4-01](f4-01-kit-compartilhado.md)) 0.2.1; cobertura 94%; repositorio renomeado para `soat-fiap-oficina-os-service` (GitHub redireciona o nome antigo; trust OIDC do `github-actions-oficina` estendida ao novo nome; imagem ECR continua `oficina-mecanica-app`)
 ## Dependencias
 
 - [US-F4-01](f4-01-kit-compartilhado.md), [US-F4-02](f4-02-mensageria.md), [US-F4-03](f4-03-bancos-por-servico.md)

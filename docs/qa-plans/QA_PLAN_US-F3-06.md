@@ -125,6 +125,6 @@ Valida o `cd-aws.yml` e o overlay `k8s-aws/`: imagem no ECR por commit, manifest
 
 ## Comandos Uteis
 ```bash
-gh workflow run cd-aws.yml -R guilhermeqmaia/soat-fiap-oficina-mecanica-app --ref main
+gh workflow run cd-aws.yml -R guilhermeqmaia/soat-fiap-oficina-os-service --ref main
 kubectl -n oficina rollout history deployment/oficina-app
 ```

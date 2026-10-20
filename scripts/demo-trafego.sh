@@ -5,7 +5,7 @@
 # dashboards do Datadog para a demo. Uso: scripts/demo-trafego.sh [minutos=45]
 # com algumas rejeicoes, leituras e status publico. Roda por DURACAO_MIN minutos.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH" AWS_PROFILE="${AWS_PROFILE:-oficina}" AWS_DEFAULT_REGION=us-east-1
-DURACAO_MIN="${1:-45}"; R=guilhermeqmaia/soat-fiap-oficina-mecanica-app
+DURACAO_MIN="${1:-45}"; R=guilhermeqmaia/soat-fiap-oficina-os-service
 GW=$(gh variable get GATEWAY_URL -R $R); CT='content-type: application/json'
 tok() { curl -s -X POST $GW/auth -H "$CT" -d "$1" | python3 -c "import sys,json; print(json.load(sys.stdin).get('accessToken',''))"; }
 ADM=$(tok '{"cpf":"52998224725","senha":"admin123"}'); MEC=$(tok '{"cpf":"16899535009","senha":"mecanico123"}'); ATD=$(tok '{"cpf":"24830145773","senha":"atendente123"}')
