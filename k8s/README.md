@@ -31,7 +31,7 @@ A separação provisioning (IaC) ↔ application deploy é exigência da Fase 2.
 | Secret | Dono | Conteúdo |
 |---|---|---|
 | `oficina-db` | **Terraform** (US-F2-06) | `DATABASE_URL` (+ `DB_HOST/PORT/NAME/USER/PASSWORD`) |
-| `oficina-app` | **Kustomize** (esta story) | `JWT_SECRET`, `WEBHOOK_APPROVAL_TOKEN`, `NOTIFICATION_WEBHOOK_SECRET` |
+| `oficina-app` | **Kustomize** (esta story) | `JWT_SECRET`, `NOTIFICATION_WEBHOOK_SECRET` |
 
 O Deployment lê `DATABASE_URL` de `oficina-db` via `secretKeyRef` — **sem hardcode**.
 Cada dono escreve só o seu Secret, evitando disputa entre Terraform e Kustomize.

@@ -4,7 +4,6 @@ import {
   ClienteRepository,
 } from '../../../cliente/domain/cliente.repository';
 import { PUBLIC_BASE_URL } from '../ports/public-base-url';
-import { APPROVAL_LINK_TOKEN } from '../ports/approval-link-token';
 import { Cliente } from '../../../cliente/domain/cliente.entity';
 import { OrcamentoProntoEvent } from '../../../shared/domain/events/orcamento-pronto.event';
 import { OsFinalizadaEvent } from '../../../shared/domain/events/os-finalizada.event';
@@ -48,7 +47,6 @@ describe('OrdemDeServicoNotificacaoListener', () => {
         { provide: EnviarNotificacaoUseCase, useValue: enviarNotificacao },
         { provide: CLIENTE_REPOSITORY, useValue: clienteRepository },
         { provide: PUBLIC_BASE_URL, useValue: 'http://localhost:3000' },
-        { provide: APPROVAL_LINK_TOKEN, useValue: 'email-token' },
       ],
     }).compile();
 
@@ -76,25 +74,17 @@ describe('OrdemDeServicoNotificacaoListener', () => {
       expect(arg.destinatario).toBe('joao@email.com');
       expect(arg.ordemDeServicoId).toBe('os-id-1');
       expect(arg.mensagem).toContain('OS-2026-001');
-      expect(arg.mensagem).toContain('Para aprovar, clique aqui');
-      expect(arg.mensagem).toContain('Para rejeitar, clique aqui');
-      expect(arg.mensagem).toContain(
-        'http://localhost:3000/webhooks/ordens-servico/os-id-1/aprovar?token=email-token',
-      );
+      expect(arg.mensagem).toContain('aprovar ou rejeitar o orcamento');
     });
 
-    it('inclui URLs absolutas assinadas para aprovar e rejeitar pelo email', async () => {
+    it('nao inclui links para rotas de aprovacao (removidas na Fase 4; pagamento vem do Billing)', async () => {
       clienteRepository.findById.mockResolvedValueOnce(clienteComEmail);
 
       await listener.onOrcamentoPronto(event);
 
       const arg = enviarNotificacao.execute.mock.calls[0][0];
-      expect(arg.mensagem).toContain(
-        'http://localhost:3000/webhooks/ordens-servico/os-id-1/aprovar?token=email-token',
-      );
-      expect(arg.mensagem).toContain(
-        'http://localhost:3000/webhooks/ordens-servico/os-id-1/rejeitar?token=email-token',
-      );
+      expect(arg.mensagem).not.toContain('/webhooks/');
+      expect(arg.mensagem).not.toContain('token=');
     });
 
     it('nao envia notificacao quando cliente nao tem email', async () => {

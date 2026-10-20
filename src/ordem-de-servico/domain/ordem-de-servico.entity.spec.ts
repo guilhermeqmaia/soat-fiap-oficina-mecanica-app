@@ -39,6 +39,7 @@ describe('OrdemDeServico (OS Service, Fase 4)', () => {
       expect(os.motivoCancelamento).toBeNull();
       expect(os.numero).toMatch(/^OS-\d{4}-\d{10}-\d{4}$/);
       expect(os.valorTotal()).toBe(0);
+      expect(os.version).toBe(0);
     });
     it('valida a descricao inicial (5..500)', () => {
       expect(() => OrdemDeServico.create({ clienteId: 'c', veiculoId: 'v', descricaoInicial: 'abc' })).toThrow(InvalidDescriptionError);

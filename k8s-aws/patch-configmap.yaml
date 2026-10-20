@@ -40,4 +40,4 @@ data:
   # Sem elas a app sobe sem broker (outbox acumula; consumer desligado).
   SNS_TOPIC_ARN: "__SNS_TOPIC_ARN__"
   SQS_QUEUE_URL: "__SQS_QUEUE_URL__"
-  AWS_REGION: "us-east-1"
+  AWS_REGION: "__AWS_REGION__"

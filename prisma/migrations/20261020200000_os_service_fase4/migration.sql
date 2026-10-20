@@ -30,6 +30,11 @@ ALTER TABLE "item_ordem_de_servico_servico" ALTER COLUMN "nome" DROP DEFAULT;
 -- AlterTable
 ALTER TABLE "ordem_de_servico" ADD COLUMN     "motivo_cancelamento" TEXT;
 
+-- Backfill (dados da Fase 3): congela o nome do catalogo nos itens existentes ANTES de
+-- derrubar as tabelas — sem isto as OS antigas ficariam com itens sem nome para sempre.
+UPDATE "item_ordem_de_servico_servico" i SET "nome" = s."nome" FROM "servico" s WHERE s."id" = i."servico_id" AND i."nome" = '';
+UPDATE "item_ordem_de_servico_produto" i SET "nome" = p."nome" FROM "produto" p WHERE p."id" = i."produto_id" AND i."nome" = '';
+
 -- DropTable
 DROP TABLE "movimentacao_estoque";
 

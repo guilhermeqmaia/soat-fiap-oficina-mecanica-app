@@ -5,11 +5,12 @@ import { MotivoCancelamento } from '../value-objects/motivo-cancelamento';
  * `oficina-os`). O dominio so descreve `type` + `data`; a infraestrutura
  * embrulha no envelope (ADR-0009) e grava no outbox na mesma transacao.
  */
-export type EventoIntegracao =
+export type EventoIntegracao = { causationId?: string } & (
   | { type: 'os.aberta'; data: OsAbertaData }
   | { type: 'os.cancelada'; data: { numeroOS: string; motivo: MotivoCancelamento } }
   | { type: 'os.finalizada'; data: { numeroOS: string } }
-  | { type: 'os.entregue'; data: { numeroOS: string } };
+  | { type: 'os.entregue'; data: { numeroOS: string } }
+);
 
 export interface OsAbertaData {
   numeroOS: string;

@@ -24,6 +24,7 @@ export interface ReconstituteOrdemDeServicoProps {
   motivoCancelamento: MotivoCancelamento | null;
   createdAt: Date;
   updatedAt: Date;
+  version?: number;
   itensServico?: ItemServicoOS[];
 }
 
@@ -61,6 +62,8 @@ export class OrdemDeServico {
   private _itensServico: ItemServicoOS[];
   private _createdAt?: Date;
   private _updatedAt?: Date;
+  /** Lock otimista (0 em OS nova; o repositorio exige a versao lida ao gravar). */
+  private _version: number;
   /** Eventos `os.*` a publicar junto com a proxima persistencia (outbox). */
   private _eventosIntegracao: EventoIntegracao[] = [];
 
@@ -77,6 +80,7 @@ export class OrdemDeServico {
       itensServico?: ItemServicoOS[];
       createdAt?: Date;
       updatedAt?: Date;
+      version?: number;
     },
     id?: string,
   ) {
@@ -92,6 +96,7 @@ export class OrdemDeServico {
     this._itensServico = props.itensServico ?? [];
     this._createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
+    this._version = props.version ?? 0;
   }
 
   static create(props: CreateOrdemDeServicoProps): OrdemDeServico {
@@ -122,6 +127,7 @@ export class OrdemDeServico {
         itensServico: props.itensServico,
         createdAt: props.createdAt,
         updatedAt: props.updatedAt,
+        version: props.version,
       },
       props.id,
     );
@@ -213,11 +219,11 @@ export class OrdemDeServico {
     this._status = StatusOSVO.create(StatusOS.EM_EXECUCAO);
   }
 
-  /** `execucao.finalizada`: veiculo pronto para retirada. */
-  finalizar(): void {
+  /** `execucao.finalizada`: veiculo pronto para retirada. `causationId` = id do envelope que originou. */
+  finalizar(causationId?: string): void {
     this.exigirStatus(StatusOS.EM_EXECUCAO, StatusOS.FINALIZADA);
     this._status = StatusOSVO.create(StatusOS.FINALIZADA);
-    this._eventosIntegracao.push({ type: 'os.finalizada', data: { numeroOS: this._numero } });
+    this._eventosIntegracao.push({ type: 'os.finalizada', data: { numeroOS: this._numero }, causationId });
   }
 
   /** Acao do atendente: veiculo entregue, OS encerrada. */
@@ -228,13 +234,13 @@ export class OrdemDeServico {
   }
 
   /** Compensacao da saga ou cancelamento manual — so antes da execucao comecar. */
-  cancelar(motivo: MotivoCancelamento): void {
+  cancelar(motivo: MotivoCancelamento, causationId?: string): void {
     if (!CANCELAVEIS.has(this._status.valor)) {
       throw new InvalidStatusTransitionError(this._status.toString(), StatusOS.CANCELADA);
     }
     this._status = StatusOSVO.create(StatusOS.CANCELADA);
     this._motivoCancelamento = motivo;
-    this._eventosIntegracao.push({ type: 'os.cancelada', data: { numeroOS: this._numero, motivo } });
+    this._eventosIntegracao.push({ type: 'os.cancelada', data: { numeroOS: this._numero, motivo }, causationId });
   }
 
   /** Eventos pendentes de publicacao (leitura; o repositorio os consome ao persistir). */
@@ -254,6 +260,11 @@ export class OrdemDeServico {
   }
 
   // ─── leitura ────────────────────────────────────────────────────────────────
+
+  /** Versao lida do banco (lock otimista). */
+  get version(): number {
+    return this._version;
+  }
 
   get numero(): string {
     return this._numero;

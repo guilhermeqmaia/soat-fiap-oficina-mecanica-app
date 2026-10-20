@@ -35,7 +35,7 @@ export class ExecucaoRecusadaHandler implements MessageHandler<NumeroOS & { moti
   readonly type = 'execucao.recusada';
   constructor(private readonly useCase: RegistrarCancelamentoUseCase) {}
   async handle(envelope: MessageEnvelope<NumeroOS & { motivo: string }>): Promise<void> {
-    await this.useCase.execute({ numero: envelope.data.numeroOS, motivo: MotivoCancelamento.EXECUCAO_RECUSADA });
+    await this.useCase.execute({ numero: envelope.data.numeroOS, motivo: MotivoCancelamento.EXECUCAO_RECUSADA, causationId: envelope.id });
   }
 }
 
@@ -69,7 +69,7 @@ export class ExecucaoFinalizadaHandler implements MessageHandler<NumeroOS & { fi
   readonly type = 'execucao.finalizada';
   constructor(private readonly useCase: RegistrarExecucaoFinalizadaUseCase) {}
   async handle(envelope: MessageEnvelope<NumeroOS & { finalizadaEm: string }>): Promise<void> {
-    await this.useCase.execute({ numero: envelope.data.numeroOS });
+    await this.useCase.execute({ numero: envelope.data.numeroOS, causationId: envelope.id });
   }
 }
 
@@ -96,7 +96,7 @@ export class BillingOrcamentoRejeitadoHandler implements MessageHandler<NumeroOS
   readonly type = 'billing.orcamento-rejeitado';
   constructor(private readonly useCase: RegistrarCancelamentoUseCase) {}
   async handle(envelope: MessageEnvelope<NumeroOS>): Promise<void> {
-    await this.useCase.execute({ numero: envelope.data.numeroOS, motivo: MotivoCancelamento.ORCAMENTO_REJEITADO });
+    await this.useCase.execute({ numero: envelope.data.numeroOS, motivo: MotivoCancelamento.ORCAMENTO_REJEITADO, causationId: envelope.id });
   }
 }
 
@@ -105,7 +105,7 @@ export class BillingPagamentoRecusadoHandler implements MessageHandler<NumeroOS>
   readonly type = 'billing.pagamento-recusado';
   constructor(private readonly useCase: RegistrarCancelamentoUseCase) {}
   async handle(envelope: MessageEnvelope<NumeroOS>): Promise<void> {
-    await this.useCase.execute({ numero: envelope.data.numeroOS, motivo: MotivoCancelamento.PAGAMENTO_RECUSADO });
+    await this.useCase.execute({ numero: envelope.data.numeroOS, motivo: MotivoCancelamento.PAGAMENTO_RECUSADO, causationId: envelope.id });
   }
 }
 

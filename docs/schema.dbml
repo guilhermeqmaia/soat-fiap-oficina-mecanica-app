@@ -85,6 +85,7 @@ Table ordem_de_servico {
   diagnostico text
   status StatusOrdemDeServico [not null, default: 'RECEBIDA']
   motivo_cancelamento varchar [note: 'Preenchido quando CANCELADA: compensacao da saga ou OPERADOR']
+  version int [not null, default: 0, note: 'Lock otimista (HTTP x consumidores SQS)']
   created_at timestamp [default: `now()`]
   updated_at timestamp
 }
@@ -152,5 +153,33 @@ Table notificacao {
   indexes {
     cliente_id
     ordem_de_servico_id
+  }
+}
+
+// ─── Mensageria (ADR-0009): contratos do kit @guilhermeqmaia/oficina-kit ───
+
+Table outbox {
+  id varchar [pk, note: 'id do envelope (UUID v7) = MessageDeduplicationId']
+  type varchar [not null, note: 'os.aberta | os.cancelada | os.finalizada | os.entregue']
+  correlation_id varchar [not null, note: 'numero da OS = MessageGroupId']
+  envelope jsonb [not null]
+  status varchar [not null, default: 'PENDENTE', note: 'PENDENTE | ENVIADA | FALHA']
+  tentativas int [not null, default: 0]
+  criada_em timestamp [default: `now()`]
+  enviada_em timestamp
+  ultimo_erro varchar
+
+  indexes {
+    (status, criada_em)
+  }
+}
+
+Table processed_messages {
+  id varchar [pk, note: 'id do envelope consumido (dedup da fila os-eventos)']
+  type varchar [not null]
+  processada_em timestamp [default: `now()`, note: 'purga apos 7 dias']
+
+  indexes {
+    processada_em
   }
 }

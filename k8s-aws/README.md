@@ -63,7 +63,7 @@ kubectl -n oficina create secret generic oficina-db --from-literal=DATABASE_URL=
 cp k8s/secret.yaml.example k8s/secret.yaml   # preencha JWT_SECRET (o mesmo da Lambda)
 sed -i '' "s|__GATEWAY_URL__|https://<api-id>.execute-api.us-east-1.amazonaws.com|g" \
   k8s-aws/patch-configmap.yaml
-sed -i '' "s|__SNS_TOPIC_ARN__|arn:aws:sns:us-east-1:<conta>:oficina-os.fifo|g; s|__SQS_QUEUE_URL__|https://sqs.us-east-1.amazonaws.com/<conta>/os-eventos.fifo|g" \
+sed -i '' "s|__SNS_TOPIC_ARN__|arn:aws:sns:us-east-1:<conta>:oficina-os.fifo|g; s|__SQS_QUEUE_URL__|https://sqs.us-east-1.amazonaws.com/<conta>/os-eventos.fifo|g; s|__AWS_REGION__|us-east-1|g" \
   k8s-aws/patch-configmap.yaml
 
 cd k8s-aws && kustomize edit set image oficina-mecanica-app=<conta>.dkr.ecr.us-east-1.amazonaws.com/oficina-mecanica-app:<sha>

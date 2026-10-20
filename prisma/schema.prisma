@@ -75,6 +75,8 @@ model OrdemDeServico {
   status             StatusOrdemDeServico @default(RECEBIDA)
   /// Preenchido quando status=CANCELADA (compensacoes da saga — RFC-0005)
   motivoCancelamento String?              @map("motivo_cancelamento")
+  /// Lock otimista: HTTP (cancelar/entregar) e consumidores SQS mutam a mesma OS
+  version            Int      @default(0)
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
@@ -207,5 +209,6 @@ model ProcessedMessage {
   type         String
   processadaEm DateTime @default(now()) @map("processada_em")
 
+  @@index([processadaEm])
   @@map("processed_messages")
 }

@@ -65,7 +65,8 @@ services:
       SERVICES: 'sns,sqs'
       AWS_DEFAULT_REGION: us-east-1
     volumes:
-      - ./node_modules/@guilhermeqmaia/oficina-kit/scripts/messaging-local.sh:/etc/localstack/init/ready.d/10-messaging.sh:ro
+      # Copia do scripts/messaging-local.sh do kit (o pacote npm publica so dist/).
+      - ./scripts/messaging-local.sh:/etc/localstack/init/ready.d/10-messaging.sh:ro
     healthcheck:
       test: ['CMD', 'awslocal', 'sqs', 'list-queues']
       interval: 5s

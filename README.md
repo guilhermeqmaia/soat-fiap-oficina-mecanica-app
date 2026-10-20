@@ -560,7 +560,7 @@ módulo `messaging` do kit `@guilhermeqmaia/oficina-kit`:
 Sem `SNS_TOPIC_ARN` a aplicação sobe sem broker (o outbox apenas acumula). Localmente:
 
 ```bash
-docker compose --profile messaging up -d localstack   # SNS/SQS com a topologia da RFC-0006
+docker compose --profile messaging up -d localstack   # SNS/SQS com a topologia da RFC-0006 (scripts/messaging-local.sh)
 # no .env: AWS_ENDPOINT=http://localhost:4566, SNS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:oficina-os.fifo,
 #          SQS_QUEUE_URL=http://localhost:4566/000000000000/os-eventos.fifo
 awslocal sqs receive-message --queue-url http://localhost:4566/000000000000/notificacao-eventos.fifo  # ver os.aberta

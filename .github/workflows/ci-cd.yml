@@ -77,6 +77,16 @@ jobs:
       - name: Build NestJS application
         run: npm run build
 
+      # Overlay de EKS (US-F4-06): precisa buildar e expor o NodePort 30080 do
+      # gateway multi-servico (ADR-0013). secret.yaml nao e versionado: usa o example.
+      - name: Validar overlay k8s-aws (kustomize)
+        run: |
+          cp k8s/secret.yaml.example k8s/secret.yaml
+          kubectl kustomize k8s-aws > /tmp/k8s-aws.yaml
+          rm -f k8s/secret.yaml
+          grep -q 'nodePort: 30080' /tmp/k8s-aws.yaml || { echo '::error::Service do OS Service sem nodePort 30080'; exit 1; }
+          ! grep -q 'type: LoadBalancer' /tmp/k8s-aws.yaml || { echo '::error::overlay ainda cria LoadBalancer'; exit 1; }
+
   # ---------------------------------------------------------------------------
   # Passo 3: Build da imagem Docker
   # ---------------------------------------------------------------------------
@@ -200,7 +210,6 @@ jobs:
           type: Opaque
           stringData:
             JWT_SECRET: "$(openssl rand -base64 48)"
-            WEBHOOK_APPROVAL_TOKEN: "ci-approval-token"
             NOTIFICATION_WEBHOOK_SECRET: "ci-notification-secret"
           EOF
 
