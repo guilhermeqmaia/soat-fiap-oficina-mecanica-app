@@ -37,6 +37,11 @@ import {
   RegistrarOrcamentoAprovadoUseCase,
   RegistrarOrcamentoGeradoUseCase,
 } from './application/use-cases/transicoes';
+import { OrquestradorSagaService } from './saga/application/orquestrador-saga.service';
+import { SagaTimeoutsService } from './saga/application/saga-timeouts.service';
+import { ConsultarSagaUseCase } from './saga/application/consultar-saga.use-case';
+import { PrismaSagaRepository } from './saga/infrastructure/prisma-saga.repository';
+import { SAGA_REPOSITORY } from './saga/domain/saga.repository';
 
 const USE_CASES = [
   CriarOrdemDeServicoUseCase,
@@ -49,7 +54,7 @@ const USE_CASES = [
   ListarHistoricoPorCpfCnpjUseCase,
 ];
 
-/** Transicoes dirigidas pelos eventos de Execucao/Billing (consumidos na US-F4-10/US-F4-06 parte 2). */
+/** Transicoes dirigidas pelos eventos de Execucao/Billing — chamadas pelo orquestrador da saga (US-F4-10). */
 export const TRANSICOES_USE_CASES = [
   RegistrarEnfileiramentoUseCase,
   RegistrarDiagnosticoUseCase,
@@ -66,6 +71,12 @@ export const TRANSICOES_USE_CASES = [
   providers: [
     ...USE_CASES,
     ...TRANSICOES_USE_CASES,
+    // Saga orquestrada (RFC-0005 / US-F4-10)
+    OrquestradorSagaService,
+    SagaTimeoutsService,
+    ConsultarSagaUseCase,
+    PrismaSagaRepository,
+    { provide: SAGA_REPOSITORY, useExisting: PrismaSagaRepository },
     AuditLogService,
     OsAuditListener,
     PrismaOrdemDeServicoRepository,
@@ -77,6 +88,6 @@ export const TRANSICOES_USE_CASES = [
     { provide: VEICULO_CONSULTA_GATEWAY, useExisting: VEICULO_REPOSITORY },
     { provide: USUARIO_CONSULTA_GATEWAY, useExisting: USUARIO_REPOSITORY },
   ],
-  exports: [ORDEM_DE_SERVICO_REPOSITORY, ORDEM_DE_SERVICO_GATEWAY, AuditLogService, ...TRANSICOES_USE_CASES],
+  exports: [ORDEM_DE_SERVICO_REPOSITORY, ORDEM_DE_SERVICO_GATEWAY, AuditLogService, OrquestradorSagaService, ...TRANSICOES_USE_CASES],
 })
 export class OrdemDeServicoModule {}

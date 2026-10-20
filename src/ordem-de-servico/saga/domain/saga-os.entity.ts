@@ -1,0 +1,486 @@
+import { MotivoCancelamento } from '../../domain/value-objects/motivo-cancelamento';
+import { StatusOS } from '../../domain/value-objects/status-os.vo';
+
+/**
+ * Passos da saga (RFC-0005): cada passo envia um comando (ou aguarda o
+ * participante) e so avanca ao receber o evento esperado.
+ */
+export enum PassoSaga {
+  ENFILEIRAR_EXECUCAO = 'ENFILEIRAR_EXECUCAO',
+  AGUARDAR_DIAGNOSTICO = 'AGUARDAR_DIAGNOSTICO',
+  GERAR_ORCAMENTO = 'GERAR_ORCAMENTO',
+  AGUARDAR_APROVACAO = 'AGUARDAR_APROVACAO',
+  AGUARDAR_PAGAMENTO = 'AGUARDAR_PAGAMENTO',
+  INICIAR_EXECUCAO = 'INICIAR_EXECUCAO',
+  AGUARDAR_FINALIZACAO = 'AGUARDAR_FINALIZACAO',
+  CONCLUIDA = 'CONCLUIDA',
+}
+
+export enum StatusSaga {
+  EM_ANDAMENTO = 'EM_ANDAMENTO',
+  COMPENSANDO = 'COMPENSANDO',
+  CONCLUIDA = 'CONCLUIDA',
+  CANCELADA = 'CANCELADA',
+}
+
+/** Comandos que o orquestrador envia (AsyncAPI: filas execucao-comandos / billing-comandos). */
+export type TipoComando =
+  | 'execucao.enfileirar'
+  | 'execucao.iniciar'
+  | 'execucao.liberar-reservas'
+  | 'billing.gerar-orcamento'
+  | 'billing.cancelar-orcamento';
+
+export interface ComandoSaga {
+  type: TipoComando;
+  data: Record<string, unknown>;
+  /** id do envelope que motivou o comando (ADR-0009). */
+  causationId?: string;
+}
+
+/** O que o orquestrador deve aplicar na OS depois que a saga aceitou o evento. */
+export type TransicaoOS =
+  | { tipo: 'iniciarDiagnostico' }
+  | { tipo: 'registrarDiagnostico' }
+  | { tipo: 'aguardarAprovacao' }
+  | { tipo: 'aguardarPagamento' }
+  | { tipo: 'iniciarExecucao' }
+  | { tipo: 'finalizar' }
+  | { tipo: 'cancelar'; motivo: MotivoCancelamento };
+
+/** Evento recebido (dos participantes, do atendente ou do relogio). */
+export interface EventoSaga {
+  type: string;
+  /** id do envelope (ausente para eventos internos). */
+  id?: string;
+  data: Record<string, any>;
+}
+
+export type ResultadoPasso = 'avancou' | 'ignorado' | 'compensando' | 'confirmacao' | 'concluida' | 'cancelada';
+
+export interface PassoHistorico {
+  em: string;
+  passo: PassoSaga;
+  evento: string;
+  resultado: ResultadoPasso;
+  detalhe?: string;
+}
+
+export interface Compensacao {
+  comando: TipoComando;
+  enviadaEm: string;
+  confirmadaEm?: string;
+}
+
+export interface ResultadoAplicacao {
+  /** false = evento ignorado (duplicado/fora de ordem) — nada a aplicar na OS. */
+  aplicado: boolean;
+  /** true = evento rejeitado (ex.: cancelamento manual apos a execucao comecar). */
+  rejeitado?: boolean;
+  motivo?: string;
+  transicaoOS?: TransicaoOS;
+  comandos: ComandoSaga[];
+}
+
+export interface Prazos {
+  aprovacaoMs: number;
+  pagamentoMs: number;
+}
+
+export interface SagaOSProps {
+  id?: string;
+  numero: string;
+  clienteId: string;
+  veiculoId: string;
+  descricaoProblema: string;
+  passo: PassoSaga;
+  status: StatusSaga;
+  historico: PassoHistorico[];
+  compensacoes: Compensacao[];
+  prazoAprovacao: Date | null;
+  prazoPagamento: Date | null;
+  version: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const ORDEM: PassoSaga[] = [
+  PassoSaga.ENFILEIRAR_EXECUCAO,
+  PassoSaga.AGUARDAR_DIAGNOSTICO,
+  PassoSaga.GERAR_ORCAMENTO,
+  PassoSaga.AGUARDAR_APROVACAO,
+  PassoSaga.AGUARDAR_PAGAMENTO,
+  PassoSaga.INICIAR_EXECUCAO,
+  PassoSaga.AGUARDAR_FINALIZACAO,
+  PassoSaga.CONCLUIDA,
+];
+const indice = (p: PassoSaga) => ORDEM.indexOf(p);
+
+/** Passo da saga equivalente ao status de uma OS que nasceu antes da saga existir. */
+const PASSO_POR_STATUS: Record<StatusOS, PassoSaga> = {
+  [StatusOS.RECEBIDA]: PassoSaga.ENFILEIRAR_EXECUCAO,
+  [StatusOS.EM_DIAGNOSTICO]: PassoSaga.AGUARDAR_DIAGNOSTICO,
+  [StatusOS.AGUARDANDO_APROVACAO]: PassoSaga.AGUARDAR_APROVACAO,
+  [StatusOS.AGUARDANDO_PAGAMENTO]: PassoSaga.AGUARDAR_PAGAMENTO,
+  [StatusOS.EM_EXECUCAO]: PassoSaga.AGUARDAR_FINALIZACAO,
+  [StatusOS.FINALIZADA]: PassoSaga.CONCLUIDA,
+  [StatusOS.ENTREGUE]: PassoSaga.CONCLUIDA,
+  [StatusOS.CANCELADA]: PassoSaga.CONCLUIDA,
+};
+
+/**
+ * Maquina de estados PURA da saga da OS (RFC-0005). Nao conhece banco nem
+ * broker: recebe um evento e devolve o que aplicar na OS e quais comandos
+ * enviar; o orquestrador (application) persiste e publica.
+ *
+ * Regras:
+ * - cada passo so avanca com o evento esperado; outros eventos sao ignorados
+ *   com registro no historico (duplicados / fora de ordem);
+ * - falha de negocio -> COMPENSANDO: comandos de compensacao em ordem inversa,
+ *   OS cancelada com o motivo; quando todas as confirmacoes chegam -> CANCELADA;
+ * - timeouts (aprovacao/pagamento) sao eventos internos `saga.timeout`.
+ */
+export class SagaOS {
+  readonly id?: string;
+  readonly numero: string;
+  readonly clienteId: string;
+  readonly veiculoId: string;
+  readonly descricaoProblema: string;
+  private _passo: PassoSaga;
+  private _status: StatusSaga;
+  private _historico: PassoHistorico[];
+  private _compensacoes: Compensacao[];
+  private _prazoAprovacao: Date | null;
+  private _prazoPagamento: Date | null;
+  private _version: number;
+  readonly createdAt?: Date;
+  readonly updatedAt?: Date;
+  private _comandosPendentes: ComandoSaga[] = [];
+
+  private constructor(p: SagaOSProps) {
+    this.id = p.id;
+    this.numero = p.numero;
+    this.clienteId = p.clienteId;
+    this.veiculoId = p.veiculoId;
+    this.descricaoProblema = p.descricaoProblema;
+    this._passo = p.passo;
+    this._status = p.status;
+    this._historico = [...p.historico];
+    this._compensacoes = [...p.compensacoes];
+    this._prazoAprovacao = p.prazoAprovacao;
+    this._prazoPagamento = p.prazoPagamento;
+    this._version = p.version;
+    this.createdAt = p.createdAt;
+    this.updatedAt = p.updatedAt;
+  }
+
+  /** Abertura da OS: primeiro passo = enfileirar na Execucao. */
+  static iniciar(
+    dados: { numero: string; clienteId: string; veiculoId: string; descricaoProblema: string },
+    agora: Date = new Date(),
+  ): SagaOS {
+    const saga = new SagaOS({
+      ...dados,
+      passo: PassoSaga.ENFILEIRAR_EXECUCAO,
+      status: StatusSaga.EM_ANDAMENTO,
+      historico: [],
+      compensacoes: [],
+      prazoAprovacao: null,
+      prazoPagamento: null,
+      version: 0,
+    });
+    saga.registrar(agora, 'os.aberta', 'avancou', 'saga iniciada');
+    saga.enviar({
+      type: 'execucao.enfileirar',
+      data: { numeroOS: dados.numero, veiculoId: dados.veiculoId, descricaoProblema: dados.descricaoProblema },
+    });
+    return saga;
+  }
+
+  /** OS anterior a saga (ou saga perdida): adota o passo equivalente ao status atual, sem reenviar comandos. */
+  static adotar(
+    dados: { numero: string; clienteId: string; veiculoId: string; descricaoProblema: string; statusOS: StatusOS },
+    agora: Date = new Date(),
+  ): SagaOS {
+    const passo = PASSO_POR_STATUS[dados.statusOS];
+    const status =
+      dados.statusOS === StatusOS.CANCELADA
+        ? StatusSaga.CANCELADA
+        : passo === PassoSaga.CONCLUIDA
+          ? StatusSaga.CONCLUIDA
+          : StatusSaga.EM_ANDAMENTO;
+    const saga = new SagaOS({
+      numero: dados.numero,
+      clienteId: dados.clienteId,
+      veiculoId: dados.veiculoId,
+      descricaoProblema: dados.descricaoProblema,
+      passo,
+      status,
+      historico: [],
+      compensacoes: [],
+      prazoAprovacao: null,
+      prazoPagamento: null,
+      version: 0,
+    });
+    saga.registrar(agora, 'saga.adotada', 'avancou', `adotada a partir do status ${dados.statusOS}`);
+    return saga;
+  }
+
+  static reconstitute(p: SagaOSProps): SagaOS {
+    return new SagaOS(p);
+  }
+
+  // ─── leitura ────────────────────────────────────────────────────────────────
+
+  get passo(): PassoSaga {
+    return this._passo;
+  }
+  get status(): StatusSaga {
+    return this._status;
+  }
+  get historico(): readonly PassoHistorico[] {
+    return this._historico;
+  }
+  get compensacoes(): readonly Compensacao[] {
+    return this._compensacoes;
+  }
+  get prazoAprovacao(): Date | null {
+    return this._prazoAprovacao;
+  }
+  get prazoPagamento(): Date | null {
+    return this._prazoPagamento;
+  }
+  get version(): number {
+    return this._version;
+  }
+  get comandosPendentes(): readonly ComandoSaga[] {
+    return this._comandosPendentes;
+  }
+  get encerrada(): boolean {
+    return this._status === StatusSaga.CONCLUIDA || this._status === StatusSaga.CANCELADA;
+  }
+
+  /** Entrega os comandos a publicar e esvazia a lista (o repositorio consome na transacao). */
+  consumirComandos(): ComandoSaga[] {
+    const c = this._comandosPendentes;
+    this._comandosPendentes = [];
+    return c;
+  }
+
+  // ─── maquina de estados ─────────────────────────────────────────────────────
+
+  /**
+   * Aplica um evento. Nunca lanca: eventos inesperados viram `aplicado: false`
+   * (registrados no historico); so o cancelamento manual pode ser `rejeitado`.
+   */
+  aplicar(evento: EventoSaga, agora: Date = new Date(), prazos: Prazos = PRAZOS_DEFAULT): ResultadoAplicacao {
+    if (this._status === StatusSaga.COMPENSANDO) return this.aplicarEmCompensacao(evento, agora);
+    if (this.encerrada) return this.ignorar(evento, agora, `saga ${this._status}`);
+
+    switch (evento.type) {
+      case 'execucao.enfileirada':
+        return this.esperado(evento, PassoSaga.ENFILEIRAR_EXECUCAO, agora, () => {
+          this.avancar(PassoSaga.AGUARDAR_DIAGNOSTICO, agora, evento);
+          return { transicaoOS: { tipo: 'iniciarDiagnostico' } };
+        });
+      case 'execucao.recusada':
+        if (this._passo === PassoSaga.ENFILEIRAR_EXECUCAO) {
+          return this.compensar(evento, agora, MotivoCancelamento.EXECUCAO_RECUSADA, []);
+        }
+        if (this._passo === PassoSaga.INICIAR_EXECUCAO) {
+          // Pagamento ja aprovado: estorno (Billing) + liberar reservas (ordem inversa)
+          return this.compensar(evento, agora, MotivoCancelamento.FALHA_INICIO_EXECUCAO, [
+            'billing.cancelar-orcamento',
+            'execucao.liberar-reservas',
+          ]);
+        }
+        return this.ignorar(evento, agora, `nao esperado no passo ${this._passo}`);
+      case 'execucao.diagnostico-concluido':
+        return this.esperado(evento, PassoSaga.AGUARDAR_DIAGNOSTICO, agora, () => {
+          this.avancar(PassoSaga.GERAR_ORCAMENTO, agora, evento);
+          this.enviar({
+            type: 'billing.gerar-orcamento',
+            data: { numeroOS: this.numero, clienteId: this.clienteId, itens: evento.data.itens ?? [] },
+            causationId: evento.id,
+          });
+          return { transicaoOS: { tipo: 'registrarDiagnostico' } };
+        });
+      case 'billing.orcamento-gerado':
+        return this.esperado(evento, PassoSaga.GERAR_ORCAMENTO, agora, () => {
+          this.avancar(PassoSaga.AGUARDAR_APROVACAO, agora, evento);
+          this._prazoAprovacao = new Date(agora.getTime() + prazos.aprovacaoMs);
+          return { transicaoOS: { tipo: 'aguardarAprovacao' } };
+        });
+      case 'billing.orcamento-aprovado':
+        return this.esperado(evento, PassoSaga.AGUARDAR_APROVACAO, agora, () => {
+          this.avancar(PassoSaga.AGUARDAR_PAGAMENTO, agora, evento);
+          this._prazoAprovacao = null;
+          this._prazoPagamento = new Date(agora.getTime() + prazos.pagamentoMs);
+          return { transicaoOS: { tipo: 'aguardarPagamento' } };
+        });
+      case 'billing.orcamento-rejeitado':
+        return this.esperado(evento, PassoSaga.AGUARDAR_APROVACAO, agora, () =>
+          this.compensar(evento, agora, MotivoCancelamento.ORCAMENTO_REJEITADO, ['execucao.liberar-reservas']),
+        );
+      case 'billing.pagamento-aprovado':
+        return this.esperado(evento, PassoSaga.AGUARDAR_PAGAMENTO, agora, () => {
+          this.avancar(PassoSaga.INICIAR_EXECUCAO, agora, evento);
+          this._prazoPagamento = null;
+          this.enviar({ type: 'execucao.iniciar', data: { numeroOS: this.numero }, causationId: evento.id });
+          return {};
+        });
+      case 'billing.pagamento-recusado':
+        return this.esperado(evento, PassoSaga.AGUARDAR_PAGAMENTO, agora, () =>
+          this.compensar(evento, agora, MotivoCancelamento.PAGAMENTO_RECUSADO, [
+            'billing.cancelar-orcamento',
+            'execucao.liberar-reservas',
+          ]),
+        );
+      case 'execucao.iniciada':
+        return this.esperado(evento, PassoSaga.INICIAR_EXECUCAO, agora, () => {
+          this.avancar(PassoSaga.AGUARDAR_FINALIZACAO, agora, evento);
+          return { transicaoOS: { tipo: 'iniciarExecucao' } };
+        });
+      case 'execucao.finalizada':
+        return this.esperado(evento, PassoSaga.AGUARDAR_FINALIZACAO, agora, () => {
+          this._passo = PassoSaga.CONCLUIDA;
+          this._status = StatusSaga.CONCLUIDA;
+          this.registrar(agora, evento.type, 'concluida');
+          return { transicaoOS: { tipo: 'finalizar' } };
+        });
+      case 'saga.timeout':
+        return this.timeout(evento, agora);
+      case 'os.cancelamento-manual':
+        return this.cancelamentoManual(evento, agora);
+      case 'billing.orcamento-cancelado':
+      case 'execucao.reservas-liberadas':
+        return this.ignorar(evento, agora, 'confirmacao de compensacao sem compensacao em curso');
+      default:
+        return this.ignorar(evento, agora, 'evento desconhecido');
+    }
+  }
+
+  // ─── helpers ────────────────────────────────────────────────────────────────
+
+  private esperado(
+    evento: EventoSaga,
+    passo: PassoSaga,
+    agora: Date,
+    acao: () => Partial<ResultadoAplicacao>,
+  ): ResultadoAplicacao {
+    if (this._passo !== passo) {
+      const motivo =
+        indice(this._passo) > indice(passo) ? 'duplicado (passo ja concluido)' : `fora de ordem (esperado no passo ${passo})`;
+      return this.ignorar(evento, agora, motivo);
+    }
+    const parcial = acao();
+    return { aplicado: true, comandos: this._comandosPendentes.slice(), ...parcial };
+  }
+
+  private avancar(proximo: PassoSaga, agora: Date, evento: EventoSaga): void {
+    this.registrar(agora, evento.type, 'avancou', `${this._passo} -> ${proximo}`);
+    this._passo = proximo;
+  }
+
+  private ignorar(evento: EventoSaga, agora: Date, motivo: string): ResultadoAplicacao {
+    this.registrar(agora, evento.type, 'ignorado', motivo);
+    return { aplicado: false, motivo, comandos: [] };
+  }
+
+  private enviar(comando: ComandoSaga): void {
+    this._comandosPendentes.push(comando);
+  }
+
+  private registrar(agora: Date, evento: string, resultado: ResultadoPasso, detalhe?: string): void {
+    this._historico.push({ em: agora.toISOString(), passo: this._passo, evento, resultado, detalhe });
+  }
+
+  /** Falha de negocio: comandos de compensacao (ordem inversa) + OS cancelada. */
+  private compensar(
+    evento: EventoSaga,
+    agora: Date,
+    motivo: MotivoCancelamento,
+    comandos: Array<'billing.cancelar-orcamento' | 'execucao.liberar-reservas'>,
+  ): ResultadoAplicacao {
+    this._prazoAprovacao = null;
+    this._prazoPagamento = null;
+    for (const type of comandos) {
+      this.enviar({
+        type,
+        data: type === 'billing.cancelar-orcamento' ? { numeroOS: this.numero, motivo } : { numeroOS: this.numero },
+        causationId: evento.id,
+      });
+      this._compensacoes.push({ comando: type, enviadaEm: agora.toISOString() });
+    }
+    if (comandos.length === 0) {
+      this._status = StatusSaga.CANCELADA;
+      this.registrar(agora, evento.type, 'cancelada', motivo);
+    } else {
+      this._status = StatusSaga.COMPENSANDO;
+      this.registrar(agora, evento.type, 'compensando', `${motivo}: ${comandos.join(', ')}`);
+    }
+    return { aplicado: true, transicaoOS: { tipo: 'cancelar', motivo }, comandos: this._comandosPendentes.slice() };
+  }
+
+  /** Em COMPENSANDO so interessam as confirmacoes; o resto e ignorado. */
+  private aplicarEmCompensacao(evento: EventoSaga, agora: Date): ResultadoAplicacao {
+    const comando: TipoComando | null =
+      evento.type === 'billing.orcamento-cancelado'
+        ? 'billing.cancelar-orcamento'
+        : evento.type === 'execucao.reservas-liberadas'
+          ? 'execucao.liberar-reservas'
+          : null;
+    if (!comando) return this.ignorar(evento, agora, 'saga em compensacao');
+    const pendente = this._compensacoes.find((c) => c.comando === comando && !c.confirmadaEm);
+    if (!pendente) return this.ignorar(evento, agora, 'compensacao ja confirmada');
+    pendente.confirmadaEm = agora.toISOString();
+    const restantes = this._compensacoes.filter((c) => !c.confirmadaEm).length;
+    if (restantes === 0) {
+      this._status = StatusSaga.CANCELADA;
+      this.registrar(agora, evento.type, 'cancelada', 'todas as compensacoes confirmadas');
+    } else {
+      this.registrar(agora, evento.type, 'confirmacao', `${restantes} compensacao(oes) pendente(s)`);
+    }
+    return { aplicado: true, comandos: [] };
+  }
+
+  private timeout(evento: EventoSaga, agora: Date): ResultadoAplicacao {
+    if (this._passo === PassoSaga.AGUARDAR_APROVACAO && this._prazoAprovacao && this._prazoAprovacao <= agora) {
+      return this.compensar(evento, agora, MotivoCancelamento.TIMEOUT_APROVACAO, [
+        'billing.cancelar-orcamento',
+        'execucao.liberar-reservas',
+      ]);
+    }
+    if (this._passo === PassoSaga.AGUARDAR_PAGAMENTO && this._prazoPagamento && this._prazoPagamento <= agora) {
+      return this.compensar(evento, agora, MotivoCancelamento.TIMEOUT_PAGAMENTO, [
+        'billing.cancelar-orcamento',
+        'execucao.liberar-reservas',
+      ]);
+    }
+    return this.ignorar(evento, agora, 'sem prazo vencido neste passo');
+  }
+
+  /** Atendente cancela: compensa conforme o passo; depois de a execucao comecar nao da mais. */
+  private cancelamentoManual(evento: EventoSaga, agora: Date): ResultadoAplicacao {
+    const motivo = (evento.data.motivo as MotivoCancelamento) ?? MotivoCancelamento.OPERADOR;
+    const porPasso: Partial<Record<PassoSaga, Array<'billing.cancelar-orcamento' | 'execucao.liberar-reservas'>>> = {
+      [PassoSaga.ENFILEIRAR_EXECUCAO]: [],
+      [PassoSaga.AGUARDAR_DIAGNOSTICO]: ['execucao.liberar-reservas'],
+      [PassoSaga.GERAR_ORCAMENTO]: ['billing.cancelar-orcamento', 'execucao.liberar-reservas'],
+      [PassoSaga.AGUARDAR_APROVACAO]: ['billing.cancelar-orcamento', 'execucao.liberar-reservas'],
+      [PassoSaga.AGUARDAR_PAGAMENTO]: ['billing.cancelar-orcamento', 'execucao.liberar-reservas'],
+      [PassoSaga.INICIAR_EXECUCAO]: ['billing.cancelar-orcamento', 'execucao.liberar-reservas'],
+    };
+    const comandos = porPasso[this._passo];
+    if (!comandos) {
+      this.registrar(agora, evento.type, 'ignorado', `cancelamento nao permitido no passo ${this._passo}`);
+      return { aplicado: false, rejeitado: true, motivo: `OS em ${this._passo} nao pode ser cancelada`, comandos: [] };
+    }
+    return this.compensar(evento, agora, motivo, comandos);
+  }
+}
+
+export const PRAZOS_DEFAULT: Prazos = {
+  aprovacaoMs: 3 * 24 * 60 * 60 * 1000,
+  pagamentoMs: 24 * 60 * 60 * 1000,
+};

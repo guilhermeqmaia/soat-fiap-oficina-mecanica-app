@@ -5,6 +5,7 @@ import { ClienteNotFoundError } from '../../domain/errors/cliente-not-found.erro
 import { VeiculoNotFoundError } from '../../domain/errors/veiculo-not-found.error';
 import { VeiculoClienteMismatchError } from '../../domain/errors/veiculo-cliente-mismatch.error';
 import { ORDEM_DE_SERVICO_GATEWAY, OrdemDeServicoGateway } from '../gateways/ordem-de-servico.gateway';
+import { OrquestradorSagaService } from '../../saga/application/orquestrador-saga.service';
 import {
   CLIENTE_CONSULTA_GATEWAY,
   ClienteConsultaGateway,
@@ -22,7 +23,8 @@ export interface CriarOrdemDeServicoInput {
  * Abre a OS (RECEBIDA). Servicos/pecas nao entram mais na abertura: sao
  * definidos no diagnostico pelo Execucao Service e chegam por evento
  * (`execucao.diagnostico-concluido`). A abertura anuncia `os.aberta` (outbox,
- * mesma transacao) — e esse evento que a saga (US-F4-10) e a Notificacao consomem.
+ * mesma transacao) e inicia a saga orquestrada (US-F4-10), que enfileira a OS
+ * na Execucao.
  */
 @Injectable()
 export class CriarOrdemDeServicoUseCase implements UseCase<CriarOrdemDeServicoInput, OrdemDeServico> {
@@ -33,6 +35,7 @@ export class CriarOrdemDeServicoUseCase implements UseCase<CriarOrdemDeServicoIn
     private readonly clienteGateway: ClienteConsultaGateway,
     @Inject(VEICULO_CONSULTA_GATEWAY)
     private readonly veiculoGateway: VeiculoConsultaGateway,
+    private readonly orquestrador: OrquestradorSagaService,
   ) {}
 
   async execute(input: CriarOrdemDeServicoInput): Promise<OrdemDeServico> {
@@ -54,6 +57,9 @@ export class CriarOrdemDeServicoUseCase implements UseCase<CriarOrdemDeServicoIn
       cliente: { nome: cliente.nome, cpfCnpj: cliente.cpfCnpj.value },
       veiculo: { placa: veiculo.placa.value, modelo: veiculo.modelo },
     });
-    return this.gateway.create(ordem);
+    const criada = await this.gateway.create(ordem);
+    // Saga (US-F4-10): primeiro passo = comando execucao.enfileirar via outbox.
+    await this.orquestrador.iniciar(criada, { descricaoProblema: input.descricaoInicial });
+    return criada;
   }
 }

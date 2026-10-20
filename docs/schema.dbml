@@ -183,3 +183,27 @@ Table processed_messages {
     processada_em
   }
 }
+
+// ─── Saga orquestrada (RFC-0005 / US-F4-10) ───
+
+Table saga_os {
+  id uuid [pk]
+  numero varchar [unique, not null, note: 'numero da OS = correlationId dos comandos']
+  cliente_id uuid [not null]
+  veiculo_id uuid [not null]
+  descricao_problema varchar [not null]
+  passo varchar [not null, note: 'ENFILEIRAR_EXECUCAO | AGUARDAR_DIAGNOSTICO | GERAR_ORCAMENTO | AGUARDAR_APROVACAO | AGUARDAR_PAGAMENTO | INICIAR_EXECUCAO | AGUARDAR_FINALIZACAO | CONCLUIDA']
+  status varchar [not null, note: 'EM_ANDAMENTO | COMPENSANDO | CONCLUIDA | CANCELADA']
+  historico jsonb [not null, note: '[{em, passo, evento, resultado, detalhe}]']
+  compensacoes jsonb [not null, note: '[{comando, enviadaEm, confirmadaEm}]']
+  prazo_aprovacao timestamp
+  prazo_pagamento timestamp
+  version int [not null, default: 0]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (status, prazo_aprovacao)
+    (status, prazo_pagamento)
+  }
+}

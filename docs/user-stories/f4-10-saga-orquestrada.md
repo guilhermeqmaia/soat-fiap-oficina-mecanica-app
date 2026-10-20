@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 13
-**Status:** To Do
+**Status:** Em revisão — implementada no OS Service (PR da US-F4-10). QA: [QA_PLAN_US-F4-10](../qa-plans/QA_PLAN_US-F4-10.md)
 **DDD Domain:** Atendimento (orquestracao do ciclo de vida da OS)
 **DDD Layer:** Application (orquestrador) + Infrastructure (mensageria)
 **Repositorio:** OS Service
@@ -19,14 +19,31 @@ video precisa mostrar em "rastreamento dos fluxos distribuidos").
 
 ## Criterios de Aceite
 
-- [ ] Tabela `saga_os` (numero da OS, passo atual, status, historico de passos com timestamps, compensacoes executadas, `correlationId`)
-- [ ] Passos: `ENFILEIRAR_EXECUCAO` -> `AGUARDAR_DIAGNOSTICO` -> `GERAR_ORCAMENTO` -> `AGUARDAR_APROVACAO` -> `AGUARDAR_PAGAMENTO` -> `INICIAR_EXECUCAO` -> `AGUARDAR_FINALIZACAO` -> `CONCLUIDA`
-- [ ] Cada passo: comando enviado via outbox; transicao so ao receber o evento esperado; eventos fora de ordem/duplicados ignorados com log (idempotencia)
-- [ ] Transicoes da OS ligadas aos passos (`EM_DIAGNOSTICO`, `AGUARDANDO_APROVACAO`, `AGUARDANDO_PAGAMENTO`, `EM_EXECUCAO`, `FINALIZADA`)
-- [ ] **Timeouts** (scheduler): orcamento sem resposta em N dias e pagamento pendente em M horas -> compensacao ([US-F4-11](f4-11-compensacoes-rollback.md))
-- [ ] `GET /ordens-servico/:numero/saga` devolve a linha do tempo (passos, eventos, compensacoes) — usado no video e no dashboard
-- [ ] Metricas: `oficina_os_saga_passos_total{passo,resultado}`, duracao por passo, sagas em compensacao
-- [ ] Testes unitarios do orquestrador como maquina de estados pura (>= 90% do modulo)
+- [x] Tabela `saga_os` (numero da OS, passo atual, status, historico de passos com timestamps, compensacoes executadas, `correlationId`) — `correlationId` = numero da OS (chave unica); lock otimista por `version`
+- [x] Passos: `ENFILEIRAR_EXECUCAO` -> `AGUARDAR_DIAGNOSTICO` -> `GERAR_ORCAMENTO` -> `AGUARDAR_APROVACAO` -> `AGUARDAR_PAGAMENTO` -> `INICIAR_EXECUCAO` -> `AGUARDAR_FINALIZACAO` -> `CONCLUIDA` (`saga/domain/saga-os.entity.ts`)
+- [x] Cada passo: comando enviado via outbox (mesma transacao da saga); transicao so ao receber o evento esperado; eventos fora de ordem/duplicados ignorados com log e registro no historico
+- [x] Transicoes da OS ligadas aos passos (`EM_DIAGNOSTICO`, `AGUARDANDO_APROVACAO`, `AGUARDANDO_PAGAMENTO`, `EM_EXECUCAO`, `FINALIZADA`) — a saga decide, os use cases de transicao da US-F4-06 aplicam
+- [x] **Timeouts** (scheduler): `SagaTimeoutsService` varre prazos vencidos (`SAGA_TIMEOUT_APROVACAO_DIAS`=3, `SAGA_TIMEOUT_PAGAMENTO_HORAS`=24; overrides em ms para a demo) -> `saga.timeout` -> compensacao ([US-F4-11](f4-11-compensacoes-rollback.md))
+- [x] `GET /ordens-servico/numero/:numero/saga` devolve a linha do tempo (passos, eventos, compensacoes, prazos) — usado no video e no dashboard
+- [x] Metricas: `oficina_os_saga_passos_total{passo,resultado}`, `oficina_os_saga_passo_duracao_seconds{passo}`, `oficina_os_sagas{status}` (inclui COMPENSANDO)
+- [x] Testes unitarios do orquestrador como maquina de estados pura (`saga-os.entity.spec.ts`, `orquestrador-saga.service.spec.ts`) + e2e com os handlers SQS (caminho feliz, duplicado/fora de ordem, rejeicao, cancelamento manual, timeout)
 ## Dependencias
 
 - [US-F4-06](f4-06-os-service-strangler.md), [US-F4-07](f4-07-execucao-service.md), [US-F4-08](f4-08-billing-orcamento.md), [US-F4-DOC-03](f4-doc-03-contratos-eventos.md)
+
+## Notas de implementacao (21/10)
+
+- **Onde:** `src/ordem-de-servico/saga/` — `domain/saga-os.entity.ts` (maquina de estados pura: recebe evento, devolve
+  transicao da OS + comandos), `application/orquestrador-saga.service.ts` (persiste, aplica na OS, publica),
+  `application/saga-timeouts.service.ts` (relogio), `infrastructure/prisma-saga.repository.ts` (`saga_os` + outbox na
+  mesma transacao).
+- **Entrada dos eventos:** todos os handlers da fila `os-eventos` entregam ao orquestrador; o cancelamento manual
+  (`POST :id/cancelar`) tambem passa por ele (`os.cancelamento-manual`) e compensa conforme o passo.
+- **Ordem por evento:** carrega saga -> aplica (decide) -> transiciona a OS (transacao propria, idempotente) -> salva saga +
+  comandos (transacao propria). Se a segunda falhar, a reentrega refaz: a OS vira no-op e a saga reaplica.
+- **OS anterior a saga:** adotada no passo equivalente ao status atual, sem reenviar comandos.
+- **Matriz de compensacao** (US-F4-11): enfileirar recusado -> nada; orcamento rejeitado -> `execucao.liberar-reservas`;
+  pagamento recusado / timeouts / cancelamento manual apos orcamento -> `billing.cancelar-orcamento` + `execucao.liberar-reservas`;
+  `execucao.recusada` em `INICIAR_EXECUCAO` (falha apos pagamento) -> estorno via `billing.cancelar-orcamento` + liberar reservas.
+  A saga fica `COMPENSANDO` ate `billing.orcamento-cancelado` / `execucao.reservas-liberadas` confirmarem; depois `CANCELADA`.
+- **Fora desta story:** `POST /admin/sagas/:os/reprocessar`, injecao de falhas e retries de comandos ficam na US-F4-11.

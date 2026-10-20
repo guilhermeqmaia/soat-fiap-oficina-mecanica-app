@@ -1,0 +1,73 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { OUTBOX_REPOSITORY } from '@guilhermeqmaia/oficina-kit/messaging';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { PrismaOutbox } from '../../../messaging/prisma-messaging.adapters';
+import { ConcurrentModificationError } from '../../domain/errors/concurrent-modification.error';
+import { startTestDatabase, stopTestDatabase } from '../../../test/database.container';
+import { PassoSaga, SagaOS, StatusSaga } from '../domain/saga-os.entity';
+import { PrismaSagaRepository } from './prisma-saga.repository';
+
+jest.setTimeout(60000);
+
+describe('PrismaSagaRepository (integration)', () => {
+  let prisma: PrismaService;
+  let repo: PrismaSagaRepository;
+
+  beforeAll(async () => {
+    process.env.DATABASE_URL = await startTestDatabase();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [PrismaService, PrismaSagaRepository, PrismaOutbox, { provide: OUTBOX_REPOSITORY, useExisting: PrismaOutbox }],
+    }).compile();
+    prisma = module.get(PrismaService);
+    repo = module.get(PrismaSagaRepository);
+    await prisma.onModuleInit();
+    await prisma.sagaOS.deleteMany();
+    await prisma.outbox.deleteMany();
+  });
+  afterAll(async () => {
+    await prisma.$disconnect();
+    await stopTestDatabase();
+  });
+
+  const ev = (type: string, numero: string, data: Record<string, unknown> = {}) => ({ type, id: `env-${type}`, data: { numeroOS: numero, ...data } });
+
+  it('save grava a saga e os comandos no outbox na mesma transacao; reload preserva historico/compensacoes', async () => {
+    const saga = SagaOS.iniciar({ numero: 'OS-S1', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' });
+    const salva = await repo.save(saga);
+    expect(salva.id).toBeDefined(); expect(salva.version).toBe(0);
+    expect((await prisma.outbox.findMany({ where: { correlationId: 'OS-S1' } })).map((o) => o.type)).toEqual(['execucao.enfileirar']);
+
+    salva.aplicar(ev('execucao.enfileirada', 'OS-S1'));
+    salva.aplicar(ev('execucao.diagnostico-concluido', 'OS-S1', { itens: [] }));
+    const v2 = await repo.save(salva);
+    expect(v2.version).toBe(2 - 1); // create (0) + 1 update
+    const lida = (await repo.findByNumero('OS-S1'))!;
+    expect(lida.passo).toBe(PassoSaga.GERAR_ORCAMENTO);
+    expect(lida.historico.map((h) => h.resultado)).toEqual(['avancou', 'avancou', 'avancou']);
+    expect((await prisma.outbox.findMany({ where: { correlationId: 'OS-S1' }, orderBy: { criadaEm: 'asc' } })).map((o) => o.type)).toEqual(['execucao.enfileirar', 'billing.gerar-orcamento']);
+  });
+
+  it('lock otimista: segunda gravacao sobre a mesma versao falha e nao grava comandos', async () => {
+    await repo.save(SagaOS.iniciar({ numero: 'OS-S2', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' }));
+    const a = (await repo.findByNumero('OS-S2'))!;
+    const b = (await repo.findByNumero('OS-S2'))!;
+    a.aplicar(ev('execucao.enfileirada', 'OS-S2'));
+    await repo.save(a);
+    b.aplicar(ev('execucao.recusada', 'OS-S2', { motivo: 'x' }));
+    await expect(repo.save(b)).rejects.toThrow(ConcurrentModificationError);
+    expect((await repo.findByNumero('OS-S2'))!.passo).toBe(PassoSaga.AGUARDAR_DIAGNOSTICO);
+  });
+
+  it('findComPrazoVencido e countPorStatus', async () => {
+    const s = SagaOS.iniciar({ numero: 'OS-S3', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' });
+    s.aplicar(ev('execucao.enfileirada', 'OS-S3'));
+    s.aplicar(ev('execucao.diagnostico-concluido', 'OS-S3', { itens: [] }));
+    const t0 = new Date();
+    s.aplicar(ev('billing.orcamento-gerado', 'OS-S3', { total: '1.00' }), t0, { aprovacaoMs: 1000, pagamentoMs: 1000 });
+    await repo.save(s);
+    expect((await repo.findComPrazoVencido(new Date(t0.getTime() + 500))).map((x) => x.numero)).not.toContain('OS-S3');
+    expect((await repo.findComPrazoVencido(new Date(t0.getTime() + 1500))).map((x) => x.numero)).toContain('OS-S3');
+    const porStatus = await repo.countPorStatus();
+    expect(porStatus[StatusSaga.EM_ANDAMENTO]).toBeGreaterThanOrEqual(2);
+  });
+});
