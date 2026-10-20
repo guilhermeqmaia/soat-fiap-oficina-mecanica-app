@@ -568,6 +568,29 @@ awslocal sqs receive-message --queue-url http://localhost:4566/000000000000/noti
 
 ---
 
+## Saga orquestrada (Fase 4 — US-F4-10)
+
+O ciclo de vida da OS atravessa três serviços e três bancos; a consistência é garantida por uma
+**saga orquestrada**, com o orquestrador dentro do OS Service (decisão e justificativa na
+[RFC-0005](docs/arquitetura/rfcs/RFC-0005-estrategia-de-saga.md): o OS Service já é o dono da
+máquina de estados da OS, o fluxo tem 8 passos e 4 cenários de compensação cruzada, e o estado
+precisa ser explícito e consultável).
+
+- **Estado persistido** em `saga_os` (passo, status, histórico, compensações, prazos) e exposto em
+  `GET /ordens-servico/numero/:numero/saga`.
+- **Passos:** `ENFILEIRAR_EXECUCAO → AGUARDAR_DIAGNOSTICO → GERAR_ORCAMENTO → AGUARDAR_APROVACAO →
+  AGUARDAR_PAGAMENTO → INICIAR_EXECUCAO → AGUARDAR_FINALIZACAO → CONCLUIDA`. Cada passo envia um
+  **comando** pelo outbox (`execucao.enfileirar`, `billing.gerar-orcamento`, `execucao.iniciar`) e só
+  avança com o **evento** esperado; duplicados e fora de ordem são ignorados e registrados.
+- **Compensação** (recuperação para trás, ordem inversa): `billing.cancelar-orcamento` e/ou
+  `execucao.liberar-reservas`, OS `CANCELADA` com o motivo; a saga fica `COMPENSANDO` até as
+  confirmações. **Timeouts** de aprovação/pagamento (`SAGA_TIMEOUT_*`) disparam a mesma compensação.
+  Falha de plataforma nunca compensa: retry pelo SQS e DLQ.
+- Notificação fica **coreografada** (só assina fatos) — os dois estilos convivem onde cada um cabe.
+- Métricas: `oficina_os_saga_passos_total`, `oficina_os_saga_passo_duracao_seconds`, `oficina_os_sagas`.
+
+---
+
 ## Observabilidade (Fase 3 — US-F3-10)
 
 A aplicação é instrumentada de forma **agnóstica de fornecedor** (ADR-0004):

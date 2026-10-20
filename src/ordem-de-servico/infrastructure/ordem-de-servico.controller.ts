@@ -25,6 +25,8 @@ import { BuscarStatusPorNumeroUseCase } from '../application/use-cases/buscar-st
 import { EntregarOrdemDeServicoUseCase } from '../application/use-cases/entregar-ordem-de-servico.use-case';
 import { CancelarOrdemDeServicoUseCase } from '../application/use-cases/cancelar-ordem-de-servico.use-case';
 import { DeletarOrdemDeServicoUseCase } from '../application/use-cases/deletar-ordem-de-servico.use-case';
+import { ConsultarSagaUseCase } from '../saga/application/consultar-saga.use-case';
+import { SagaPresenter } from '../saga/infrastructure/saga.presenter';
 
 /**
  * OS Service (Fase 4): apenas o ciclo de vida que e do Atendimento. Diagnostico,
@@ -47,6 +49,7 @@ export class OrdemDeServicoController {
     private readonly cancelarUseCase: CancelarOrdemDeServicoUseCase,
     private readonly deletarOrdemDeServicoUseCase: DeletarOrdemDeServicoUseCase,
     private readonly auditLogService: AuditLogService,
+    private readonly consultarSaga: ConsultarSagaUseCase,
   ) {}
 
   @Post()
@@ -91,6 +94,20 @@ export class OrdemDeServicoController {
   @ApiNotFoundResponse({ description: 'OS nao encontrada para o numero informado' })
   async findStatusByNumero(@Param('numero') numero: string) {
     return this.buscarStatusPorNumero.execute({ numero });
+  }
+
+  @Get('numero/:numero/saga')
+  @Roles(Role.ADMIN, Role.ATENDENTE, Role.MECANICO)
+  @ApiOperation({
+    summary: 'Linha do tempo da saga da OS (US-F4-10)',
+    description:
+      'Passo atual, status (EM_ANDAMENTO/COMPENSANDO/CONCLUIDA/CANCELADA), historico de eventos (avancou/ignorado/compensando), ' +
+      'compensacoes enviadas e confirmadas e prazos de aprovacao/pagamento — rastreamento do fluxo distribuido.',
+  })
+  @ApiOkResponse({ description: 'Estado da saga' })
+  @ApiNotFoundResponse({ description: 'OS sem saga (nao encontrada)' })
+  async findSaga(@Param('numero') numero: string) {
+    return SagaPresenter.toResponse(await this.consultarSaga.execute({ numero }));
   }
 
   @Get(':id/audit-log')

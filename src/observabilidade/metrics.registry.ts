@@ -1,4 +1,4 @@
-import { Counter, Histogram } from 'prom-client';
+import { Counter, Gauge, Histogram } from 'prom-client';
 import { registry } from '@guilhermeqmaia/oficina-kit/metrics';
 
 /**
@@ -36,6 +36,31 @@ export const integracaoResultados = new Counter({
   registers: [registry],
 });
 
+/** Saga orquestrada (US-F4-10): resultado de cada evento por passo. */
+export const sagaPassos = new Counter({
+  name: 'oficina_os_saga_passos_total',
+  help: 'Eventos processados pelo orquestrador da saga, por passo e resultado',
+  labelNames: ['passo', 'resultado'] as const,
+  registers: [registry],
+});
+
+/** Tempo entre entrar num passo e sair dele (so para passos avancados). */
+export const sagaPassoDuracao = new Histogram({
+  name: 'oficina_os_saga_passo_duracao_seconds',
+  help: 'Duracao de cada passo da saga',
+  labelNames: ['passo'] as const,
+  buckets: [10, 60, 300, 900, 3600, 14400, 86400, 259200],
+  registers: [registry],
+});
+
+/** Sagas por status (atualizado pelo varredor de timeouts). */
+export const sagasPorStatus = new Gauge({
+  name: 'oficina_os_sagas',
+  help: 'Quantidade de sagas por status (EM_ANDAMENTO, COMPENSANDO, CONCLUIDA, CANCELADA)',
+  labelNames: ['status'] as const,
+  registers: [registry],
+});
+
 /**
  * Pre-registra as series de negocio com valor 0. Contadores/histogramas com
  * labels so aparecem no /metrics depois do primeiro evento; sem isto os
@@ -57,5 +82,9 @@ export function inicializarSeriesDeNegocio(): void {
   }
   for (const resultado of ['sucesso', 'falha']) {
     integracaoResultados.inc({ integracao: 'webhook-notificacao', resultado }, 0);
+  }
+  for (const status of ['EM_ANDAMENTO', 'COMPENSANDO', 'CONCLUIDA', 'CANCELADA']) sagasPorStatus.set({ status }, 0);
+  for (const resultado of ['avancou', 'ignorado', 'compensando', 'concluida', 'cancelada']) {
+    sagaPassos.inc({ passo: 'ENFILEIRAR_EXECUCAO', resultado }, 0);
   }
 }

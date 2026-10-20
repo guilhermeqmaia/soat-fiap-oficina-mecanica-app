@@ -26,6 +26,7 @@ const osComItens = (status = StatusOS.AGUARDANDO_APROVACAO) => {
     status: base.status, motivoCancelamento: null, createdAt: new Date('2026-10-01T10:00:00Z'), updatedAt: new Date('2026-10-02T10:00:00Z'), itensServico: [...base.itensServico],
   });
 };
+const orquestrador = { iniciar: jest.fn().mockResolvedValue(undefined), processar: jest.fn().mockResolvedValue(undefined) } as any;
 const gatewayCom = (os: OrdemDeServico | null) => ({
   findById: jest.fn(async () => os), findByNumero: jest.fn(async () => os),
   create: jest.fn(async (o: OrdemDeServico) => o), update: jest.fn(async (o: OrdemDeServico) => o), delete: jest.fn(async () => undefined),
@@ -39,8 +40,9 @@ describe('CriarOrdemDeServicoUseCase', () => {
 
   it('abre a OS RECEBIDA sem itens', async () => {
     const g = gatewayCom(null);
-    const os = await new CriarOrdemDeServicoUseCase(g, clienteGw, veiculoGw).execute({ clienteId: 'cli-1', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' });
+    const os = await new CriarOrdemDeServicoUseCase(g, clienteGw, veiculoGw, orquestrador).execute({ clienteId: 'cli-1', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' });
     expect(os.status).toBe(StatusOS.RECEBIDA); expect(os.itensServico).toHaveLength(0); expect(g.create).toHaveBeenCalled();
+    expect(orquestrador.iniciar).toHaveBeenCalledWith(expect.objectContaining({ numero: os.numero }), { descricaoProblema: 'Barulho ao frenar' });
     // os.aberta pendente no agregado entregue ao gateway (vai para o outbox na mesma transacao)
     const entregue: OrdemDeServico = g.create.mock.calls[0][0];
     expect(entregue.eventosIntegracao[0]).toMatchObject({
@@ -49,7 +51,7 @@ describe('CriarOrdemDeServicoUseCase', () => {
     });
   });
   it('valida cliente, veiculo e posse do veiculo', async () => {
-    const uc = new CriarOrdemDeServicoUseCase(gatewayCom(null), clienteGw, veiculoGw);
+    const uc = new CriarOrdemDeServicoUseCase(gatewayCom(null), clienteGw, veiculoGw, orquestrador);
     await expect(uc.execute({ clienteId: 'cli-x', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' })).rejects.toThrow(ClienteNotFoundError);
     await expect(uc.execute({ clienteId: 'cli-1', veiculoId: 'vei-x', descricaoInicial: 'Barulho ao frenar' })).rejects.toThrow(VeiculoNotFoundError);
     await expect(uc.execute({ clienteId: 'cli-1', veiculoId: 'vei-outro', descricaoInicial: 'Barulho ao frenar' })).rejects.toThrow(VeiculoClienteMismatchError);
@@ -57,16 +59,17 @@ describe('CriarOrdemDeServicoUseCase', () => {
 });
 
 describe('Cancelar / Entregar / Deletar', () => {
-  it('cancelar (atendente) usa motivo OPERADOR por default e publica a mudanca', async () => {
-    const events = new FakeDomainEventPublisher(); const g = gatewayCom(osComItens());
-    const os = await new CancelarOrdemDeServicoUseCase(g, events).execute({ id: 'os-1' });
-    expect(os.status).toBe(StatusOS.CANCELADA); expect(os.motivoCancelamento).toBe(MotivoCancelamento.OPERADOR); expect(events.publicados).toHaveLength(2);
+  it('cancelar (atendente) delega a saga com motivo OPERADOR por default', async () => {
+    const g = gatewayCom(osComItens());
+    await new CancelarOrdemDeServicoUseCase(g, orquestrador).execute({ id: 'os-1' });
+    expect(orquestrador.processar).toHaveBeenCalledWith({ type: 'os.cancelamento-manual', data: { numeroOS: expect.any(String), motivo: MotivoCancelamento.OPERADOR } });
   });
-  it('cancelar aceita motivo explicito e falha para OS inexistente', async () => {
-    const events = new FakeDomainEventPublisher();
-    const os = await new CancelarOrdemDeServicoUseCase(gatewayCom(osComItens()), events).execute({ id: 'os-1', motivo: MotivoCancelamento.TIMEOUT_APROVACAO });
-    expect(os.motivoCancelamento).toBe(MotivoCancelamento.TIMEOUT_APROVACAO);
-    await expect(new CancelarOrdemDeServicoUseCase(gatewayCom(null), events).execute({ id: 'x' })).rejects.toThrow(OrdemDeServicoNotFoundError);
+  it('cancelar aceita motivo explicito, rejeita OS nao cancelavel antes da saga e falha para OS inexistente', async () => {
+    orquestrador.processar.mockClear();
+    await new CancelarOrdemDeServicoUseCase(gatewayCom(osComItens()), orquestrador).execute({ id: 'os-1', motivo: MotivoCancelamento.TIMEOUT_APROVACAO });
+    expect(orquestrador.processar.mock.calls[0][0].data.motivo).toBe(MotivoCancelamento.TIMEOUT_APROVACAO);
+    await expect(new CancelarOrdemDeServicoUseCase(gatewayCom(osComItens(StatusOS.FINALIZADA)), orquestrador).execute({ id: 'os-1' })).rejects.toThrow();
+    await expect(new CancelarOrdemDeServicoUseCase(gatewayCom(null), orquestrador).execute({ id: 'x' })).rejects.toThrow(OrdemDeServicoNotFoundError);
   });
   it('entregar exige FINALIZADA', async () => {
     const events = new FakeDomainEventPublisher();

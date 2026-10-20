@@ -18,11 +18,20 @@ import {
 } from './application/use-cases/transicoes';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 import { criarEnvelope, OutboxPoller, SqsConsumer } from '@guilhermeqmaia/oficina-kit/messaging';
+import { SagaTimeoutsService } from './saga/application/saga-timeouts.service';
+import { PassoSaga, StatusSaga } from './saga/domain/saga-os.entity';
 import {
+  BillingOrcamentoAprovadoHandler,
+  BillingOrcamentoCanceladoHandler,
   BillingOrcamentoGeradoHandler,
+  BillingOrcamentoRejeitadoHandler,
+  BillingPagamentoAprovadoHandler,
   ExecucaoDiagnosticoConcluidoHandler,
   ExecucaoEnfileiradaHandler,
+  ExecucaoFinalizadaHandler,
+  ExecucaoIniciadaHandler,
   ExecucaoRecusadaHandler,
+  ExecucaoReservasLiberadasHandler,
 } from './infrastructure/messaging';
 
 jest.setTimeout(120000);
@@ -250,7 +259,9 @@ describe('OrdemDeServico (e2e) — OS Service', () => {
   });
 
   describe('mensageria (US-F4-06 PR 2): outbox transacional + handlers da fila os-eventos', () => {
-    const outboxDe = (numero: string) => prisma.outbox.findMany({ where: { correlationId: numero }, orderBy: { criadaEm: 'asc' } });
+    const outboxDe = (numero: string) => prisma.outbox.findMany({ where: { correlationId: numero, type: { startsWith: 'os.' } }, orderBy: { criadaEm: 'asc' } });
+    const comandosDe = async (numero: string) =>
+      (await prisma.outbox.findMany({ where: { correlationId: numero, NOT: { type: { startsWith: 'os.' } } }, orderBy: { criadaEm: 'asc' } })).map((r) => r.type);
     const envelope = <T>(type: string, data: T) => criarEnvelope({ type, data, producer: 'execucao-service', correlationId: (data as any).numeroOS });
 
     it('poller e consumer existem mas ficam parados nos testes (MESSAGING_AUTOSTART=false)', () => {
@@ -321,6 +332,129 @@ describe('OrdemDeServico (e2e) — OS Service', () => {
 
     it('handler com OS inexistente lanca (mensagem volta para a fila -> DLQ)', async () => {
       await expect(moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: 'OS-NAO-EXISTE', posicaoFila: 1 }))).rejects.toThrow();
+    });
+  });
+
+  describe('saga orquestrada (US-F4-10): comandos via outbox, linha do tempo e compensacoes', () => {
+    const envelope = <T extends { numeroOS: string }>(type: string, data: T, producer: 'execucao-service' | 'billing-service' = 'execucao-service') =>
+      criarEnvelope({ type, data, producer, correlationId: data.numeroOS });
+    const comandosDe = async (numero: string) =>
+      (await prisma.outbox.findMany({ where: { correlationId: numero, NOT: { type: { startsWith: 'os.' } } }, orderBy: { criadaEm: 'asc' } })).map((r) => r.type);
+    const saga = async (numero: string) => {
+      const res = await http().get(`/ordens-servico/numero/${numero}/saga`).set('Authorization', `Bearer ${tokens.atendente}`);
+      expect(res.status).toBe(200);
+      return res.body;
+    };
+    const ITENS = [
+      { tipo: 'SERVICO', referenciaId: 'srv-1', nome: 'Troca de pastilha', quantidade: 1, precoUnitario: '200.00' },
+      { tipo: 'PRODUTO', referenciaId: 'prd-1', nome: 'Pastilha', quantidade: 2, precoUnitario: '50.00', servicoId: 'srv-1' },
+    ];
+    /** Caminho feliz ate AGUARDAR_PAGAMENTO so com os handlers (como os eventos SQS chegam). */
+    const ateAguardarPagamento = async (numero: string) => {
+      await moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: numero, posicaoFila: 1 }));
+      await moduleRef.get(ExecucaoDiagnosticoConcluidoHandler).handle(envelope('execucao.diagnostico-concluido', { numeroOS: numero, mecanicoId: mecanicoUserId, diagnostico: 'Pastilhas gastas', itens: ITENS }));
+      await moduleRef.get(BillingOrcamentoGeradoHandler).handle(envelope('billing.orcamento-gerado', { numeroOS: numero, orcamentoId: 'orc-1', total: '300.00', validoAte: new Date().toISOString() }, 'billing-service'));
+      await moduleRef.get(BillingOrcamentoAprovadoHandler).handle(envelope('billing.orcamento-aprovado', { numeroOS: numero, orcamentoId: 'orc-1', cobrancaId: 'cob-1', linkPagamento: 'https://mp.test/pay' }, 'billing-service'));
+    };
+
+    it('abrir a OS inicia a saga: passo ENFILEIRAR_EXECUCAO e comando execucao.enfileirar no outbox', async () => {
+      const os = await createOs();
+      expect(await comandosDe(os.numero)).toEqual(['execucao.enfileirar']);
+      const cmd = await prisma.outbox.findFirst({ where: { correlationId: os.numero, type: 'execucao.enfileirar' } });
+      expect((cmd!.envelope as any).data).toEqual({ numeroOS: os.numero, veiculoId, descricaoProblema: 'Cliente relata barulho ao frenar' });
+      const s = await saga(os.numero);
+      expect(s).toMatchObject({ passo: PassoSaga.ENFILEIRAR_EXECUCAO, status: StatusSaga.EM_ANDAMENTO, compensacoes: [] });
+      expect(s.historico[0]).toMatchObject({ evento: 'os.aberta', resultado: 'avancou' });
+    });
+
+    it('caminho feliz: cada evento avanca um passo, muda a OS e envia o comando seguinte', async () => {
+      const os = await createOs();
+      await ateAguardarPagamento(os.numero);
+      let s = await saga(os.numero);
+      expect(s.passo).toBe(PassoSaga.AGUARDAR_PAGAMENTO);
+      expect(s.prazoPagamento).toBeTruthy();
+      expect((await http().get(`/ordens-servico/numero/${os.numero}/status`)).body).toMatchObject({ status: StatusOS.AGUARDANDO_PAGAMENTO, valorTotal: 300 });
+      expect(await comandosDe(os.numero)).toEqual(['execucao.enfileirar', 'billing.gerar-orcamento']);
+      const gerar = await prisma.outbox.findFirst({ where: { correlationId: os.numero, type: 'billing.gerar-orcamento' } });
+      expect((gerar!.envelope as any)).toMatchObject({ producer: 'os-service', data: { numeroOS: os.numero, clienteId, itens: ITENS } });
+      expect((gerar!.envelope as any).causationId).toBeDefined();
+
+      await moduleRef.get(BillingPagamentoAprovadoHandler).handle(envelope('billing.pagamento-aprovado', { numeroOS: os.numero, cobrancaId: 'cob-1', pagamentoExternoId: 'mp-1', valor: '300.00' }, 'billing-service'));
+      expect(await comandosDe(os.numero)).toEqual(['execucao.enfileirar', 'billing.gerar-orcamento', 'execucao.iniciar']);
+      await moduleRef.get(ExecucaoIniciadaHandler).handle(envelope('execucao.iniciada', { numeroOS: os.numero }));
+      await moduleRef.get(ExecucaoFinalizadaHandler).handle(envelope('execucao.finalizada', { numeroOS: os.numero, finalizadaEm: new Date().toISOString() }));
+      s = await saga(os.numero);
+      expect(s).toMatchObject({ passo: PassoSaga.CONCLUIDA, status: StatusSaga.CONCLUIDA });
+      expect(s.historico.map((h: any) => h.resultado)).toEqual(['avancou', 'avancou', 'avancou', 'avancou', 'avancou', 'avancou', 'avancou', 'concluida']);
+      expect((await http().get(`/ordens-servico/numero/${os.numero}/status`)).body.status).toBe(StatusOS.FINALIZADA);
+    });
+
+    it('evento duplicado/fora de ordem e ignorado pela saga sem tocar a OS (e fica no historico)', async () => {
+      const os = await createOs();
+      await moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: os.numero, posicaoFila: 1 }));
+      await moduleRef.get(ExecucaoIniciadaHandler).handle(envelope('execucao.iniciada', { numeroOS: os.numero }));
+      await moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: os.numero, posicaoFila: 1 }));
+      const s = await saga(os.numero);
+      expect(s.passo).toBe(PassoSaga.AGUARDAR_DIAGNOSTICO);
+      expect(s.historico.slice(-2).map((h: any) => h.resultado)).toEqual(['ignorado', 'ignorado']);
+      expect((await http().get(`/ordens-servico/numero/${os.numero}/status`)).body.status).toBe(StatusOS.EM_DIAGNOSTICO);
+    });
+
+    it('orcamento rejeitado: COMPENSANDO com execucao.liberar-reservas; confirmacao fecha em CANCELADA', async () => {
+      const os = await createOs();
+      await moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: os.numero, posicaoFila: 1 }));
+      await moduleRef.get(ExecucaoDiagnosticoConcluidoHandler).handle(envelope('execucao.diagnostico-concluido', { numeroOS: os.numero, mecanicoId: mecanicoUserId, diagnostico: 'Pastilhas gastas', itens: ITENS }));
+      await moduleRef.get(BillingOrcamentoGeradoHandler).handle(envelope('billing.orcamento-gerado', { numeroOS: os.numero, orcamentoId: 'orc-1', total: '300.00', validoAte: '' }, 'billing-service'));
+      await moduleRef.get(BillingOrcamentoRejeitadoHandler).handle(envelope('billing.orcamento-rejeitado', { numeroOS: os.numero, orcamentoId: 'orc-1' }, 'billing-service'));
+      let s = await saga(os.numero);
+      expect(s.status).toBe(StatusSaga.COMPENSANDO);
+      expect(s.compensacoes).toEqual([expect.objectContaining({ comando: 'execucao.liberar-reservas' })]);
+      expect((await comandosDe(os.numero)).slice(-1)).toEqual(['execucao.liberar-reservas']);
+      expect((await http().get(`/ordens-servico/numero/${os.numero}/status`)).body).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.ORCAMENTO_REJEITADO });
+      await moduleRef.get(ExecucaoReservasLiberadasHandler).handle(envelope('execucao.reservas-liberadas', { numeroOS: os.numero }));
+      s = await saga(os.numero);
+      expect(s.status).toBe(StatusSaga.CANCELADA);
+      expect(s.compensacoes[0].confirmadaEm).toBeTruthy();
+    });
+
+    it('cancelamento manual em AGUARDAR_PAGAMENTO compensa no Billing e na Execucao (ordem inversa)', async () => {
+      const os = await createOs();
+      await ateAguardarPagamento(os.numero);
+      const res = await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.atendente}`).send({});
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.OPERADOR });
+      expect((await comandosDe(os.numero)).slice(-2)).toEqual(['billing.cancelar-orcamento', 'execucao.liberar-reservas']);
+      let s = await saga(os.numero);
+      expect(s.status).toBe(StatusSaga.COMPENSANDO);
+      await moduleRef.get(BillingOrcamentoCanceladoHandler).handle(envelope('billing.orcamento-cancelado', { numeroOS: os.numero, orcamentoId: 'orc-1', estornado: false }, 'billing-service'));
+      await moduleRef.get(ExecucaoReservasLiberadasHandler).handle(envelope('execucao.reservas-liberadas', { numeroOS: os.numero }));
+      s = await saga(os.numero);
+      expect(s.status).toBe(StatusSaga.CANCELADA);
+      expect(s.compensacoes.every((c: any) => c.confirmadaEm)).toBe(true);
+    });
+
+    it('timeout de aprovacao: o relogio da saga compensa com TIMEOUT_APROVACAO', async () => {
+      process.env.SAGA_TIMEOUT_APROVACAO_MS = '1';
+      try {
+        const os = await createOs();
+        await moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: os.numero, posicaoFila: 1 }));
+        await moduleRef.get(ExecucaoDiagnosticoConcluidoHandler).handle(envelope('execucao.diagnostico-concluido', { numeroOS: os.numero, mecanicoId: mecanicoUserId, diagnostico: 'Pastilhas gastas', itens: ITENS }));
+        await moduleRef.get(BillingOrcamentoGeradoHandler).handle(envelope('billing.orcamento-gerado', { numeroOS: os.numero, orcamentoId: 'orc-1', total: '300.00', validoAte: '' }, 'billing-service'));
+        const vencidas = await moduleRef.get(SagaTimeoutsService).varrer(new Date(Date.now() + 1000));
+        expect(vencidas).toBeGreaterThanOrEqual(1);
+        expect((await http().get(`/ordens-servico/numero/${os.numero}/status`)).body).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.TIMEOUT_APROVACAO });
+        const s = await saga(os.numero);
+        expect(s.status).toBe(StatusSaga.COMPENSANDO);
+        expect(s.compensacoes.map((c: any) => c.comando)).toEqual(['billing.cancelar-orcamento', 'execucao.liberar-reservas']);
+      } finally {
+        delete process.env.SAGA_TIMEOUT_APROVACAO_MS;
+      }
+    });
+
+    it('GET numero/:numero/saga: 404 sem saga; CLIENTE nao acessa', async () => {
+      expect((await http().get('/ordens-servico/numero/OS-NAO-EXISTE/saga').set('Authorization', `Bearer ${tokens.admin}`)).status).toBe(404);
+      const os = await createOs();
+      expect((await http().get(`/ordens-servico/numero/${os.numero}/saga`).set('Authorization', `Bearer ${tokens.cliente}`)).status).toBe(403);
     });
   });
 });

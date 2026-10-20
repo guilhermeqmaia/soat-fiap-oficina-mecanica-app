@@ -212,3 +212,29 @@ model ProcessedMessage {
   @@index([processadaEm])
   @@map("processed_messages")
 }
+
+// ─── Saga orquestrada da OS (RFC-0005 / US-F4-10) ───
+
+/// Estado persistido da saga de cada OS: passo atual, historico de passos/eventos,
+/// compensacoes enviadas/confirmadas e prazos (timeouts). Consultavel em
+/// GET /ordens-servico/:numero/saga.
+model SagaOS {
+  id                String    @id @default(uuid())
+  numero            String    @unique
+  clienteId         String    @map("cliente_id")
+  veiculoId         String    @map("veiculo_id")
+  descricaoProblema String    @map("descricao_problema")
+  passo             String
+  status            String
+  historico         Json      @default("[]")
+  compensacoes      Json      @default("[]")
+  prazoAprovacao    DateTime? @map("prazo_aprovacao")
+  prazoPagamento    DateTime? @map("prazo_pagamento")
+  version           Int       @default(0)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, prazoAprovacao])
+  @@index([status, prazoPagamento])
+  @@map("saga_os")
+}
