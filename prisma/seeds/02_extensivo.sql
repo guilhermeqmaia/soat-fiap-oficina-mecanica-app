@@ -1,4 +1,4 @@
--- Seed extensivo: muitos clientes, veiculos, servicos, produtos e OSs em todos os status
+-- Seed extensivo: muitos clientes, veiculos e OSs em todos os status
 -- Senha de todos usuarios CLIENTE adicionados aqui: "cliente123" (hash bcrypt reaproveitado)
 
 -- ========== ALINHA email do cliente Joao com user CLIENTE seed ==========
@@ -64,46 +64,6 @@ VALUES
   -- Auto Pecas Brasil (cliente seed existente, frota)
   ('d1111111-1111-4111-8111-000000000025', 'MRE3N33', 'Volkswagen', 'Delivery',     2022, '33333333-3333-4333-8333-333333333333', true, NOW(), NOW())
 ON CONFLICT ("placa") DO NOTHING;
-
--- ========== SERVICOS ADICIONAIS (10 novos) ==========
-INSERT INTO "servico" ("id", "nome", "descricao", "preco_base", "tempo_estimado_horas", "ativo", "created_at", "updated_at")
-VALUES
-  ('5e777777-7777-4777-8777-000000000001', 'Troca de embreagem',         'Substituicao do kit completo de embreagem',          1200.00, 5.0,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000002', 'Troca de bateria',           'Substituicao da bateria automotiva',                  90.00, 0.25, true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000003', 'Recarga de ar-condicionado', 'Recarga de gas R134a e teste de pressao',            220.00, 1.0,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000004', 'Troca de correia dentada',   'Inclui tensor e polias',                             850.00, 4.0,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000005', 'Troca de amortecedores',     'Par dianteiro completo',                             550.00, 2.5,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000006', 'Higienizacao do ar-condicionado', 'Limpeza e desinfeccao do sistema',              180.00, 1.5,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000007', 'Polimento e cristalizacao',  'Polimento tecnico e protecao da pintura',            450.00, 3.0,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000008', 'Troca de velas',             'Inclui mao-de-obra (4 velas)',                       120.00, 0.5,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000009', 'Reparo de injecao eletronica', 'Diagnostico e reparo de bicos injetores',          350.00, 2.0,  true, NOW(), NOW()),
-  ('5e777777-7777-4777-8777-000000000010', 'Troca de pneus (4 unidades)','Mao-de-obra de troca + balanceamento',               160.00, 1.0,  true, NOW(), NOW())
-ON CONFLICT ("id") DO NOTHING;
-
--- ========== PRODUTOS ADICIONAIS (19 novos, varios estoques) ==========
-INSERT INTO "produto" ("id", "nome", "descricao", "preco_unitario", "quantidade_estoque", "quantidade_reservada", "estoque_minimo", "ativo", "created_at", "updated_at")
-VALUES
-  ('e0000001-1111-4111-8111-000000000001', 'Bateria 60Ah',           'Bateria automotiva 12V 60Ah',                380.00, 14, 0, 3,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000002', 'Bateria 70Ah',           'Bateria automotiva 12V 70Ah',                450.00, 8,  0, 3,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000003', 'Embreagem (kit completo)','Kit disco + plato + rolamento',            780.00, 6,  0, 2,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000004', 'Correia dentada',        'Correia dentada com tensor',                 280.00, 18, 0, 4,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000005', 'Amortecedor traseiro',   'Amortecedor traseiro universal',             290.00, 10, 0, 3,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000006', 'Disco de freio',         'Disco ventilado dianteiro',                  150.00, 22, 0, 5,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000007', 'Pneu 175/65 R14',        'Pneu radial uso urbano',                     280.00, 32, 0, 8,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000008', 'Pneu 195/65 R15',        'Pneu radial sedans',                         340.00, 28, 0, 8,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000009', 'Pneu 215/55 R17',        'Pneu radial SUV/medio porte',                490.00, 16, 0, 4,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000010', 'Lampada H4',             'Lampada farol H4 12V',                        25.00, 60, 0, 12, true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000011', 'Lampada H7',             'Lampada farol H7 12V',                        28.00, 55, 0, 12, true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000012', 'Fluido de freio DOT4',   'Frasco 500ml',                                32.00, 40, 0, 10, true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000013', 'Aditivo de radiador',    'Frasco 1L',                                   45.00, 35, 0, 8,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000014', 'Limpa para-brisa',       'Frasco 500ml',                                15.00, 50, 0, 10, true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000015', 'Palheta limpador 16"',   'Palheta universal 16 polegadas',              35.00, 24, 0, 6,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000016', 'Palheta limpador 18"',   'Palheta universal 18 polegadas',              38.00, 20, 0, 6,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000017', 'Filtro de combustivel',  'Filtro inline universal',                     40.00, 26, 0, 6,  true, NOW(), NOW()),
-  ('e0000001-1111-4111-8111-000000000018', 'Junta de cabecote',      'Junta de cabecote universal',                190.00, 7,  0, 2,  true, NOW(), NOW()),
-  -- abaixo do minimo: vai disparar alerta de estoque baixo
-  ('e0000001-1111-4111-8111-000000000019', 'Cabo de bateria',        'Cabo positivo/negativo 50cm',                 25.00, 2,  0, 5,  true, NOW(), NOW())
-ON CONFLICT ("id") DO NOTHING;
 
 -- ========== USUARIOS CLIENTE (5 adicionais, vinculados por email aos clientes acima) ==========
 -- Senha de todos: "cliente123" (mesmo hash do user cliente@oficina.com seed)
@@ -238,64 +198,64 @@ ON CONFLICT ("id") DO NOTHING;
 
 END $$;
 
--- ========== ITENS DE SERVICO (varios por OS, com precos de catalogo) ==========
-INSERT INTO "item_ordem_de_servico_servico" ("id", "ordem_de_servico_id", "servico_id", "quantidade", "preco_unitario", "created_at")
+-- ========== ITENS DE SERVICO (snapshot: nome e preco congelados no diagnostico — catalogo vive no Execucao Service) ==========
+INSERT INTO "item_ordem_de_servico_servico" ("id", "ordem_de_servico_id", "servico_id", "nome", "quantidade", "preco_unitario", "created_at")
 VALUES
   -- OS-0006 (EM_DIAGNOSTICO)
-  ('aaaaaaaa-1111-4111-8111-000000000001', '11111111-aaaa-4aaa-8aaa-000000000006', '5e333333-3333-4333-8333-333333333333', 1, 100.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000002', '11111111-aaaa-4aaa-8aaa-000000000006', '5e222222-2222-4222-8222-222222222222', 1,  80.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000001', '11111111-aaaa-4aaa-8aaa-000000000006', '5e333333-3333-4333-8333-333333333333', 'Balanceamento', 1, 100.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000002', '11111111-aaaa-4aaa-8aaa-000000000006', '5e222222-2222-4222-8222-222222222222', 'Alinhamento', 1,  80.00, NOW()),
 
   -- OS-0010 (AGUARDANDO_APROVACAO - Joao freios)
-  ('aaaaaaaa-1111-4111-8111-000000000010', '11111111-aaaa-4aaa-8aaa-000000000010', '5e555555-5555-4555-8555-555555555555', 1, 250.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000011', '11111111-aaaa-4aaa-8aaa-000000000010', '5e666666-6666-4666-8666-666666666666', 1, 180.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000010', '11111111-aaaa-4aaa-8aaa-000000000010', '5e555555-5555-4555-8555-555555555555', 'Troca de pastilha de freio', 1, 250.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000011', '11111111-aaaa-4aaa-8aaa-000000000010', '5e666666-6666-4666-8666-666666666666', 'Diagnostico eletronico', 1, 180.00, NOW()),
 
   -- OS-0011 (AGUARDANDO_APROVACAO - Lucas embreagem)
-  ('aaaaaaaa-1111-4111-8111-000000000020', '11111111-aaaa-4aaa-8aaa-000000000011', '5e777777-7777-4777-8777-000000000001', 1, 1200.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000021', '11111111-aaaa-4aaa-8aaa-000000000011', '5e444444-4444-4444-8444-444444444444', 1,  400.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000020', '11111111-aaaa-4aaa-8aaa-000000000011', '5e777777-7777-4777-8777-000000000001', 'Troca de embreagem', 1, 1200.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000021', '11111111-aaaa-4aaa-8aaa-000000000011', '5e444444-4444-4444-8444-444444444444', 'Revisao geral', 1,  400.00, NOW()),
 
   -- OS-0012 (AGUARDANDO_APROVACAO - Patricia revisao)
-  ('aaaaaaaa-1111-4111-8111-000000000030', '11111111-aaaa-4aaa-8aaa-000000000012', '5e111111-1111-4111-8111-111111111111', 1, 150.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000031', '11111111-aaaa-4aaa-8aaa-000000000012', '5e777777-7777-4777-8777-000000000008', 1, 120.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000032', '11111111-aaaa-4aaa-8aaa-000000000012', '5e444444-4444-4444-8444-444444444444', 1, 400.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000030', '11111111-aaaa-4aaa-8aaa-000000000012', '5e111111-1111-4111-8111-111111111111', 'Troca de oleo', 1, 150.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000031', '11111111-aaaa-4aaa-8aaa-000000000012', '5e777777-7777-4777-8777-000000000008', 'Troca de velas', 1, 120.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000032', '11111111-aaaa-4aaa-8aaa-000000000012', '5e444444-4444-4444-8444-444444444444', 'Revisao geral', 1, 400.00, NOW()),
 
   -- OS-0013 (AGUARDANDO_APROVACAO - Logistica injecao)
-  ('aaaaaaaa-1111-4111-8111-000000000040', '11111111-aaaa-4aaa-8aaa-000000000013', '5e777777-7777-4777-8777-000000000009', 1, 350.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000041', '11111111-aaaa-4aaa-8aaa-000000000013', '5e666666-6666-4666-8666-666666666666', 1, 180.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000040', '11111111-aaaa-4aaa-8aaa-000000000013', '5e777777-7777-4777-8777-000000000009', 'Reparo de injecao eletronica', 1, 350.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000041', '11111111-aaaa-4aaa-8aaa-000000000013', '5e666666-6666-4666-8666-666666666666', 'Diagnostico eletronico', 1, 180.00, NOW()),
 
   -- OS-0014 (EM_EXECUCAO - Maria troca de oleo)
-  ('aaaaaaaa-1111-4111-8111-000000000050', '11111111-aaaa-4aaa-8aaa-000000000014', '5e111111-1111-4111-8111-111111111111', 1, 150.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000050', '11111111-aaaa-4aaa-8aaa-000000000014', '5e111111-1111-4111-8111-111111111111', 'Troca de oleo', 1, 150.00, NOW()),
 
   -- OS-0015 (EM_EXECUCAO - Rafael preventiva)
-  ('aaaaaaaa-1111-4111-8111-000000000060', '11111111-aaaa-4aaa-8aaa-000000000015', '5e111111-1111-4111-8111-111111111111', 1, 150.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000061', '11111111-aaaa-4aaa-8aaa-000000000015', '5e777777-7777-4777-8777-000000000004', 1, 850.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000062', '11111111-aaaa-4aaa-8aaa-000000000015', '5e777777-7777-4777-8777-000000000008', 1, 120.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000060', '11111111-aaaa-4aaa-8aaa-000000000015', '5e111111-1111-4111-8111-111111111111', 'Troca de oleo', 1, 150.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000061', '11111111-aaaa-4aaa-8aaa-000000000015', '5e777777-7777-4777-8777-000000000004', 'Troca de correia dentada', 1, 850.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000062', '11111111-aaaa-4aaa-8aaa-000000000015', '5e777777-7777-4777-8777-000000000008', 'Troca de velas', 1, 120.00, NOW()),
 
   -- OS-0016 (EM_EXECUCAO - Sigma cabecote)
-  ('aaaaaaaa-1111-4111-8111-000000000070', '11111111-aaaa-4aaa-8aaa-000000000016', '5e444444-4444-4444-8444-444444444444', 1, 400.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000070', '11111111-aaaa-4aaa-8aaa-000000000016', '5e444444-4444-4444-8444-444444444444', 'Revisao geral', 1, 400.00, NOW()),
 
   -- OS-0017 (FINALIZADA - Carlos pastilhas)
-  ('aaaaaaaa-1111-4111-8111-000000000080', '11111111-aaaa-4aaa-8aaa-000000000017', '5e555555-5555-4555-8555-555555555555', 1, 250.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000080', '11111111-aaaa-4aaa-8aaa-000000000017', '5e555555-5555-4555-8555-555555555555', 'Troca de pastilha de freio', 1, 250.00, NOW()),
 
   -- OS-0018 (FINALIZADA - Bia ar-condicionado)
-  ('aaaaaaaa-1111-4111-8111-000000000090', '11111111-aaaa-4aaa-8aaa-000000000018', '5e777777-7777-4777-8777-000000000003', 1, 220.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000090', '11111111-aaaa-4aaa-8aaa-000000000018', '5e777777-7777-4777-8777-000000000003', 'Recarga de ar-condicionado', 1, 220.00, NOW()),
 
   -- OS-0019 (FINALIZADA - Logistica bateria)
-  ('aaaaaaaa-1111-4111-8111-000000000100', '11111111-aaaa-4aaa-8aaa-000000000019', '5e777777-7777-4777-8777-000000000002', 1,  90.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000100', '11111111-aaaa-4aaa-8aaa-000000000019', '5e777777-7777-4777-8777-000000000002', 'Troca de bateria', 1,  90.00, NOW()),
 
   -- OS-0020 (ENTREGUE - Marcos alinhamento)
-  ('aaaaaaaa-1111-4111-8111-000000000110', '11111111-aaaa-4aaa-8aaa-000000000020', '5e222222-2222-4222-8222-222222222222', 1,  80.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000111', '11111111-aaaa-4aaa-8aaa-000000000020', '5e333333-3333-4333-8333-333333333333', 1, 100.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000110', '11111111-aaaa-4aaa-8aaa-000000000020', '5e222222-2222-4222-8222-222222222222', 'Alinhamento', 1,  80.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000111', '11111111-aaaa-4aaa-8aaa-000000000020', '5e333333-3333-4333-8333-333333333333', 'Balanceamento', 1, 100.00, NOW()),
 
   -- OS-0021 (ENTREGUE - Rafael revisao 30k)
-  ('aaaaaaaa-1111-4111-8111-000000000120', '11111111-aaaa-4aaa-8aaa-000000000021', '5e444444-4444-4444-8444-444444444444', 1, 400.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000120', '11111111-aaaa-4aaa-8aaa-000000000021', '5e444444-4444-4444-8444-444444444444', 'Revisao geral', 1, 400.00, NOW()),
 
   -- OS-0022 (ENTREGUE - Juliana 4 pneus)
-  ('aaaaaaaa-1111-4111-8111-000000000130', '11111111-aaaa-4aaa-8aaa-000000000022', '5e777777-7777-4777-8777-000000000010', 1, 160.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000130', '11111111-aaaa-4aaa-8aaa-000000000022', '5e777777-7777-4777-8777-000000000010', 'Troca de pneus (4 unidades)', 1, 160.00, NOW()),
 
   -- OS-0023 (ENTREGUE - Pedro polimento)
-  ('aaaaaaaa-1111-4111-8111-000000000140', '11111111-aaaa-4aaa-8aaa-000000000023', '5e777777-7777-4777-8777-000000000007', 1, 450.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000140', '11111111-aaaa-4aaa-8aaa-000000000023', '5e777777-7777-4777-8777-000000000007', 'Polimento e cristalizacao', 1, 450.00, NOW()),
 
   -- OS-0027 / 0028 (ENTREGUE historico Joao)
-  ('aaaaaaaa-1111-4111-8111-000000000170', '11111111-aaaa-4aaa-8aaa-000000000027', '5e111111-1111-4111-8111-111111111111', 1, 150.00, NOW()),
-  ('aaaaaaaa-1111-4111-8111-000000000180', '11111111-aaaa-4aaa-8aaa-000000000028', '5e777777-7777-4777-8777-000000000002', 1,  90.00, NOW())
+  ('aaaaaaaa-1111-4111-8111-000000000170', '11111111-aaaa-4aaa-8aaa-000000000027', '5e111111-1111-4111-8111-111111111111', 'Troca de oleo', 1, 150.00, NOW()),
+  ('aaaaaaaa-1111-4111-8111-000000000180', '11111111-aaaa-4aaa-8aaa-000000000028', '5e777777-7777-4777-8777-000000000002', 'Troca de bateria', 1,  90.00, NOW())
 ON CONFLICT ("id") DO NOTHING;

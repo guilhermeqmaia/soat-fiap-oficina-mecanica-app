@@ -1,56 +1,21 @@
 import { OrdemDeServicoPresenter } from './ordem-de-servico.presenter';
-
-const item = {
-  servicoId: 's1',
-  quantidade: 1,
-  precoUnitario: 50,
-  statusExecucao: 'PENDENTE',
-  inicioExecucao: null,
-  fimExecucao: null,
-  horasTrabalhadas: null,
-  subtotalServico: () => 50,
-  produtos: [
-    { produtoId: 'p1', quantidade: 2, precoUnitario: 10, subtotal: () => 20 },
-  ],
-};
-
-function fakeOs() {
-  return {
-    id: 'os-1',
-    numero: 'OS-0001',
-    clienteId: 'cli-1',
-    veiculoId: 'vei-1',
-    usuarioId: 'mec-1',
-    descricaoInicial: 'desc',
-    diagnostico: 'diag',
-    status: 'EM_EXECUCAO',
-    createdAt: new Date('2026-01-01'),
-    updatedAt: new Date('2026-01-02'),
-    itensServico: [item],
-    valorTotalServicos: () => 50,
-    valorTotalProdutos: () => 20,
-  } as any;
-}
+import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
+import { StatusOS } from '../../domain/value-objects/status-os.vo';
+import { ItemServicoOS } from '../../domain/value-objects/item-servico-os.vo';
+import { ItemProdutoOS } from '../../domain/value-objects/item-produto-os.vo';
 
 describe('OrdemDeServicoPresenter', () => {
-  it('flattens an OS entity into the response shape', () => {
-    const res = OrdemDeServicoPresenter.toResponse(fakeOs());
-    expect(res.id).toBe('os-1');
-    expect(res.valorTotalServicos).toBe(50);
-    expect(res.valorTotalProdutos).toBe(20);
-    expect(res.itensServico[0].subtotal).toBe(50);
-    expect(res.itensServico[0].produtos[0].subtotal).toBe(20);
+  const os = OrdemDeServico.reconstitute({
+    id: 'id-1', numero: 'OS-2026-1', clienteId: 'c', veiculoId: 'v', mecanicoId: 'm', descricaoInicial: 'Barulho', diagnostico: 'd', status: StatusOS.AGUARDANDO_APROVACAO,
+    motivoCancelamento: null, createdAt: new Date(), updatedAt: new Date(), itensServico: [new ItemServicoOS('s1', 'Troca', 1, 200, [new ItemProdutoOS('p1', 'Pastilha', 2, 50)])],
   });
-
-  it('maps a paginated result', () => {
-    const res = OrdemDeServicoPresenter.toPaginatedResponse({
-      data: [fakeOs()],
-      total: 1,
-      page: 1,
-      limit: 10,
-    });
-    expect(res.total).toBe(1);
-    expect(res.data).toHaveLength(1);
-    expect(res.data[0].numero).toBe('OS-0001');
+  it('achata a entidade com snapshot (nome) e totais', () => {
+    const r = OrdemDeServicoPresenter.toResponse(os);
+    expect(r).toMatchObject({ id: 'id-1', mecanicoId: 'm', status: 'AGUARDANDO_APROVACAO', motivoCancelamento: null, valorTotalServicos: 200, valorTotalProdutos: 100, valorTotal: 300 });
+    expect(r.itensServico[0]).toMatchObject({ nome: 'Troca', subtotal: 200, produtos: [{ nome: 'Pastilha', subtotal: 100 }] });
+  });
+  it('pagina preservando metadados', () => {
+    const r = OrdemDeServicoPresenter.toPaginatedResponse({ data: [os], total: 1, page: 2, limit: 5 });
+    expect(r).toMatchObject({ total: 1, page: 2, limit: 5 }); expect(r.data).toHaveLength(1);
   });
 });

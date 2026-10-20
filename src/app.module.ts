@@ -15,8 +15,6 @@ import { PrismaHealthIndicator } from './health/prisma-health.indicator';
 import { SharedModule } from './shared/shared.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
-import { ServicoModule } from './servico/servico.module';
-import { ProdutoModule } from './produto/produto.module';
 import { ClienteModule } from './cliente/cliente.module';
 import { VeiculoModule } from './veiculo/veiculo.module';
 import { OrdemDeServicoModule } from './ordem-de-servico/ordem-de-servico.module';
@@ -59,8 +57,6 @@ import { ObservabilidadeModule } from './observabilidade/observabilidade.module'
     PrismaModule,
     AuthModule,
     UsuarioModule,
-    ServicoModule,
-    ProdutoModule,
     ClienteModule,
     VeiculoModule,
     OrdemDeServicoModule,

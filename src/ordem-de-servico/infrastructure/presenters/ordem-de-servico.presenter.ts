@@ -1,11 +1,7 @@
 import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
 import { PaginatedResult } from '../../application/gateways/ordem-de-servico.gateway';
 
-/**
- * Presenter da OrdemDeServico: traduz a ENTIDADE de dominio para o shape plano
- * de resposta HTTP. Concentra a formatacao que antes vivia inline (`toResponse`)
- * nos controllers, mantendo a camada de interface livre de logica de mapeamento.
- */
+/** Traduz a entidade para o shape plano de resposta HTTP. */
 export class OrdemDeServicoPresenter {
   static toResponse(os: OrdemDeServico) {
     return {
@@ -13,21 +9,20 @@ export class OrdemDeServicoPresenter {
       numero: os.numero,
       clienteId: os.clienteId,
       veiculoId: os.veiculoId,
-      usuarioId: os.usuarioId,
+      mecanicoId: os.mecanicoId,
       descricaoInicial: os.descricaoInicial,
       diagnostico: os.diagnostico,
       status: os.status,
+      motivoCancelamento: os.motivoCancelamento,
       itensServico: os.itensServico.map((i) => ({
         servicoId: i.servicoId,
+        nome: i.nome,
         quantidade: i.quantidade,
         precoUnitario: i.precoUnitario,
         subtotal: i.subtotalServico(),
-        statusExecucao: i.statusExecucao,
-        inicioExecucao: i.inicioExecucao,
-        fimExecucao: i.fimExecucao,
-        horasTrabalhadas: i.horasTrabalhadas,
         produtos: i.produtos.map((p) => ({
           produtoId: p.produtoId,
+          nome: p.nome,
           quantidade: p.quantidade,
           precoUnitario: p.precoUnitario,
           subtotal: p.subtotal(),
@@ -35,6 +30,7 @@ export class OrdemDeServicoPresenter {
       })),
       valorTotalServicos: os.valorTotalServicos(),
       valorTotalProdutos: os.valorTotalProdutos(),
+      valorTotal: os.valorTotal(),
       createdAt: os.createdAt,
       updatedAt: os.updatedAt,
     };

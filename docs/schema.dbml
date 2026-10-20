@@ -19,24 +19,11 @@ Enum StatusOrdemDeServico {
   RECEBIDA
   EM_DIAGNOSTICO
   AGUARDANDO_APROVACAO
+  AGUARDANDO_PAGAMENTO
   EM_EXECUCAO
   FINALIZADA
   ENTREGUE
   CANCELADA
-}
-
-Enum StatusExecucaoItem {
-  PENDENTE
-  EM_EXECUCAO
-  CONCLUIDO
-}
-
-Enum TipoMovimentacaoEstoque {
-  ENTRADA
-  SAIDA
-  RESERVA
-  ESTORNO_RESERVA
-  BAIXA
 }
 
 Enum TipoNotificacao {
@@ -88,47 +75,6 @@ Table veiculo {
   updated_at timestamp
 }
 
-Table servico {
-  id uuid [pk, default: `uuid_generate_v4()`]
-  nome varchar [not null]
-  descricao text
-  preco_base decimal [not null, note: 'Positive value']
-  tempo_estimado_horas float [not null, note: 'Estimated time in hours']
-  ativo boolean [default: true]
-  created_at timestamp [default: `now()`]
-  updated_at timestamp
-}
-
-Table produto {
-  id uuid [pk, default: `uuid_generate_v4()`]
-  nome varchar [not null]
-  descricao text
-  preco_unitario decimal [not null, note: 'Positive value']
-  quantidade_estoque int [not null]
-  quantidade_reservada int [not null, default: 0]
-  estoque_minimo int [not null]
-  ativo boolean [default: true]
-  created_at timestamp [default: `now()`]
-  updated_at timestamp
-}
-
-Table movimentacao_estoque {
-  id uuid [pk, default: `uuid_generate_v4()`]
-  produto_id uuid [not null, ref: > produto.id]
-  tipo TipoMovimentacaoEstoque [not null]
-  quantidade int [not null]
-  estoque_resultante int [not null]
-  ordem_de_servico_id uuid [ref: > ordem_de_servico.id]
-  motivo varchar
-  usuario_id uuid
-  created_at timestamp [default: `now()`]
-
-  indexes {
-    (produto_id, created_at)
-    ordem_de_servico_id
-  }
-}
-
 Table ordem_de_servico {
   id uuid [pk, default: `uuid_generate_v4()`]
   numero varchar [unique, not null]
@@ -138,6 +84,7 @@ Table ordem_de_servico {
   descricao_inicial varchar [not null]
   diagnostico text
   status StatusOrdemDeServico [not null, default: 'RECEBIDA']
+  motivo_cancelamento varchar [note: 'Preenchido quando CANCELADA: compensacao da saga ou OPERADOR']
   created_at timestamp [default: `now()`]
   updated_at timestamp
 }
@@ -145,13 +92,10 @@ Table ordem_de_servico {
 Table item_ordem_de_servico_servico {
   id uuid [pk, default: `uuid_generate_v4()`]
   ordem_de_servico_id uuid [not null, ref: > ordem_de_servico.id]
-  servico_id uuid [not null, ref: > servico.id]
+  servico_id uuid [not null, note: 'Referencia logica ao catalogo do Execucao Service (sem FK)']
+  nome varchar [not null, note: 'Snapshot: nome congelado no diagnostico']
   quantidade int [not null]
-  preco_unitario decimal [not null, note: 'Price at the time of OS creation']
-  status_execucao StatusExecucaoItem [not null, default: 'PENDENTE']
-  inicio_execucao timestamp
-  fim_execucao timestamp
-  horas_trabalhadas float
+  preco_unitario decimal [not null, note: 'Snapshot: preco congelado no diagnostico']
   created_at timestamp [default: `now()`]
 
   indexes {
@@ -162,9 +106,10 @@ Table item_ordem_de_servico_servico {
 Table item_ordem_de_servico_produto {
   id uuid [pk, default: `uuid_generate_v4()`]
   item_ordem_de_servico_servico_id uuid [not null, ref: > item_ordem_de_servico_servico.id]
-  produto_id uuid [not null, ref: > produto.id]
+  produto_id uuid [not null, note: 'Referencia logica ao estoque do Execucao Service (sem FK)']
+  nome varchar [not null, note: 'Snapshot: nome congelado no diagnostico']
   quantidade int [not null]
-  preco_unitario decimal [not null, note: 'Price at the time of OS creation']
+  preco_unitario decimal [not null, note: 'Snapshot: preco congelado no diagnostico']
   created_at timestamp [default: `now()`]
 
   indexes {

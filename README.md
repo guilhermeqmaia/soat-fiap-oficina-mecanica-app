@@ -521,8 +521,7 @@ src/
 ├── cliente/                  # Bounded Context: Atendimento (Cliente)
 ├── veiculo/                  # Bounded Context: Atendimento (Veículo)
 ├── ordem-de-servico/         # Bounded Context: Atendimento (OrdemDeServico — aggregate root)
-├── servico/                  # Bounded Context: Catálogo (Serviço)
-├── produto/                  # Bounded Context: Estoque (Produto)
+│   └── application/use-cases/transicoes/  # Transições dirigidas por eventos (Execução/Billing)
 ├── notificacao/              # Bounded Context: Notificação (webhook outbound)
 ├── health/                   # Health/readiness checks
 └── test/                     # Helpers compartilhados de teste
@@ -534,6 +533,12 @@ perf/                         # Testes de carga, estresse e escalabilidade (HPA)
 
 Cada bounded context segue a estrutura DDD em camadas: **Domain → Application → Infrastructure**,
 com as dependências apontando para o domínio (Clean Architecture).
+
+> **Fase 4 (US-F4-06):** este repositório é o **OS Service**. Catálogo (`servico`) e Estoque
+> (`produto`) migraram para o Execução Service; orçamento, aprovação e pagamento para o Billing.
+> A OS guarda um *snapshot* dos itens (nome, quantidade, preço) recebido por evento e expõe só
+> abertura, consulta, entrega e cancelamento. Ver
+> [docs/user-stories/f4-06-os-service-strangler.md](docs/user-stories/f4-06-os-service-strangler.md).
 
 ---
 

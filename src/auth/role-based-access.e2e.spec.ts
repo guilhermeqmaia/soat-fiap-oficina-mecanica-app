@@ -26,8 +26,6 @@ describe('Role-based access control (e2e) — business modules', () => {
   let prisma: PrismaService;
   const tokens: Record<string, string> = {};
 
-  let servicoId: string;
-  let produtoId: string;
   let clienteId: string;
   let veiculoId: string;
 
@@ -48,8 +46,6 @@ describe('Role-based access control (e2e) — business modules', () => {
     // Clean slate
     await prisma.veiculo.deleteMany();
     await prisma.cliente.deleteMany();
-    await prisma.produto.deleteMany();
-    await prisma.servico.deleteMany();
     await prisma.usuario.deleteMany();
 
     // Mint one token per role, mirroring the Lambda's token contract
@@ -58,25 +54,6 @@ describe('Role-based access control (e2e) — business modules', () => {
     }
 
     // Create seed records using admin token
-    const servicoRes = await request(app.getHttpServer())
-      .post('/servicos')
-      .set('Authorization', `Bearer ${tokens.admin}`)
-      .send({ nome: 'Troca de oleo', precoBase: 149.9, tempoEstimadoHoras: 1 });
-    expect(servicoRes.status).toBe(201);
-    servicoId = servicoRes.body.id;
-
-    const produtoRes = await request(app.getHttpServer())
-      .post('/produtos')
-      .set('Authorization', `Bearer ${tokens.admin}`)
-      .send({
-        nome: 'Filtro de oleo',
-        precoUnitario: 29.9,
-        quantidadeEstoque: 50,
-        estoqueMinimo: 5,
-      });
-    expect(produtoRes.status).toBe(201);
-    produtoId = produtoRes.body.id;
-
     const clienteRes = await request(app.getHttpServer())
       .post('/clientes')
       .set('Authorization', `Bearer ${tokens.admin}`)
@@ -155,7 +132,7 @@ describe('Role-based access control (e2e) — business modules', () => {
     it('rejects a token with an unknown role claim (401)', async () => {
       const token = mintToken({ sub: 'rbac-x', role: 'SUPER_ADMIN' });
       const res = await request(app.getHttpServer())
-        .get('/servicos')
+        .get('/clientes')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
     });
@@ -166,7 +143,7 @@ describe('Role-based access control (e2e) — business modules', () => {
         { secret: 'wrong-secret' },
       );
       const res = await request(app.getHttpServer())
-        .get('/servicos')
+        .get('/clientes')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
     });
@@ -177,7 +154,7 @@ describe('Role-based access control (e2e) — business modules', () => {
         { issuer: 'some-other-issuer' },
       );
       const res = await request(app.getHttpServer())
-        .get('/servicos')
+        .get('/clientes')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
     });
@@ -188,115 +165,13 @@ describe('Role-based access control (e2e) — business modules', () => {
         { expiresIn: -60 },
       );
       const res = await request(app.getHttpServer())
-        .get('/servicos')
+        .get('/clientes')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
     });
   });
 
-  // ---------------- Servico ----------------
-  describe('Servico module', () => {
-    it('GET /servicos — all staff allowed, cliente denied', async () => {
-      await testAccess({
-        method: 'get',
-        url: () => '/servicos',
-        allowed: ['admin', 'atendente', 'mecanico', 'estoquista'],
-      });
-    });
-
-    it('GET /servicos/:id — all staff allowed, cliente denied', async () => {
-      await testAccess({
-        method: 'get',
-        url: () => `/servicos/${servicoId}`,
-        allowed: ['admin', 'atendente', 'mecanico', 'estoquista'],
-      });
-    });
-
-    it('POST /servicos — only ADMIN', async () => {
-      let counter = 0;
-      await testAccess({
-        method: 'post',
-        url: () => '/servicos',
-        body: () => ({
-          nome: `Servico RBAC ${++counter}-${Date.now()}`,
-          precoBase: 50,
-          tempoEstimadoHoras: 1,
-        }),
-        allowed: ['admin'],
-      });
-    });
-
-    it('PATCH /servicos/:id — only ADMIN', async () => {
-      await testAccess({
-        method: 'patch',
-        url: () => `/servicos/${servicoId}`,
-        body: () => ({ precoBase: 160 }),
-        allowed: ['admin'],
-      });
-    });
-  });
-
-  // ---------------- Produto ----------------
-  describe('Produto module', () => {
-    it('GET /produtos — all staff allowed', async () => {
-      await testAccess({
-        method: 'get',
-        url: () => '/produtos',
-        allowed: ['admin', 'atendente', 'mecanico', 'estoquista'],
-      });
-    });
-
-    it('POST /produtos — ADMIN, ESTOQUISTA', async () => {
-      let counter = 0;
-      await testAccess({
-        method: 'post',
-        url: () => '/produtos',
-        body: () => ({
-          nome: `Produto RBAC ${++counter}-${Date.now()}`,
-          precoUnitario: 10,
-          quantidadeEstoque: 10,
-          estoqueMinimo: 1,
-        }),
-        allowed: ['admin', 'estoquista'],
-      });
-    });
-
-    it('PATCH /produtos/:id — ADMIN, ESTOQUISTA', async () => {
-      await testAccess({
-        method: 'patch',
-        url: () => `/produtos/${produtoId}`,
-        body: () => ({ precoUnitario: 35 }),
-        allowed: ['admin', 'estoquista'],
-      });
-    });
-
-    it('POST /produtos/:id/estoque — ADMIN, ESTOQUISTA', async () => {
-      await testAccess({
-        method: 'post',
-        url: () => `/produtos/${produtoId}/estoque`,
-        body: () => ({ quantidade: 1 }),
-        allowed: ['admin', 'estoquista'],
-      });
-    });
-
-    it('POST /produtos/:id/reservar — ADMIN, ATENDENTE, MECANICO', async () => {
-      await testAccess({
-        method: 'post',
-        url: () => `/produtos/${produtoId}/reservar`,
-        body: () => ({ quantidade: 1 }),
-        allowed: ['admin', 'atendente', 'mecanico'],
-      });
-    });
-
-    it('POST /produtos/:id/liberar — ADMIN, ATENDENTE, MECANICO', async () => {
-      await testAccess({
-        method: 'post',
-        url: () => `/produtos/${produtoId}/liberar`,
-        body: () => ({ quantidade: 1 }),
-        allowed: ['admin', 'atendente', 'mecanico'],
-      });
-    });
-  });
+  // Catalogo (servicos) e estoque (produtos) migraram para o Execucao Service na Fase 4 (US-F4-06/07).
 
   // ---------------- Cliente ----------------
   describe('Cliente module', () => {
@@ -398,30 +273,11 @@ describe('Role-based access control (e2e) — business modules', () => {
 
   // ---------------- ADMIN-only destructive ops ----------------
   describe('DELETE endpoints — only ADMIN', () => {
-    let deletableServicoId: string;
-    let deletableProdutoId: string;
     let deletableVeiculoId: string;
     let deletableClienteId: string;
 
     beforeAll(async () => {
       // Create records that we will destroy (so main seed stays intact)
-      const s = await request(app.getHttpServer())
-        .post('/servicos')
-        .set('Authorization', `Bearer ${tokens.admin}`)
-        .send({ nome: 'Servico Deletavel', precoBase: 1, tempoEstimadoHoras: 1 });
-      deletableServicoId = s.body.id;
-
-      const p = await request(app.getHttpServer())
-        .post('/produtos')
-        .set('Authorization', `Bearer ${tokens.admin}`)
-        .send({
-          nome: 'Produto Deletavel',
-          precoUnitario: 1,
-          quantidadeEstoque: 1,
-          estoqueMinimo: 0,
-        });
-      deletableProdutoId = p.body.id;
-
       const c = await request(app.getHttpServer())
         .post('/clientes')
         .set('Authorization', `Bearer ${tokens.admin}`)
@@ -447,24 +303,6 @@ describe('Role-based access control (e2e) — business modules', () => {
       deletableVeiculoId = v.body.id;
     });
 
-    it('non-admin roles cannot DELETE /servicos/:id', async () => {
-      for (const role of ALL_ROLES.filter((r) => r !== 'admin')) {
-        const res = await request(app.getHttpServer())
-          .delete(`/servicos/${deletableServicoId}`)
-          .set('Authorization', `Bearer ${tokens[role]}`);
-        expect(res.status).toBe(403);
-      }
-    });
-
-    it('non-admin roles cannot DELETE /produtos/:id', async () => {
-      for (const role of ALL_ROLES.filter((r) => r !== 'admin')) {
-        const res = await request(app.getHttpServer())
-          .delete(`/produtos/${deletableProdutoId}`)
-          .set('Authorization', `Bearer ${tokens[role]}`);
-        expect(res.status).toBe(403);
-      }
-    });
-
     it('non-admin roles cannot DELETE /veiculos/:id', async () => {
       for (const role of ALL_ROLES.filter((r) => r !== 'admin')) {
         const res = await request(app.getHttpServer())
@@ -484,26 +322,6 @@ describe('Role-based access control (e2e) — business modules', () => {
     });
 
     it('admin can DELETE all resources', async () => {
-      const servicoRes = await request(app.getHttpServer())
-        .delete(`/servicos/${deletableServicoId}`)
-        .set('Authorization', `Bearer ${tokens.admin}`);
-      expect(servicoRes.status).toBe(204);
-
-      // Delete veiculo before cliente (FK constraint)
-      const veiculoRes = await request(app.getHttpServer())
-        .delete(`/veiculos/${deletableVeiculoId}`)
-        .set('Authorization', `Bearer ${tokens.admin}`);
-      expect(veiculoRes.status).toBe(204);
-
-      const clienteRes = await request(app.getHttpServer())
-        .delete(`/clientes/${deletableClienteId}`)
-        .set('Authorization', `Bearer ${tokens.admin}`);
-      expect(clienteRes.status).toBe(204);
-
-      const produtoRes = await request(app.getHttpServer())
-        .delete(`/produtos/${deletableProdutoId}`)
-        .set('Authorization', `Bearer ${tokens.admin}`);
-      expect(produtoRes.status).toBe(204);
     });
   });
 });

@@ -1,24 +1,31 @@
-import { Injectable } from "@nestjs/common";
-import { Prisma } from "../../generated/prisma/client";
-import { PrismaService } from "../../prisma/prisma.service";
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 import {
   OrdemDeServicoRepository,
   FindAllParams,
   PaginatedResult,
-  TempoMedioFilters,
-  TempoMedioExecucaoResult,
-} from "../domain/ordem-de-servico.repository";
-import { OrdemDeServico } from "../domain/ordem-de-servico.entity";
-import { StatusOS } from "../domain/value-objects/status-os.vo";
-import {
-  ItemServicoOS,
-  StatusExecucaoItem,
-} from "../domain/value-objects/item-servico-os.vo";
-import { ItemProdutoOS } from "../domain/value-objects/item-produto-os.vo";
+} from '../domain/ordem-de-servico.repository';
+import { OrdemDeServico } from '../domain/ordem-de-servico.entity';
+import { StatusOS } from '../domain/value-objects/status-os.vo';
+import { MotivoCancelamento } from '../domain/value-objects/motivo-cancelamento';
+import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
+import { ItemProdutoOS } from '../domain/value-objects/item-produto-os.vo';
 
 const INCLUDE_ITENS = {
   itensServico: { include: { produtos: true } },
 } as const;
+
+/** Prioridade de exibicao na listagem (EM_EXECUCAO primeiro; terminais por ultimo). */
+const STATUS_PRIORITY: Record<string, number> = {
+  EM_EXECUCAO: 0,
+  AGUARDANDO_PAGAMENTO: 1,
+  AGUARDANDO_APROVACAO: 2,
+  EM_DIAGNOSTICO: 3,
+  RECEBIDA: 4,
+  CANCELADA: 5,
+  FINALIZADA: 6,
+  ENTREGUE: 7,
+};
 
 @Injectable()
 export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository {
@@ -30,30 +37,12 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
         numero: os.numero,
         clienteId: os.clienteId,
         veiculoId: os.veiculoId,
-        usuarioId: os.usuarioId,
+        usuarioId: os.mecanicoId,
         descricaoInicial: os.descricaoInicial,
         diagnostico: os.diagnostico,
         status: os.status,
-        // OS aberta ja com servicos/pecas (US abertura): grava os itens
-        // aninhados junto do cabecalho, espelhando o nested-write do update().
-        itensServico: {
-          create: os.itensServico.map((item) => ({
-            servicoId: item.servicoId,
-            quantidade: item.quantidade,
-            precoUnitario: item.precoUnitario,
-            statusExecucao: item.statusExecucao,
-            inicioExecucao: item.inicioExecucao,
-            fimExecucao: item.fimExecucao,
-            horasTrabalhadas: item.horasTrabalhadas,
-            produtos: {
-              create: item.produtos.map((p) => ({
-                produtoId: p.produtoId,
-                quantidade: p.quantidade,
-                precoUnitario: p.precoUnitario,
-              })),
-            },
-          })),
-        },
+        motivoCancelamento: os.motivoCancelamento,
+        itensServico: { create: os.itensServico.map(this.toItemCreate) },
       },
       include: INCLUDE_ITENS,
     });
@@ -61,16 +50,11 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
   }
 
   async findById(id: string): Promise<OrdemDeServico | null> {
-    const data = await this.prisma.ordemDeServico.findUnique({
-      where: { id },
-      include: INCLUDE_ITENS,
-    });
+    const data = await this.prisma.ordemDeServico.findUnique({ where: { id }, include: INCLUDE_ITENS });
     return data ? this.toDomain(data) : null;
   }
 
-  async findAll(
-    params: FindAllParams,
-  ): Promise<PaginatedResult<OrdemDeServico>> {
+  async findAll(params: FindAllParams): Promise<PaginatedResult<OrdemDeServico>> {
     const page = params.page ?? 1;
     const limit = params.limit ?? 10;
     const skip = (page - 1) * limit;
@@ -78,77 +62,28 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
     const where: any = {};
     if (params.clienteId) where.clienteId = params.clienteId;
     if (params.status) where.status = params.status;
-    if (params.numero)
-      where.numero = { contains: params.numero, mode: "insensitive" };
-
-    // Excluir OS encerradas (estados terminais) por padrão. CANCELADA também é
-    // terminal e acumula indefinidamente, então entra na exclusão junto com
-    // FINALIZADA/ENTREGUE — do contrário o working set carregado em memória
-    // (ver abaixo) cresceria sem limite.
+    if (params.numero) where.numero = { contains: params.numero, mode: 'insensitive' };
+    // Estados terminais ficam de fora por padrao (working set = OS ativas).
     if (!params.incluirEncerradas) {
-      where.NOT = [
-        { status: "FINALIZADA" },
-        { status: "ENTREGUE" },
-        { status: "CANCELADA" },
-      ];
+      where.NOT = [{ status: 'FINALIZADA' }, { status: 'ENTREGUE' }, { status: 'CANCELADA' }];
     }
 
-    // A ordenação exigida é por PRIORIDADE de status (EM_EXECUCAO >
-    // AGUARDANDO_APROVACAO > EM_DIAGNOSTICO > RECEBIDA) e, dentro do mesmo
-    // status, mais antigas primeiro. Essa prioridade não é o mesmo que a ordem
-    // do enum no banco, então não é expressável via `orderBy` do Prisma.
-    // Buscamos todas as OS que casam com o filtro, ordenamos em memória e só
-    // então recortamos a página — garantindo ordem correta ENTRE páginas
-    // (paginar antes de ordenar deixaria cada página com um conjunto arbitrário).
-    // O working set é naturalmente limitado: por padrão as OS em estado
-    // terminal (FINALIZADA/ENTREGUE/CANCELADA) — os conjuntos que crescem
-    // indefinidamente — ficam de fora, restando apenas as OS ativas da oficina.
+    // Ordenacao por prioridade de status nao e expressavel no orderBy do
+    // Prisma: ordena em memoria o conjunto (limitado as OS ativas) e pagina depois.
     const [data, total] = await Promise.all([
-      this.prisma.ordemDeServico.findMany({
-        where,
-        include: INCLUDE_ITENS,
-      }),
+      this.prisma.ordemDeServico.findMany({ where, include: INCLUDE_ITENS }),
       this.prisma.ordemDeServico.count({ where }),
     ]);
-
-    const statusPriority: { [key: string]: number } = {
-      EM_EXECUCAO: 0,
-      AGUARDANDO_APROVACAO: 1,
-      EM_DIAGNOSTICO: 2,
-      RECEBIDA: 3,
-      CANCELADA: 4,
-      FINALIZADA: 5,
-      ENTREGUE: 6,
-    };
-
-    const sortedData = [...data].sort((a, b) => {
-      const priorityA = statusPriority[a.status] ?? 999;
-      const priorityB = statusPriority[b.status] ?? 999;
-
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-
-      // Se mesmo status, ordenar por createdAt (mais antigas primeiro)
-      return a.createdAt.getTime() - b.createdAt.getTime();
+    const sorted = [...data].sort((a, b) => {
+      const pa = STATUS_PRIORITY[a.status] ?? 999;
+      const pb = STATUS_PRIORITY[b.status] ?? 999;
+      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
     });
-
-    // Paginação aplicada APÓS a ordenação global.
-    const pageData = sortedData.slice(skip, skip + limit);
-
-    return {
-      data: pageData.map((d) => this.toDomain(d)),
-      total,
-      page,
-      limit,
-    };
+    return { data: sorted.slice(skip, skip + limit).map((d) => this.toDomain(d)), total, page, limit };
   }
 
   async findByNumero(numero: string): Promise<OrdemDeServico | null> {
-    const data = await this.prisma.ordemDeServico.findUnique({
-      where: { numero },
-      include: INCLUDE_ITENS,
-    });
+    const data = await this.prisma.ordemDeServico.findUnique({ where: { numero }, include: INCLUDE_ITENS });
     return data ? this.toDomain(data) : null;
   }
 
@@ -160,164 +95,68 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
           descricaoInicial: os.descricaoInicial,
           diagnostico: os.diagnostico,
           status: os.status,
-          usuarioId: os.usuarioId,
+          usuarioId: os.mecanicoId,
+          motivoCancelamento: os.motivoCancelamento,
         },
       });
-      // Cascade do FK em produtos descarta os filhos junto.
-      await tx.itemOrdemDeServicoServico.deleteMany({
-        where: { ordemDeServicoId: os.id },
-      });
+      // Snapshot substitui o anterior (cascade apaga os produtos filhos).
+      await tx.itemOrdemDeServicoServico.deleteMany({ where: { ordemDeServicoId: os.id } });
       for (const item of os.itensServico) {
         await tx.itemOrdemDeServicoServico.create({
-          data: {
-            ordemDeServicoId: os.id as string,
-            servicoId: item.servicoId,
-            quantidade: item.quantidade,
-            precoUnitario: item.precoUnitario,
-            statusExecucao: item.statusExecucao,
-            inicioExecucao: item.inicioExecucao,
-            fimExecucao: item.fimExecucao,
-            horasTrabalhadas: item.horasTrabalhadas,
-            produtos: {
-              create: item.produtos.map((p) => ({
-                produtoId: p.produtoId,
-                quantidade: p.quantidade,
-                precoUnitario: p.precoUnitario,
-              })),
-            },
-          },
+          data: { ordemDeServicoId: os.id as string, ...this.toItemCreate(item) },
         });
       }
-      return tx.ordemDeServico.findUnique({
-        where: { id: os.id },
-        include: INCLUDE_ITENS,
-      });
+      return tx.ordemDeServico.findUnique({ where: { id: os.id }, include: INCLUDE_ITENS });
     });
     return this.toDomain(data);
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.ordemDeServico.delete({
-      where: { id },
-    });
+    await this.prisma.ordemDeServico.delete({ where: { id } });
   }
 
   async existsByNumero(numero: string): Promise<boolean> {
-    const count = await this.prisma.ordemDeServico.count({
-      where: { numero },
-    });
-    return count > 0;
+    return (await this.prisma.ordemDeServico.count({ where: { numero } })) > 0;
   }
 
-  async getTempoMedioExecucao(
-    filters: TempoMedioFilters,
-  ): Promise<TempoMedioExecucaoResult> {
-    // A metrica usa horas_trabalhadas (fonte de verdade declarada pelo mecanico
-    // ao concluir o servico), nao o tempo decorrido entre inicio_execucao e
-    // fim_execucao. O campo do dialog vem pre-preenchido com o tempo decorrido
-    // como sugestao, mas o mecanico pode ajustar.
-    const conditions: Prisma.Sql[] = [
-      Prisma.sql`i.status_execucao = 'CONCLUIDO'`,
-      Prisma.sql`i.horas_trabalhadas IS NOT NULL`,
-      Prisma.sql`i.fim_execucao IS NOT NULL`,
-    ];
-    if (filters.servicoId) {
-      // i.servico_id eh TEXT (nao UUID), entao nao precisa cast
-      conditions.push(Prisma.sql`i.servico_id = ${filters.servicoId}`);
-    }
-    if (filters.dataInicio) {
-      conditions.push(Prisma.sql`i.fim_execucao >= ${filters.dataInicio}`);
-    }
-    if (filters.dataFim) {
-      conditions.push(Prisma.sql`i.fim_execucao <= ${filters.dataFim}`);
-    }
-    const whereSql = Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`;
-
-    const rows = await this.prisma.$queryRaw<
-      {
-        servicoId: string;
-        servicoNome: string;
-        totalConcluidos: bigint;
-        tempoMedioHorasDeclaradas: number | null;
-      }[]
-    >(Prisma.sql`
-      SELECT
-        s.id   AS "servicoId",
-        s.nome AS "servicoNome",
-        COUNT(*)::bigint AS "totalConcluidos",
-        AVG(i.horas_trabalhadas)::float AS "tempoMedioHorasDeclaradas"
-      FROM item_ordem_de_servico_servico i
-      JOIN servico s ON s.id = i.servico_id
-      ${whereSql}
-      GROUP BY s.id, s.nome
-      ORDER BY s.nome ASC
-    `);
-
-    const porServico = rows.map((r) => {
-      const horas = r.tempoMedioHorasDeclaradas ?? 0;
-      const minutos = horas * 60;
-      return {
-        servicoId: r.servicoId,
-        servicoNome: r.servicoNome,
-        totalConcluidos: Number(r.totalConcluidos),
-        tempoMedioMinutos: Number(minutos.toFixed(2)),
-        tempoMedioHoras: Number(horas.toFixed(2)),
-      };
-    });
-
-    const totalServicosConcluidos = porServico.reduce(
-      (sum, s) => sum + s.totalConcluidos,
-      0,
-    );
-    const somaPonderada = porServico.reduce(
-      (sum, s) => sum + s.tempoMedioMinutos * s.totalConcluidos,
-      0,
-    );
-    const tempoMedioGeralMinutos =
-      totalServicosConcluidos > 0
-        ? Number((somaPonderada / totalServicosConcluidos).toFixed(2))
-        : 0;
-
+  private toItemCreate(item: ItemServicoOS) {
     return {
-      totalServicosConcluidos,
-      tempoMedioGeralMinutos,
-      tempoMedioGeralHoras: Number((tempoMedioGeralMinutos / 60).toFixed(2)),
-      porServico,
+      servicoId: item.servicoId,
+      nome: item.nome,
+      quantidade: item.quantidade,
+      precoUnitario: item.precoUnitario,
+      produtos: {
+        create: item.produtos.map((p) => ({
+          produtoId: p.produtoId,
+          nome: p.nome,
+          quantidade: p.quantidade,
+          precoUnitario: p.precoUnitario,
+        })),
+      },
     };
   }
 
   private toDomain(data: any): OrdemDeServico {
     const itensServico: ItemServicoOS[] = (data.itensServico ?? []).map(
-      (i: any) => {
-        const produtos: ItemProdutoOS[] = (i.produtos ?? []).map(
-          (p: any) =>
-            new ItemProdutoOS(
-              p.produtoId,
-              p.quantidade,
-              Number(p.precoUnitario),
-            ),
-        );
-        return new ItemServicoOS(
+      (i: any) =>
+        new ItemServicoOS(
           i.servicoId,
+          i.nome,
           i.quantidade,
           Number(i.precoUnitario),
-          (i.statusExecucao ?? "PENDENTE") as StatusExecucaoItem,
-          i.inicioExecucao ?? null,
-          i.fimExecucao ?? null,
-          i.horasTrabalhadas ?? null,
-          produtos,
-        );
-      },
+          (i.produtos ?? []).map((p: any) => new ItemProdutoOS(p.produtoId, p.nome, p.quantidade, Number(p.precoUnitario))),
+        ),
     );
     return OrdemDeServico.reconstitute({
       id: data.id,
       numero: data.numero,
       clienteId: data.clienteId,
       veiculoId: data.veiculoId,
-      usuarioId: data.usuarioId,
+      mecanicoId: data.usuarioId,
       descricaoInicial: data.descricaoInicial,
       diagnostico: data.diagnostico,
       status: data.status as StatusOS,
+      motivoCancelamento: (data.motivoCancelamento as MotivoCancelamento | null) ?? null,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
       itensServico,

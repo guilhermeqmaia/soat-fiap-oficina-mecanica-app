@@ -1,9 +1,18 @@
 import { InvalidStatusError } from '../errors/invalid-status.error';
 
+/**
+ * Ciclo de vida da OS na Fase 4 (RFC-0005): as transicoes sao dirigidas pelos
+ * eventos dos outros servicos (Execucao, Billing) e pelo orquestrador da saga.
+ *
+ * RECEBIDA -> EM_DIAGNOSTICO -> AGUARDANDO_APROVACAO -> AGUARDANDO_PAGAMENTO
+ *   -> EM_EXECUCAO -> FINALIZADA -> ENTREGUE
+ * Qualquer status antes de EM_EXECUCAO pode ir para CANCELADA (compensacao).
+ */
 export enum StatusOS {
   RECEBIDA = 'RECEBIDA',
   EM_DIAGNOSTICO = 'EM_DIAGNOSTICO',
   AGUARDANDO_APROVACAO = 'AGUARDANDO_APROVACAO',
+  AGUARDANDO_PAGAMENTO = 'AGUARDANDO_PAGAMENTO',
   EM_EXECUCAO = 'EM_EXECUCAO',
   FINALIZADA = 'FINALIZADA',
   ENTREGUE = 'ENTREGUE',
@@ -14,9 +23,7 @@ export class StatusOSVO {
   readonly valor: StatusOS;
 
   constructor(status: StatusOS | string) {
-    const statusValue = Object.values(StatusOS).find(
-      (s) => s === status,
-    );
+    const statusValue = Object.values(StatusOS).find((s) => s === status);
     if (!statusValue) {
       throw new InvalidStatusError(status);
     }
