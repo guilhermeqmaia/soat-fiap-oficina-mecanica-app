@@ -90,7 +90,7 @@ Plano: [`docs/plano-execucao-fase-4.md`](../plano-execucao-fase-4.md) · Manifes
 | US-F4-01 | [Kit Compartilhado dos Servicos (`@guilhermeqmaia/oficina-kit`)](f4-01-kit-compartilhado.md) | Concluída |
 | US-F4-02 | [Mensageria — SNS + SQS FIFO com DLQ (Terraform)](f4-02-mensageria.md) | To Do |
 | US-F4-03 | [Bancos por Servico — Postgres (OS, Billing) e DynamoDB (Execucao)](f4-03-bancos-por-servico.md) | To Do |
-| US-F4-04 | [Repositorios dos Servicos com CI/CD Independente (Build, Testes, Sonar, Deploy EKS)](f4-04-repos-e-cicd-por-servico.md) | To Do |
+| US-F4-04 | [Repositorios dos Servicos com CI/CD Independente (Build, Testes, Sonar, Deploy EKS)](f4-04-repos-e-cicd-por-servico.md) | Em revisão |
 | US-F4-05 | [API Gateway Multi-servico e Webhook Publico do Mercado Pago](f4-05-gateway-multi-servico.md) | To Do |
 | US-F4-06 | [OS Service — Evolucao do Monolito (Strangler) e Publicacao de Eventos](f4-06-os-service-strangler.md) | To Do |
 | US-F4-07 | [Execucao Service — Fila de Execucao, Diagnostico, Catalogo e Estoque em DynamoDB](f4-07-execucao-service.md) | To Do |
