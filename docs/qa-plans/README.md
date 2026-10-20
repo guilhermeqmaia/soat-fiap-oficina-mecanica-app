@@ -4,6 +4,12 @@ Cobertura de QA Plan por User Story, conforme exigido pelo `CLAUDE.md` ("todo US
 
 Legenda: ✅ tem QA Plan · ⚠️ pendente (nao prioritario neste ciclo) · — fora do escopo de QA Plan (historia de documentacao/processo, sem criterio testavel via cenarios de QA)
 
+## Fase 4 — Microsservicos, Saga e Automacao
+
+| Story | Titulo | QA Plan |
+|---|---|---|
+| US-F4-01 | Kit Compartilhado dos Servicos | ✅ [QA_PLAN_US-F4-01](QA_PLAN_US-F4-01.md) |
+
 ## Fase 3 (`f3-*`) — cobertura completa das historias testaveis
 
 | # | Story | QA Plan |
