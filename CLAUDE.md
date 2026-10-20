@@ -134,7 +134,7 @@ Notion import manifest: `docs/user-stories/f3-notion-import.md`.
 | US-F3-12 | Delivery: video + PDF + soat-architecture | 2 | 6 | all |
 
 **Phase 3 repos:** `soat-fiap-oficina-auth-lambda` (1), `soat-fiap-oficina-infra-k8s` (2),
-`soat-fiap-oficina-infra-db` (3), `soat-fiap-oficina-mecanica-app` (4, this repo).
+`soat-fiap-oficina-infra-db` (3), `soat-fiap-oficina-os-service` (4, this repo — renamed from `soat-fiap-oficina-mecanica-app` in Fase 4 / US-F4-06; it is the OS Service and the docs hub).
 
 ### Fase 4 — Microservices, Saga & Full Automation (`f4-*`)
 

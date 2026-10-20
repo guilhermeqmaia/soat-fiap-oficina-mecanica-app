@@ -192,7 +192,7 @@ flowchart LR
         R1["soat-fiap-oficina-auth-lambda<br/>CI: testes + lint<br/>CD: package + deploy da function"]
         R2["soat-fiap-oficina-infra-k8s<br/>CI: terraform fmt/validate/plan<br/>CD: terraform apply"]
         R3["soat-fiap-oficina-infra-db<br/>CI: terraform fmt/validate/plan<br/>CD: terraform apply"]
-        R4["soat-fiap-oficina-mecanica-app<br/>CI: testes unit + integração (gate 80%) + build<br/>CD: build/push imagem + deploy no EKS"]
+        R4["soat-fiap-oficina-os-service<br/>CI: testes unit + integração (gate 80%) + build<br/>CD: build/push imagem + deploy no EKS"]
     end
 
     subgraph AWS["AWS"]

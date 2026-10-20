@@ -7,7 +7,7 @@
 **Status:** Concluída
 **DDD Domain:** Infraestrutura / Aplicacao
 **DDD Layer:** Infrastructure
-**Repositorio:** 4 — `soat-fiap-oficina-mecanica-app` (este repo)
+**Repositorio:** 4 — `soat-fiap-oficina-os-service` (este repo)
 
 ## Contexto
 

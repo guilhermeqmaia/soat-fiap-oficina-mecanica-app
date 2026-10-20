@@ -1,6 +1,6 @@
 # Documentação — Oficina Mecânica (Tech Challenge FIAP)
 
-Hub central da documentação do repositório `soat-fiap-oficina-mecanica-app`.
+Hub central da documentação do repositório `soat-fiap-oficina-os-service`.
 O [README principal](../README.md) é a porta de entrada com o essencial; os
 documentos abaixo detalham cada tema.
 

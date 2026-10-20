@@ -4,7 +4,7 @@
 Valida que o que e comum aos microsservicos e nao e dominio (auth resource server, logs com correlacao, metricas, health, mensageria SNS/SQS com envelope, outbox transacional, consumidor idempotente, fakes de teste) vive num pacote npm publicado, que o monolito o consome sem perder comportamento, e que o template de servico gera um microsservico pronto para CI/CD.
 
 ## Pre-requisitos
-- Repos: `soat-fiap-oficina-kit` (kit) e `soat-fiap-oficina-mecanica-app` (consumidor); Node 20, Docker (testcontainers/LocalStack)
+- Repos: `soat-fiap-oficina-kit` (kit) e `soat-fiap-oficina-os-service` (consumidor); Node 20, Docker (testcontainers/LocalStack)
 - Pacote publicado: `npm view @guilhermeqmaia/oficina-kit versions` lista `0.1.0` e `0.2.0`
 - Nao e necessario token npm para instalar (registry publico)
 

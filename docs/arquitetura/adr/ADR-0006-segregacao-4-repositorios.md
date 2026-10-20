@@ -19,7 +19,7 @@ no plano free do GitHub):
 | 1 | `soat-fiap-oficina-auth-lambda` | Function de auth por CPF | AWS Lambda |
 | 2 | `soat-fiap-oficina-infra-k8s` | Terraform: API Gateway + EKS | AWS |
 | 3 | `soat-fiap-oficina-infra-db` | Terraform: RDS PostgreSQL | AWS |
-| 4 | `soat-fiap-oficina-mecanica-app` | App NestJS + manifestos K8s + docs | EKS |
+| 4 | `soat-fiap-oficina-os-service` | App NestJS + manifestos K8s + docs | EKS |
 
 Regras (todos os repos):
 

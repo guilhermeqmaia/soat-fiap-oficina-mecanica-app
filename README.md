@@ -1,6 +1,6 @@
 # Oficina Mecânica — API
 
-[![CI/CD](https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/actions/workflows/ci-cd.yml) [![CD AWS](https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/actions/workflows/cd-aws.yml/badge.svg?branch=main)](https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/actions/workflows/cd-aws.yml) [![Perf nightly](https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/actions/workflows/perf-nightly.yml/badge.svg?branch=main)](https://github.com/guilhermeqmaia/soat-fiap-oficina-mecanica-app/actions/workflows/perf-nightly.yml)
+[![CI/CD](https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/actions/workflows/ci-cd.yml) [![CD AWS](https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/actions/workflows/cd-aws.yml/badge.svg?branch=main)](https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/actions/workflows/cd-aws.yml) [![Perf nightly](https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/actions/workflows/perf-nightly.yml/badge.svg?branch=main)](https://github.com/guilhermeqmaia/soat-fiap-oficina-os-service/actions/workflows/perf-nightly.yml)
 
 Back-end MVP para sistema integrado de oficina mecânica, focado em gestão de ordens de serviço, clientes, veículos e peças.
 

@@ -51,7 +51,7 @@ componente serverless, inalterada.
 
 | Serviço | Bounded contexts | Banco | Repositório |
 |---|---|---|---|
-| OS Service | Atendimento, Notificação, orquestração da saga | PostgreSQL `oficina_os` | `soat-fiap-oficina-mecanica-app` → `soat-fiap-oficina-os-service` |
+| OS Service | Atendimento, Notificação, orquestração da saga | PostgreSQL `oficina_os` | `soat-fiap-oficina-os-service` → `soat-fiap-oficina-os-service` |
 | Billing Service | Orçamento, Pagamento (novo) | PostgreSQL `oficina_billing` | `soat-fiap-oficina-billing-service` |
 | Execução Service | Execução (novo), Catálogo, Estoque | DynamoDB `oficina-execucao` | `soat-fiap-oficina-execucao-service` |
 

@@ -152,7 +152,7 @@ AWS, [Padrão Saga — Prescriptive Guidance](https://docs.aws.amazon.com/pt_br/
 | D8 | **Pagamento** | **Mercado Pago Checkout Pro** + webhook assinado; **pagamento acontece na aprovação do orçamento** (novo status `AGUARDANDO_PAGAMENTO`); ledger append-only | Cartões de teste do sandbox produzem aprovado/recusado de forma determinística — a demo de compensação fica reproduzível. *Uber: ordens imutáveis, idempotência por ID, retries longos.* (ADR-0012) |
 | D9 | **Borda** | **Mesmo API Gateway** da Fase 3, rotas por prefixo → 3 backends; **um NLB** com 3 listeners; Lambda de auth **inalterada** | O gateway é o contrato estável; os serviços internos podem mudar. *Uber DOMA.* (ADR-0013) |
 | D10 | **Bancos SQL** | Postgres `oficina_os` e `oficina_billing` com usuários exclusivos; **instância única RDS por padrão** (variável Terraform permite separar) | "Banco próprio" garantido por credenciais e grants (teste negativo documentado). Duas instâncias Multi-AZ dobrariam o custo por dia ligado. |
-| D11 | **Repositório do OS Service** | `soat-fiap-oficina-mecanica-app` **evolui para o OS Service** (strangler) e é **renomeado** para `soat-fiap-oficina-os-service`; continua sendo o hub de documentação | O monólito já é 70 % OS Service (CI/CD, EKS, observabilidade, auth prontos). GitHub redireciona a URL antiga (links do PDF da Fase 3 continuam válidos). |
+| D11 | **Repositório do OS Service** | `soat-fiap-oficina-os-service` **evolui para o OS Service** (strangler) e é **renomeado** para `soat-fiap-oficina-os-service`; continua sendo o hub de documentação | O monólito já é 70 % OS Service (CI/CD, EKS, observabilidade, auth prontos). GitHub redireciona a URL antiga (links do PDF da Fase 3 continuam válidos). |
 | D12 | **Ambiente local** | `docker-compose.fase4.yml` no hub: 3 serviços + LocalStack + 2 Postgres + DynamoDB Local + mock do Mercado Pago + Lambda local | Base dos testes BDD e da demo sem custo de nuvem. |
 
 ---
@@ -164,7 +164,7 @@ AWS, [Padrão Saga — Prescriptive Guidance](https://docs.aws.amazon.com/pt_br/
 | `soat-fiap-oficina-auth-lambda` (1) | Lambda auth + authorizer | **Inalterado** (mesmo JWT para os 3 serviços) |
 | `soat-fiap-oficina-infra-k8s` (2) | VPC, EKS, gateway, observabilidade | + stage **`messaging/`** (SNS/SQS/DLQ), **`dynamodb/`**, gateway multi-serviço, NLB com 3 listeners, ECR ×3, dashboards do fluxo distribuído |
 | `soat-fiap-oficina-infra-db` (3) | RDS + secret | + banco/usuário do **Billing**, secrets por serviço |
-| `soat-fiap-oficina-mecanica-app` (4) | monólito + docs | → **`soat-fiap-oficina-os-service`**: OS Service + orquestrador da saga + notificação + **hub de docs/BDD** |
+| `soat-fiap-oficina-os-service` (4) | monólito + docs | → **`soat-fiap-oficina-os-service`**: OS Service + orquestrador da saga + notificação + **hub de docs/BDD** |
 | [`soat-fiap-oficina-billing-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-billing-service) (5, criado 30/09) | — | Orçamento, aprovação, Mercado Pago, ledger — **Postgres** |
 | [`soat-fiap-oficina-execucao-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-execucao-service) (6, criado 30/09) | — | Fila de execução, diagnóstico, catálogo, estoque — **DynamoDB** |
 | [`soat-fiap-oficina-kit`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) (7, criado 30/09; **v0.2.1 publicada 20/10**) | — | `@guilhermeqmaia/oficina-kit` + template de serviço + schemas dos eventos |

@@ -33,7 +33,7 @@ Por repo:
 - [x] `soat-fiap-oficina-auth-lambda`: contrato de entrada/saida da funcao (CPF -> JWT), variaveis, como testar/deployar
 - [x] `soat-fiap-oficina-infra-k8s`: recursos EKS criados, variaveis, como aplicar/destruir, diagrama de rede
 - [x] `soat-fiap-oficina-infra-db`: recursos RDS criados, secrets, como aplicar/destruir, contrato de `DATABASE_URL`
-- [x] `soat-fiap-oficina-mecanica-app`: execucao local, deploy no EKS, link Swagger, dependencia dos outros repos
+- [x] `soat-fiap-oficina-os-service`: execucao local, deploy no EKS, link Swagger, dependencia dos outros repos
 
 ## Notas
 

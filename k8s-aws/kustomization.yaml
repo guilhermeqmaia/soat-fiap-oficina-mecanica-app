@@ -1,8 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Overlay de AWS (US-F3-06): mesma base da Fase 2, ajustada para EKS + RDS +
-# ECR + API Gateway.
+# Overlay de AWS (US-F3-06, ajustado na US-F4-06): mesma base da Fase 2 para
+# EKS + RDS + ECR + API Gateway multi-servico + SNS/SQS.
 #
 #   kubectl apply -k k8s/            -> kind/local (Fase 2)
 #   kubectl apply -k k8s-aws/ -> EKS (Fase 3)
@@ -20,9 +20,9 @@ resources:
   - pdb.yaml
 
 patches:
-  # API exposta por NLB INTERNO — o unico caminho publico e o API Gateway
-  # (VPC Link -> NLB), conforme ADR-0005.
-  - path: patch-service-nlb.yaml
+  # API atras do NLB interno UNICO do gateway (ADR-0005/ADR-0013): o Service
+  # vira NodePort 30080 — target group do OS Service no stage gateway/ (US-F4-06).
+  - path: patch-service-nodeport.yaml
   # URLs publicas (gateway) e origens de CORS.
   - path: patch-configmap.yaml
   # Rollout sem downtime + imagem sempre puxada do ECR.

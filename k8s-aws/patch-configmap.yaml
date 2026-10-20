@@ -34,3 +34,10 @@ data:
   DD_TRACE_ENABLED: "true"
   DD_SERVICE: "oficina-mecanica-app"
   DD_ENV: "producao"
+  # Mensageria (US-F4-06 / RFC-0006): topico que o OS Service PUBLICA e fila que
+  # CONSOME. Placeholders trocados pelo CD com as vars SNS_TOPIC_ARN / SQS_QUEUE_URL
+  # (propagadas do SSM do stage messaging/ pelo scripts/messaging-vars.sh do infra-k8s).
+  # Sem elas a app sobe sem broker (outbox acumula; consumer desligado).
+  SNS_TOPIC_ARN: "__SNS_TOPIC_ARN__"
+  SQS_QUEUE_URL: "__SQS_QUEUE_URL__"
+  AWS_REGION: "us-east-1"

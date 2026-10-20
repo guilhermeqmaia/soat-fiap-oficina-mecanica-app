@@ -7,7 +7,7 @@
 **Status:** Concluída
 **DDD Domain:** Todos (decisoes transversais)
 **DDD Layer:** Documentacao (`docs/arquitetura/rfcs/`)
-**Repositorio:** 4 — hub de documentacao (`soat-fiap-oficina-mecanica-app`)
+**Repositorio:** 4 — hub de documentacao (`soat-fiap-oficina-os-service`)
 
 ## Contexto
 
