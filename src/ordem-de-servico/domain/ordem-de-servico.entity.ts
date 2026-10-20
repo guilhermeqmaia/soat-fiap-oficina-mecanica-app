@@ -1,23 +1,14 @@
 import { StatusOS, StatusOSVO } from './value-objects/status-os.vo';
 import { ItemServicoOS } from './value-objects/item-servico-os.vo';
-import { ItemProdutoOS } from './value-objects/item-produto-os.vo';
+import { MotivoCancelamento } from './value-objects/motivo-cancelamento';
 import { InvalidDescriptionError } from './errors/invalid-description.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
 import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
-import { ServicoNotAddedError } from './errors/servico-not-added.error';
-import { ItemServicoInvalidStatusError } from './errors/item-servico-invalid-status.error';
-import { InvalidHorasTrabalhadasError } from './errors/invalid-horas-trabalhadas.error';
 
 export interface CreateOrdemDeServicoProps {
   clienteId: string;
   veiculoId: string;
   descricaoInicial: string;
-  /**
-   * Itens (servicos e pecas) opcionalmente declarados ja na abertura da OS.
-   * O atendente pode abrir a OS com servicos/pecas conhecidos; caso contrario,
-   * ficam para o diagnostico do mecanico.
-   */
-  itensServico?: ItemServicoOS[];
 }
 
 export interface ReconstituteOrdemDeServicoProps {
@@ -25,24 +16,47 @@ export interface ReconstituteOrdemDeServicoProps {
   numero: string;
   clienteId: string;
   veiculoId: string;
-  usuarioId: string | null;
+  mecanicoId: string | null;
   descricaoInicial: string;
   diagnostico: string | null;
   status: StatusOS;
+  motivoCancelamento: MotivoCancelamento | null;
   createdAt: Date;
   updatedAt: Date;
   itensServico?: ItemServicoOS[];
 }
 
+export interface DiagnosticoProps {
+  diagnostico: string;
+  mecanicoId: string;
+  itens: ItemServicoOS[];
+}
+
+/** Status a partir dos quais a OS ainda pode ser cancelada (compensacao da saga). */
+const CANCELAVEIS: ReadonlySet<StatusOS> = new Set([
+  StatusOS.RECEBIDA,
+  StatusOS.EM_DIAGNOSTICO,
+  StatusOS.AGUARDANDO_APROVACAO,
+  StatusOS.AGUARDANDO_PAGAMENTO,
+]);
+
+/**
+ * Agregado raiz do Atendimento (OS Service, Fase 4). Dona do ciclo de vida da
+ * OS; as transicoes sao disparadas pelos eventos dos demais servicos via o
+ * orquestrador da saga (RFC-0005) — por isso os metodos sao nomeados pelo FATO
+ * que registram, nao pela acao do usuario. Itens de servico/peca sao SNAPSHOT
+ * do diagnostico do Execucao Service (precos congelados, RFC-0004).
+ */
 export class OrdemDeServico {
   readonly id?: string;
   private _numero: string;
   private _clienteId: string;
   private _veiculoId: string;
-  private _usuarioId: string | null;
+  private _mecanicoId: string | null;
   private _descricaoInicial: string;
   private _diagnostico: string | null;
   private _status: StatusOSVO;
+  private _motivoCancelamento: MotivoCancelamento | null;
   private _itensServico: ItemServicoOS[];
   private _createdAt?: Date;
   private _updatedAt?: Date;
@@ -52,10 +66,11 @@ export class OrdemDeServico {
       numero: string;
       clienteId: string;
       veiculoId: string;
-      usuarioId: string | null;
+      mecanicoId: string | null;
       descricaoInicial: string;
       diagnostico: string | null;
       status: StatusOSVO;
+      motivoCancelamento: MotivoCancelamento | null;
       itensServico?: ItemServicoOS[];
       createdAt?: Date;
       updatedAt?: Date;
@@ -66,10 +81,11 @@ export class OrdemDeServico {
     this._numero = props.numero;
     this._clienteId = props.clienteId;
     this._veiculoId = props.veiculoId;
-    this._usuarioId = props.usuarioId;
+    this._mecanicoId = props.mecanicoId;
     this._descricaoInicial = props.descricaoInicial;
     this._diagnostico = props.diagnostico;
     this._status = props.status;
+    this._motivoCancelamento = props.motivoCancelamento;
     this._itensServico = props.itensServico ?? [];
     this._createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
@@ -77,32 +93,16 @@ export class OrdemDeServico {
 
   static create(props: CreateOrdemDeServicoProps): OrdemDeServico {
     OrdemDeServico.validateDescricaoInicial(props.descricaoInicial);
-
-    const itensServico = props.itensServico ?? [];
-    OrdemDeServico.validarServicosUnicos(itensServico);
-
-    const numero = this.gerarNumeroOS();
-
     return new OrdemDeServico({
-      numero,
+      numero: OrdemDeServico.gerarNumeroOS(),
       clienteId: props.clienteId,
       veiculoId: props.veiculoId,
-      usuarioId: null,
+      mecanicoId: null,
       descricaoInicial: props.descricaoInicial,
       diagnostico: null,
       status: StatusOSVO.create(StatusOS.RECEBIDA),
-      itensServico,
+      motivoCancelamento: null,
     });
-  }
-
-  private static validarServicosUnicos(itens: ItemServicoOS[]): void {
-    const vistos = new Set<string>();
-    for (const item of itens) {
-      if (vistos.has(item.servicoId)) {
-        throw new ServicoAlreadyAddedError(item.servicoId);
-      }
-      vistos.add(item.servicoId);
-    }
   }
 
   static reconstitute(props: ReconstituteOrdemDeServicoProps): OrdemDeServico {
@@ -111,10 +111,11 @@ export class OrdemDeServico {
         numero: props.numero,
         clienteId: props.clienteId,
         veiculoId: props.veiculoId,
-        usuarioId: props.usuarioId,
+        mecanicoId: props.mecanicoId,
         descricaoInicial: props.descricaoInicial,
         diagnostico: props.diagnostico,
         status: StatusOSVO.create(props.status),
+        motivoCancelamento: props.motivoCancelamento,
         itensServico: props.itensServico,
         createdAt: props.createdAt,
         updatedAt: props.updatedAt,
@@ -125,14 +126,10 @@ export class OrdemDeServico {
 
   private static validateDescricaoInicial(descricao: string): void {
     if (!descricao || descricao.trim().length < 5) {
-      throw new InvalidDescriptionError(
-        'Descricao inicial deve ter no minimo 5 caracteres',
-      );
+      throw new InvalidDescriptionError('Descricao inicial deve ter no minimo 5 caracteres');
     }
     if (descricao.length > 500) {
-      throw new InvalidDescriptionError(
-        'Descricao inicial nao pode exceder 500 caracteres',
-      );
+      throw new InvalidDescriptionError('Descricao inicial nao pode exceder 500 caracteres');
     }
   }
 
@@ -145,253 +142,124 @@ export class OrdemDeServico {
     return `OS-${ano}-${timestamp}-${random}`;
   }
 
-  atribuirMecanico(usuarioId: string): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.RECEBIDA))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        StatusOS.EM_DIAGNOSTICO,
-      );
+  // ─── transicoes (um metodo por fato do ciclo de vida) ──────────────────────
+
+  private exigirStatus(esperado: StatusOS, alvo: StatusOS | string): void {
+    if (!this._status.equals(StatusOSVO.create(esperado))) {
+      throw new InvalidStatusTransitionError(this._status.toString(), String(alvo));
     }
-    this._usuarioId = usuarioId;
+  }
+
+  /** `execucao.enfileirada`: a OS entrou na fila da oficina e esta em diagnostico. */
+  iniciarDiagnostico(): void {
+    this.exigirStatus(StatusOS.RECEBIDA, StatusOS.EM_DIAGNOSTICO);
     this._status = StatusOSVO.create(StatusOS.EM_DIAGNOSTICO);
   }
 
-  completarDiagnostico(diagnostico: string): void {
-    if (!diagnostico || diagnostico.trim().length < 5) {
-      throw new InvalidDescriptionError(
-        'Diagnostico deve ter no minimo 5 caracteres',
-      );
+  /** `execucao.diagnostico-concluido`: snapshot dos itens com precos congelados. */
+  registrarDiagnostico(props: DiagnosticoProps): void {
+    if (!props.diagnostico || props.diagnostico.trim().length < 5) {
+      throw new InvalidDescriptionError('Diagnostico deve ter no minimo 5 caracteres');
     }
-    if (diagnostico.length > 1000) {
-      throw new InvalidDescriptionError(
-        'Diagnostico nao pode exceder 1000 caracteres',
-      );
+    if (props.diagnostico.length > 1000) {
+      throw new InvalidDescriptionError('Diagnostico nao pode exceder 1000 caracteres');
     }
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        StatusOS.AGUARDANDO_APROVACAO,
-      );
+    this.exigirStatus(StatusOS.EM_DIAGNOSTICO, 'registrar diagnostico');
+    const vistos = new Set<string>();
+    for (const item of props.itens) {
+      if (vistos.has(item.servicoId)) throw new ServicoAlreadyAddedError(item.servicoId);
+      vistos.add(item.servicoId);
     }
-    this._diagnostico = diagnostico;
+    this._diagnostico = props.diagnostico;
+    this._mecanicoId = props.mecanicoId;
+    this._itensServico = [...props.itens];
+  }
+
+  /** `billing.orcamento-gerado`: o cliente precisa aprovar. */
+  aguardarAprovacao(): void {
+    this.exigirStatus(StatusOS.EM_DIAGNOSTICO, StatusOS.AGUARDANDO_APROVACAO);
     this._status = StatusOSVO.create(StatusOS.AGUARDANDO_APROVACAO);
   }
 
-  adicionarServico(item: ItemServicoOS): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        'adicionar servico',
-      );
-    }
-    if (this._itensServico.some((i) => i.servicoId === item.servicoId)) {
-      throw new ServicoAlreadyAddedError(item.servicoId);
-    }
-    this._itensServico = [...this._itensServico, item];
+  /** `billing.orcamento-aprovado`: cobranca criada, aguardando o pagamento (ADR-0012). */
+  aguardarPagamento(): void {
+    this.exigirStatus(StatusOS.AGUARDANDO_APROVACAO, StatusOS.AGUARDANDO_PAGAMENTO);
+    this._status = StatusOSVO.create(StatusOS.AGUARDANDO_PAGAMENTO);
   }
 
-  removerServico(servicoId: string): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        'remover servico',
-      );
-    }
-    if (!this._itensServico.some((i) => i.servicoId === servicoId)) {
-      throw new ServicoNotAddedError(servicoId);
-    }
-    this._itensServico = this._itensServico.filter(
-      (i) => i.servicoId !== servicoId,
-    );
-  }
-
-  adicionarProdutoAoServico(servicoId: string, item: ItemProdutoOS): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        'adicionar produto',
-      );
-    }
-    const idx = this._itensServico.findIndex((i) => i.servicoId === servicoId);
-    if (idx === -1) {
-      throw new ServicoNotAddedError(servicoId);
-    }
-    const updated = [...this._itensServico];
-    updated[idx] = updated[idx].adicionarProduto(item);
-    this._itensServico = updated;
-  }
-
-  removerProdutoDoServico(servicoId: string, produtoId: string): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_DIAGNOSTICO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        'remover produto',
-      );
-    }
-    const idx = this._itensServico.findIndex((i) => i.servicoId === servicoId);
-    if (idx === -1) {
-      throw new ServicoNotAddedError(servicoId);
-    }
-    const updated = [...this._itensServico];
-    updated[idx] = updated[idx].removerProduto(produtoId);
-    this._itensServico = updated;
-  }
-
-  aprovar(): void {
-    if (
-      !this._status.equals(StatusOSVO.create(StatusOS.AGUARDANDO_APROVACAO))
-    ) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        StatusOS.EM_EXECUCAO,
-      );
-    }
+  /** `execucao.iniciada`: pagamento confirmado e estoque baixado; oficina executando. */
+  iniciarExecucao(): void {
+    this.exigirStatus(StatusOS.AGUARDANDO_PAGAMENTO, StatusOS.EM_EXECUCAO);
     this._status = StatusOSVO.create(StatusOS.EM_EXECUCAO);
   }
 
-  rejeitar(): void {
-    if (
-      !this._status.equals(StatusOSVO.create(StatusOS.AGUARDANDO_APROVACAO))
-    ) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        StatusOS.CANCELADA,
-      );
-    }
-    this._status = StatusOSVO.create(StatusOS.CANCELADA);
-  }
-
-  iniciarServico(servicoId: string): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_EXECUCAO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        'iniciar servico',
-      );
-    }
-    const idx = this._itensServico.findIndex((i) => i.servicoId === servicoId);
-    if (idx === -1) {
-      throw new ServicoNotAddedError(servicoId);
-    }
-    const item = this._itensServico[idx];
-    if (item.statusExecucao !== 'PENDENTE') {
-      throw new ItemServicoInvalidStatusError(
-        servicoId,
-        item.statusExecucao,
-        'iniciar',
-      );
-    }
-    const updated = [...this._itensServico];
-    updated[idx] = item.iniciar();
-    this._itensServico = updated;
-  }
-
-  concluirServico(servicoId: string, horasTrabalhadas: number): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_EXECUCAO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        'concluir servico',
-      );
-    }
-    if (horasTrabalhadas <= 0) {
-      throw new InvalidHorasTrabalhadasError();
-    }
-    const idx = this._itensServico.findIndex((i) => i.servicoId === servicoId);
-    if (idx === -1) {
-      throw new ServicoNotAddedError(servicoId);
-    }
-    const item = this._itensServico[idx];
-    if (item.statusExecucao !== 'EM_EXECUCAO') {
-      throw new ItemServicoInvalidStatusError(
-        servicoId,
-        item.statusExecucao,
-        'concluir',
-      );
-    }
-    const updated = [...this._itensServico];
-    updated[idx] = item.concluir(horasTrabalhadas);
-    this._itensServico = updated;
-
-    const todosConcluidos = this._itensServico.every(
-      (i) => i.statusExecucao === 'CONCLUIDO',
-    );
-    if (todosConcluidos) {
-      this._status = StatusOSVO.create(StatusOS.FINALIZADA);
-    }
-  }
-
-  finalizarExecucao(): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.EM_EXECUCAO))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        StatusOS.FINALIZADA,
-      );
-    }
+  /** `execucao.finalizada`: veiculo pronto para retirada. */
+  finalizar(): void {
+    this.exigirStatus(StatusOS.EM_EXECUCAO, StatusOS.FINALIZADA);
     this._status = StatusOSVO.create(StatusOS.FINALIZADA);
   }
 
+  /** Acao do atendente: veiculo entregue, OS encerrada. */
   entregar(): void {
-    if (!this._status.equals(StatusOSVO.create(StatusOS.FINALIZADA))) {
-      throw new InvalidStatusTransitionError(
-        this._status.toString(),
-        StatusOS.ENTREGUE,
-      );
-    }
+    this.exigirStatus(StatusOS.FINALIZADA, StatusOS.ENTREGUE);
     this._status = StatusOSVO.create(StatusOS.ENTREGUE);
   }
+
+  /** Compensacao da saga ou cancelamento manual — so antes da execucao comecar. */
+  cancelar(motivo: MotivoCancelamento): void {
+    if (!CANCELAVEIS.has(this._status.valor)) {
+      throw new InvalidStatusTransitionError(this._status.toString(), StatusOS.CANCELADA);
+    }
+    this._status = StatusOSVO.create(StatusOS.CANCELADA);
+    this._motivoCancelamento = motivo;
+  }
+
+  podeSerCancelada(): boolean {
+    return CANCELAVEIS.has(this._status.valor);
+  }
+
+  // ─── leitura ────────────────────────────────────────────────────────────────
 
   get numero(): string {
     return this._numero;
   }
-
   get clienteId(): string {
     return this._clienteId;
   }
-
   get veiculoId(): string {
     return this._veiculoId;
   }
-
-  get usuarioId(): string | null {
-    return this._usuarioId;
+  /** Mecanico responsavel (id de usuario), conhecido a partir do diagnostico. */
+  get mecanicoId(): string | null {
+    return this._mecanicoId;
   }
-
   get descricaoInicial(): string {
     return this._descricaoInicial;
   }
-
   get diagnostico(): string | null {
     return this._diagnostico;
   }
-
   get status(): StatusOS {
     return this._status.valor;
   }
-
+  get motivoCancelamento(): MotivoCancelamento | null {
+    return this._motivoCancelamento;
+  }
   get itensServico(): ReadonlyArray<ItemServicoOS> {
     return this._itensServico;
   }
-
-  todosOsProdutos(): ReadonlyArray<{ servicoId: string; produto: ItemProdutoOS }> {
-    return this._itensServico.flatMap((s) =>
-      s.produtos.map((p) => ({ servicoId: s.servicoId, produto: p })),
-    );
-  }
-
   valorTotalServicos(): number {
     return this._itensServico.reduce((sum, i) => sum + i.subtotalServico(), 0);
   }
-
   valorTotalProdutos(): number {
-    return this._itensServico.reduce(
-      (sum, i) => sum + i.subtotalProdutos(),
-      0,
-    );
+    return this._itensServico.reduce((sum, i) => sum + i.subtotalProdutos(), 0);
   }
-
+  valorTotal(): number {
+    return this.valorTotalServicos() + this.valorTotalProdutos();
+  }
   get createdAt(): Date | undefined {
     return this._createdAt;
   }
-
   get updatedAt(): Date | undefined {
     return this._updatedAt;
   }

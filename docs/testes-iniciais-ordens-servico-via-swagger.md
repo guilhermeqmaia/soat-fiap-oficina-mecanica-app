@@ -1,5 +1,10 @@
 # Guia Completo: Teste de Ordem de Serviço (OS) no Swagger
 
+> **Nota (Fase 4 — US-F4-06):** este guia descreve o monolito das Fases 1–3. No OS Service as rotas de
+> catalogo/estoque, diagnostico, itens, aprovacao e execucao nao existem mais — vivem na Execucao e no Billing
+> e chegam aqui como eventos. Permanecem: abrir, listar, detalhar, status publico, entregar, cancelar e deletar.
+
+
 ## Fluxo da Ordem de Serviço
 
 ```

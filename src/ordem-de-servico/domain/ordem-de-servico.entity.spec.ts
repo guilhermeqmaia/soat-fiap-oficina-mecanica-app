@@ -1,829 +1,128 @@
 import { OrdemDeServico } from './ordem-de-servico.entity';
 import { StatusOS } from './value-objects/status-os.vo';
+import { MotivoCancelamento } from './value-objects/motivo-cancelamento';
 import { ItemServicoOS } from './value-objects/item-servico-os.vo';
 import { ItemProdutoOS } from './value-objects/item-produto-os.vo';
 import { InvalidDescriptionError } from './errors/invalid-description.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
 import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
-import { ServicoNotAddedError } from './errors/servico-not-added.error';
-import { ProdutoAlreadyAddedError } from './errors/produto-already-added.error';
-import { ProdutoNotAddedError } from './errors/produto-not-added.error';
-import { InvalidQuantityError } from './errors/invalid-quantity.error';
-import { ItemServicoInvalidStatusError } from './errors/item-servico-invalid-status.error';
 
-const reconstituteEmDiagnostico = () =>
-  OrdemDeServico.reconstitute({
-    id: 'os-123',
-    numero: 'OS-2026-00001',
-    clienteId: 'cliente-123',
-    veiculoId: 'veiculo-456',
-    usuarioId: 'usuario-789',
-    descricaoInicial: 'Cliente relata problemas no freio',
-    diagnostico: null,
-    status: StatusOS.EM_DIAGNOSTICO,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+const nova = () => OrdemDeServico.create({ clienteId: 'cli-1', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' });
+const itens = () => [
+  new ItemServicoOS('srv-1', 'Troca de pastilha', 1, 200, [new ItemProdutoOS('prd-1', 'Pastilha', 2, 50)]),
+  new ItemServicoOS('srv-2', 'Alinhamento', 1, 80),
+];
+const diagnostico = (os: OrdemDeServico) => os.registrarDiagnostico({ diagnostico: 'Pastilhas gastas', mecanicoId: 'mec-1', itens: itens() });
+/** Percorre o caminho feliz ate o status pedido. */
+const ate = (status: StatusOS): OrdemDeServico => {
+  const os = nova();
+  const passos: Array<[StatusOS, () => void]> = [
+    [StatusOS.EM_DIAGNOSTICO, () => os.iniciarDiagnostico()],
+    [StatusOS.AGUARDANDO_APROVACAO, () => { diagnostico(os); os.aguardarAprovacao(); }],
+    [StatusOS.AGUARDANDO_PAGAMENTO, () => os.aguardarPagamento()],
+    [StatusOS.EM_EXECUCAO, () => os.iniciarExecucao()],
+    [StatusOS.FINALIZADA, () => os.finalizar()],
+    [StatusOS.ENTREGUE, () => os.entregar()],
+  ];
+  for (const [s, fn] of passos) { if (os.status === status) break; fn(); }
+  return os;
+};
+
+describe('OrdemDeServico (OS Service, Fase 4)', () => {
+  describe('abertura', () => {
+    it('nasce RECEBIDA, sem itens, sem mecanico, com numero OS-<ano>-...', () => {
+      const os = nova();
+      expect(os.status).toBe(StatusOS.RECEBIDA);
+      expect(os.itensServico).toHaveLength(0);
+      expect(os.mecanicoId).toBeNull();
+      expect(os.motivoCancelamento).toBeNull();
+      expect(os.numero).toMatch(/^OS-\d{4}-\d{10}-\d{4}$/);
+      expect(os.valorTotal()).toBe(0);
+    });
+    it('valida a descricao inicial (5..500)', () => {
+      expect(() => OrdemDeServico.create({ clienteId: 'c', veiculoId: 'v', descricaoInicial: 'abc' })).toThrow(InvalidDescriptionError);
+      expect(() => OrdemDeServico.create({ clienteId: 'c', veiculoId: 'v', descricaoInicial: 'x'.repeat(501) })).toThrow(InvalidDescriptionError);
+    });
   });
 
-describe('OrdemDeServico Entity', () => {
-  describe('create', () => {
-    it('should create a new ordem de servico with RECEBIDA status', () => {
-      const props = {
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      };
-
-      const os = OrdemDeServico.create(props);
-
-      expect(os).toBeDefined();
-      expect(os.clienteId).toBe(props.clienteId);
-      expect(os.veiculoId).toBe(props.veiculoId);
-      expect(os.descricaoInicial).toBe(props.descricaoInicial);
-      expect(os.status).toBe(StatusOS.RECEBIDA);
-      expect(os.usuarioId).toBeNull();
-      expect(os.diagnostico).toBeNull();
-      expect(os.numero).toMatch(/^OS-\d{4}-\d{10}-\d{4}$/);
+  describe('caminho feliz dirigido por eventos', () => {
+    it('RECEBIDA -> EM_DIAGNOSTICO -> AGUARDANDO_APROVACAO -> AGUARDANDO_PAGAMENTO -> EM_EXECUCAO -> FINALIZADA -> ENTREGUE', () => {
+      const os = ate(StatusOS.ENTREGUE);
+      expect(os.status).toBe(StatusOS.ENTREGUE);
+      expect(os.mecanicoId).toBe('mec-1');
+      expect(os.diagnostico).toBe('Pastilhas gastas');
     });
-
-    it('should throw InvalidDescriptionError if descricaoInicial is too short', () => {
-      const props = {
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'abc',
-      };
-
-      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescriptionError);
+    it('diagnostico grava o snapshot: nomes, precos congelados e totais', () => {
+      const os = ate(StatusOS.AGUARDANDO_APROVACAO);
+      expect(os.itensServico.map((i) => i.nome)).toEqual(['Troca de pastilha', 'Alinhamento']);
+      expect(os.valorTotalServicos()).toBe(280);
+      expect(os.valorTotalProdutos()).toBe(100);
+      expect(os.valorTotal()).toBe(380);
+      expect(os.itensServico[0].produtos[0].nome).toBe('Pastilha');
     });
-
-    it('should throw InvalidDescriptionError if descricaoInicial exceeds max length', () => {
-      const props = {
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'a'.repeat(501),
-      };
-
-      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescriptionError);
+    it('reaplicar o diagnostico substitui o snapshot (idempotente)', () => {
+      const os = nova(); os.iniciarDiagnostico(); diagnostico(os); diagnostico(os);
+      expect(os.itensServico).toHaveLength(2);
     });
+  });
 
-    it('should throw InvalidDescriptionError if descricaoInicial is empty', () => {
-      const props = {
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: '',
-      };
+  describe('invariantes', () => {
+    it('diagnostico exige EM_DIAGNOSTICO, texto 5..1000 e servicos unicos', () => {
+      const os = nova();
+      expect(() => diagnostico(os)).toThrow(InvalidStatusTransitionError);
+      os.iniciarDiagnostico();
+      expect(() => os.registrarDiagnostico({ diagnostico: 'abc', mecanicoId: 'm', itens: [] })).toThrow(InvalidDescriptionError);
+      expect(() => os.registrarDiagnostico({ diagnostico: 'x'.repeat(1001), mecanicoId: 'm', itens: [] })).toThrow(InvalidDescriptionError);
+      const dup = [new ItemServicoOS('srv-1', 'A', 1, 10), new ItemServicoOS('srv-1', 'B', 1, 10)];
+      expect(() => os.registrarDiagnostico({ diagnostico: 'Pastilhas gastas', mecanicoId: 'm', itens: dup })).toThrow(ServicoAlreadyAddedError);
+    });
+    it.each([
+      ['iniciarDiagnostico', StatusOS.EM_DIAGNOSTICO],
+      ['aguardarAprovacao', StatusOS.AGUARDANDO_APROVACAO],
+      ['aguardarPagamento', StatusOS.AGUARDANDO_PAGAMENTO],
+      ['iniciarExecucao', StatusOS.EM_EXECUCAO],
+      ['finalizar', StatusOS.FINALIZADA],
+      ['entregar', StatusOS.ENTREGUE],
+    ] as const)('%s rejeita quando o status atual nao e o esperado', (metodo, alvo) => {
+      // uma OS ja no status alvo nao pode repetir a transicao
+      const os = ate(alvo);
+      expect(() => (os as any)[metodo]()).toThrow(InvalidStatusTransitionError);
+    });
+    it('nao pula etapas (RECEBIDA -> EM_EXECUCAO direto e invalido)', () => {
+      expect(() => nova().iniciarExecucao()).toThrow(InvalidStatusTransitionError);
+    });
+  });
 
-      expect(() => OrdemDeServico.create(props)).toThrow(InvalidDescriptionError);
+  describe('cancelamento (compensacao da saga)', () => {
+    it.each([StatusOS.RECEBIDA, StatusOS.EM_DIAGNOSTICO, StatusOS.AGUARDANDO_APROVACAO, StatusOS.AGUARDANDO_PAGAMENTO])(
+      'pode cancelar a partir de %s e guarda o motivo',
+      (status) => {
+        const os = ate(status);
+        expect(os.podeSerCancelada()).toBe(true);
+        os.cancelar(MotivoCancelamento.PAGAMENTO_RECUSADO);
+        expect(os.status).toBe(StatusOS.CANCELADA);
+        expect(os.motivoCancelamento).toBe(MotivoCancelamento.PAGAMENTO_RECUSADO);
+      },
+    );
+    it.each([StatusOS.EM_EXECUCAO, StatusOS.FINALIZADA, StatusOS.ENTREGUE])('nao cancela a partir de %s', (status) => {
+      const os = ate(status);
+      expect(os.podeSerCancelada()).toBe(false);
+      expect(() => os.cancelar(MotivoCancelamento.OPERADOR)).toThrow(InvalidStatusTransitionError);
+    });
+    it('OS cancelada nao avanca', () => {
+      const os = nova(); os.cancelar(MotivoCancelamento.OPERADOR);
+      expect(() => os.iniciarDiagnostico()).toThrow(InvalidStatusTransitionError);
+      expect(() => os.cancelar(MotivoCancelamento.OPERADOR)).toThrow(InvalidStatusTransitionError);
     });
   });
 
   describe('reconstitute', () => {
-    it('should reconstitute an ordem de servico from persisted data', () => {
-      const props = {
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: 'Pastilhas desgastadas',
-        status: StatusOS.EM_DIAGNOSTICO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const os = OrdemDeServico.reconstitute(props);
-
-      expect(os.id).toBe(props.id);
-      expect(os.numero).toBe(props.numero);
-      expect(os.clienteId).toBe(props.clienteId);
-      expect(os.status).toBe(StatusOS.EM_DIAGNOSTICO);
-      expect(os.usuarioId).toBe(props.usuarioId);
-      expect(os.diagnostico).toBe(props.diagnostico);
-    });
-  });
-
-  describe('atribuirMecanico', () => {
-    it('should assign a mechanic to the ordem de servico', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      os.atribuirMecanico('usuario-789');
-
-      expect(os.usuarioId).toBe('usuario-789');
-      expect(os.status).toBe(StatusOS.EM_DIAGNOSTICO);
-    });
-
-    it('should throw error if trying to assign mechanic when OS is not RECEBIDA', () => {
+    it('restaura todos os campos, inclusive motivo e itens', () => {
       const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: null,
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: null,
-        status: StatusOS.EM_DIAGNOSTICO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        id: 'id-1', numero: 'OS-2026-1', clienteId: 'c', veiculoId: 'v', mecanicoId: 'm', descricaoInicial: 'Barulho', diagnostico: 'd',
+        status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.TIMEOUT_APROVACAO, createdAt: new Date(), updatedAt: new Date(), itensServico: itens(),
       });
-
-      expect(() => os.atribuirMecanico('usuario-789')).toThrow(
-        InvalidStatusTransitionError,
-      );
-    });
-  });
-
-  describe('completarDiagnostico', () => {
-    it('should complete diagnosis and transition to AGUARDANDO_APROVACAO', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      os.atribuirMecanico('usuario-789');
-      os.completarDiagnostico('Pastilhas desgastadas. Necessario troca');
-
-      expect(os.diagnostico).toBe('Pastilhas desgastadas. Necessario troca');
-      expect(os.status).toBe(StatusOS.AGUARDANDO_APROVACAO);
-    });
-
-    it('should throw error if diagnostico is too short', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      os.atribuirMecanico('usuario-789');
-
-      expect(() => os.completarDiagnostico('abc')).toThrow(InvalidDescriptionError);
-    });
-
-    it('should throw error if diagnostico exceeds max length', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      os.atribuirMecanico('usuario-789');
-
-      expect(() => os.completarDiagnostico('a'.repeat(1001))).toThrow(
-        InvalidDescriptionError,
-      );
-    });
-
-    it('should throw error if trying to complete diagnosis when status is not EM_DIAGNOSTICO', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      expect(() => os.completarDiagnostico('Diagnostico')).toThrow(
-        InvalidStatusTransitionError,
-      );
-    });
-  });
-
-  describe('aprovar', () => {
-    it('should approve budget and transition to EM_EXECUCAO', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: 'Pastilhas desgastadas',
-        status: StatusOS.AGUARDANDO_APROVACAO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      os.aprovar();
-
-      expect(os.status).toBe(StatusOS.EM_EXECUCAO);
-    });
-
-    it('should throw error if trying to approve when status is not AGUARDANDO_APROVACAO', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      expect(() => os.aprovar()).toThrow(InvalidStatusTransitionError);
-    });
-  });
-
-  describe('rejeitar', () => {
-    it('should reject budget and transition to CANCELADA', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: 'Pastilhas desgastadas',
-        status: StatusOS.AGUARDANDO_APROVACAO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      os.rejeitar();
-
-      expect(os.status).toBe(StatusOS.CANCELADA);
-    });
-
-    it('should throw error if trying to reject when status is not AGUARDANDO_APROVACAO', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      expect(() => os.rejeitar()).toThrow(InvalidStatusTransitionError);
-    });
-  });
-
-  describe('finalizarExecucao', () => {
-    it('should finalize execution and transition to FINALIZADA', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: 'Pastilhas desgastadas',
-        status: StatusOS.EM_EXECUCAO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      os.finalizarExecucao();
-
-      expect(os.status).toBe(StatusOS.FINALIZADA);
-    });
-
-    it('should throw error if trying to finalize when status is not EM_EXECUCAO', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      expect(() => os.finalizarExecucao()).toThrow(InvalidStatusTransitionError);
-    });
-  });
-
-  describe('entregar', () => {
-    it('should deliver vehicle and transition to ENTREGUE', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: 'Pastilhas desgastadas',
-        status: StatusOS.FINALIZADA,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      os.entregar();
-
-      expect(os.status).toBe(StatusOS.ENTREGUE);
-    });
-
-    it('should throw error if trying to deliver when status is not FINALIZADA', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      expect(() => os.entregar()).toThrow(InvalidStatusTransitionError);
-    });
-  });
-
-  describe('getters', () => {
-    it('should return all properties via getters', () => {
-      const props = {
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      };
-
-      const os = OrdemDeServico.create(props);
-
-      expect(os.clienteId).toBe(props.clienteId);
-      expect(os.veiculoId).toBe(props.veiculoId);
-      expect(os.descricaoInicial).toBe(props.descricaoInicial);
-      expect(os.numero).toBeDefined();
-      expect(os.status).toBe(StatusOS.RECEBIDA);
-      expect(os.usuarioId).toBeNull();
-      expect(os.diagnostico).toBeNull();
-    });
-
-    it('should return createdAt and updatedAt from reconstitute', () => {
-      const createdAt = new Date('2026-01-01');
-      const updatedAt = new Date('2026-01-02');
-
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: null,
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: null,
-        status: StatusOS.RECEBIDA,
-        createdAt,
-        updatedAt,
-      });
-
-      expect(os.createdAt).toBe(createdAt);
-      expect(os.updatedAt).toBe(updatedAt);
-    });
-  });
-
-  describe('adicionarServico', () => {
-    it('should add service to OS and compute subtotal', () => {
-      const os = reconstituteEmDiagnostico();
-      const item = new ItemServicoOS('servico-1', 2, 50);
-
-      os.adicionarServico(item);
-
-      expect(os.itensServico).toHaveLength(1);
-      expect(os.itensServico[0].subtotal()).toBe(100);
-      expect(os.valorTotalServicos()).toBe(100);
-    });
-
-    it('should accumulate valor total across multiple services', () => {
-      const os = reconstituteEmDiagnostico();
-      os.adicionarServico(new ItemServicoOS('servico-1', 2, 50));
-      os.adicionarServico(new ItemServicoOS('servico-2', 1, 30));
-
-      expect(os.itensServico).toHaveLength(2);
-      expect(os.valorTotalServicos()).toBe(130);
-    });
-
-    it('should reject duplicate servicoId', () => {
-      const os = reconstituteEmDiagnostico();
-      os.adicionarServico(new ItemServicoOS('servico-1', 1, 10));
-
-      expect(() =>
-        os.adicionarServico(new ItemServicoOS('servico-1', 5, 10)),
-      ).toThrow(ServicoAlreadyAddedError);
-    });
-
-    it('should reject when OS is not EM_DIAGNOSTICO', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      expect(() =>
-        os.adicionarServico(new ItemServicoOS('servico-1', 1, 10)),
-      ).toThrow(InvalidStatusTransitionError);
-    });
-
-    it('should reject quantidade zero or negative in the VO', () => {
-      expect(() => new ItemServicoOS('servico-1', 0, 10)).toThrow(
-        InvalidQuantityError,
-      );
-      expect(() => new ItemServicoOS('servico-1', -1, 10)).toThrow(
-        InvalidQuantityError,
-      );
-    });
-  });
-
-  describe('removerServico', () => {
-    it('should remove service and recompute total', () => {
-      const os = reconstituteEmDiagnostico();
-      os.adicionarServico(new ItemServicoOS('servico-1', 2, 50));
-      os.adicionarServico(new ItemServicoOS('servico-2', 1, 30));
-
-      os.removerServico('servico-1');
-
-      expect(os.itensServico).toHaveLength(1);
-      expect(os.itensServico[0].servicoId).toBe('servico-2');
-      expect(os.valorTotalServicos()).toBe(30);
-    });
-
-    it('should throw when service is not in OS', () => {
-      const os = reconstituteEmDiagnostico();
-
-      expect(() => os.removerServico('inexistente')).toThrow(
-        ServicoNotAddedError,
-      );
-    });
-
-    it('should reject when OS is not EM_DIAGNOSTICO', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: 'pastilhas',
-        status: StatusOS.AGUARDANDO_APROVACAO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      expect(() => os.removerServico('servico-1')).toThrow(
-        InvalidStatusTransitionError,
-      );
-    });
-  });
-
-  describe('adicionarProdutoAoServico', () => {
-    const seedOsComServico = () => {
-      const os = reconstituteEmDiagnostico();
-      os.adicionarServico(new ItemServicoOS('servico-1', 1, 100));
-      return os;
-    };
-
-    it('should attach product to the matching service and compute totals', () => {
-      const os = seedOsComServico();
-      const produto = new ItemProdutoOS('produto-1', 3, 25);
-
-      os.adicionarProdutoAoServico('servico-1', produto);
-
-      const servico = os.itensServico.find((s) => s.servicoId === 'servico-1')!;
-      expect(servico.produtos).toHaveLength(1);
-      expect(servico.produtos[0].subtotal()).toBe(75);
-      expect(servico.subtotalProdutos()).toBe(75);
-      expect(servico.subtotal()).toBe(175); // 100 servico + 75 produto
-      expect(os.valorTotalProdutos()).toBe(75);
-    });
-
-    it('should accumulate valor total across multiple products of the same service', () => {
-      const os = seedOsComServico();
-      os.adicionarProdutoAoServico('servico-1', new ItemProdutoOS('produto-1', 2, 50));
-      os.adicionarProdutoAoServico('servico-1', new ItemProdutoOS('produto-2', 1, 30));
-
-      const servico = os.itensServico.find((s) => s.servicoId === 'servico-1')!;
-      expect(servico.produtos).toHaveLength(2);
-      expect(os.valorTotalProdutos()).toBe(130);
-    });
-
-    it('should reject duplicate produtoId in the same service', () => {
-      const os = seedOsComServico();
-      os.adicionarProdutoAoServico('servico-1', new ItemProdutoOS('produto-1', 1, 10));
-
-      expect(() =>
-        os.adicionarProdutoAoServico('servico-1', new ItemProdutoOS('produto-1', 5, 10)),
-      ).toThrow(ProdutoAlreadyAddedError);
-    });
-
-    it('should reject when the service is not in the OS', () => {
-      const os = seedOsComServico();
-
-      expect(() =>
-        os.adicionarProdutoAoServico(
-          'servico-fantasma',
-          new ItemProdutoOS('produto-1', 1, 10),
-        ),
-      ).toThrow(ServicoNotAddedError);
-    });
-
-    it('should reject when OS is not EM_DIAGNOSTICO', () => {
-      const os = OrdemDeServico.create({
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        descricaoInicial: 'Cliente relata problemas no freio',
-      });
-
-      expect(() =>
-        os.adicionarProdutoAoServico(
-          'servico-1',
-          new ItemProdutoOS('produto-1', 1, 10),
-        ),
-      ).toThrow(InvalidStatusTransitionError);
-    });
-
-    it('should reject quantidade zero or negative in the VO', () => {
-      expect(() => new ItemProdutoOS('produto-1', 0, 10)).toThrow(
-        InvalidQuantityError,
-      );
-      expect(() => new ItemProdutoOS('produto-1', -1, 10)).toThrow(
-        InvalidQuantityError,
-      );
-    });
-  });
-
-  describe('removerProdutoDoServico', () => {
-    const seedOsComServicoEProdutos = () => {
-      const os = reconstituteEmDiagnostico();
-      os.adicionarServico(new ItemServicoOS('servico-1', 1, 100));
-      os.adicionarProdutoAoServico('servico-1', new ItemProdutoOS('produto-1', 2, 50));
-      os.adicionarProdutoAoServico('servico-1', new ItemProdutoOS('produto-2', 1, 30));
-      return os;
-    };
-
-    it('should remove product from service and recompute total', () => {
-      const os = seedOsComServicoEProdutos();
-
-      os.removerProdutoDoServico('servico-1', 'produto-1');
-
-      const servico = os.itensServico.find((s) => s.servicoId === 'servico-1')!;
-      expect(servico.produtos).toHaveLength(1);
-      expect(servico.produtos[0].produtoId).toBe('produto-2');
-      expect(os.valorTotalProdutos()).toBe(30);
-    });
-
-    it('should throw when product is not attached to the service', () => {
-      const os = reconstituteEmDiagnostico();
-      os.adicionarServico(new ItemServicoOS('servico-1', 1, 100));
-
-      expect(() =>
-        os.removerProdutoDoServico('servico-1', 'inexistente'),
-      ).toThrow(ProdutoNotAddedError);
-    });
-
-    it('should throw when the service is not in the OS', () => {
-      const os = reconstituteEmDiagnostico();
-
-      expect(() =>
-        os.removerProdutoDoServico('servico-fantasma', 'produto-1'),
-      ).toThrow(ServicoNotAddedError);
-    });
-
-    it('should reject when OS is not EM_DIAGNOSTICO', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Cliente relata problemas no freio',
-        diagnostico: 'pastilhas',
-        status: StatusOS.AGUARDANDO_APROVACAO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      expect(() => os.removerProdutoDoServico('servico-1', 'produto-1')).toThrow(
-        InvalidStatusTransitionError,
-      );
-    });
-  });
-
-  const makeOsEmExecucaoComItens = (itens: ItemServicoOS[] = []) =>
-    OrdemDeServico.reconstitute({
-      id: 'os-123',
-      numero: 'OS-2026-00001',
-      clienteId: 'cliente-123',
-      veiculoId: 'veiculo-456',
-      usuarioId: 'usuario-789',
-      descricaoInicial: 'Revisao completa',
-      diagnostico: 'Oleo e correia desgastados',
-      status: StatusOS.EM_EXECUCAO,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      itensServico: itens,
-    });
-
-  describe('iniciarServico (US-14)', () => {
-    it('should transition item from PENDENTE to EM_EXECUCAO', () => {
-      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
-
-      os.iniciarServico('s-1');
-
-      expect(os.itensServico[0].statusExecucao).toBe('EM_EXECUCAO');
-      expect(os.itensServico[0].inicioExecucao).toBeInstanceOf(Date);
-    });
-
-    it('should not change OS status when initiating a service', () => {
-      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
-
-      os.iniciarServico('s-1');
-
-      expect(os.status).toBe(StatusOS.EM_EXECUCAO);
-    });
-
-    it('should allow multiple services to be started independently', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100),
-        new ItemServicoOS('s-2', 1, 200),
-      ]);
-
-      os.iniciarServico('s-1');
-
-      expect(os.itensServico[0].statusExecucao).toBe('EM_EXECUCAO');
-      expect(os.itensServico[1].statusExecucao).toBe('PENDENTE');
-    });
-
-    it('should throw InvalidStatusTransitionError when OS is not EM_EXECUCAO', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Revisao completa',
-        diagnostico: null,
-        status: StatusOS.AGUARDANDO_APROVACAO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        itensServico: [new ItemServicoOS('s-1', 1, 100)],
-      });
-
-      expect(() => os.iniciarServico('s-1')).toThrow(InvalidStatusTransitionError);
-    });
-
-    it('should throw ServicoNotAddedError when servicoId not in OS', () => {
-      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
-
-      expect(() => os.iniciarServico('s-inexistente')).toThrow(ServicoNotAddedError);
-    });
-
-    it('should throw ItemServicoInvalidStatusError when item is already EM_EXECUCAO', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-      ]);
-
-      expect(() => os.iniciarServico('s-1')).toThrow(ItemServicoInvalidStatusError);
-    });
-
-    it('should throw ItemServicoInvalidStatusError when item is already CONCLUIDO', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'CONCLUIDO', new Date(), new Date(), 2),
-      ]);
-
-      expect(() => os.iniciarServico('s-1')).toThrow(ItemServicoInvalidStatusError);
-    });
-  });
-
-  describe('concluirServico (US-14)', () => {
-    it('should transition item from EM_EXECUCAO to CONCLUIDO with hours recorded', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-      ]);
-
-      os.concluirServico('s-1', 2.5);
-
-      const item = os.itensServico[0];
-      expect(item.statusExecucao).toBe('CONCLUIDO');
-      expect(item.horasTrabalhadas).toBe(2.5);
-      expect(item.fimExecucao).toBeInstanceOf(Date);
-    });
-
-    it('should preserve inicioExecucao after conclusion', () => {
-      const inicio = new Date('2026-04-27T08:00:00Z');
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', inicio),
-      ]);
-
-      os.concluirServico('s-1', 1);
-
-      expect(os.itensServico[0].inicioExecucao).toEqual(inicio);
-    });
-
-    it('should auto-finalize OS when single service is concluded', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-      ]);
-
-      os.concluirServico('s-1', 1);
-
-      expect(os.status).toBe(StatusOS.FINALIZADA);
-    });
-
-    it('should auto-finalize OS only when ALL services are concluded', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-        new ItemServicoOS('s-2', 1, 200, 'EM_EXECUCAO', new Date()),
-      ]);
-
-      os.concluirServico('s-1', 1.5);
-      expect(os.status).toBe(StatusOS.EM_EXECUCAO);
-
-      os.concluirServico('s-2', 0.5);
-      expect(os.status).toBe(StatusOS.FINALIZADA);
-    });
-
-    it('should NOT auto-finalize when there are PENDENTE services remaining', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-        new ItemServicoOS('s-2', 1, 200),
-      ]);
-
-      os.concluirServico('s-1', 1);
-
-      expect(os.status).toBe(StatusOS.EM_EXECUCAO);
-    });
-
-    it('should throw InvalidStatusTransitionError when OS is not EM_EXECUCAO', () => {
-      const os = OrdemDeServico.reconstitute({
-        id: 'os-123',
-        numero: 'OS-2026-00001',
-        clienteId: 'cliente-123',
-        veiculoId: 'veiculo-456',
-        usuarioId: 'usuario-789',
-        descricaoInicial: 'Revisao completa',
-        diagnostico: null,
-        status: StatusOS.AGUARDANDO_APROVACAO,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        itensServico: [
-          new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-        ],
-      });
-
-      expect(() => os.concluirServico('s-1', 1)).toThrow(InvalidStatusTransitionError);
-    });
-
-    it('should throw ServicoNotAddedError when servicoId not in OS', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-      ]);
-
-      expect(() => os.concluirServico('s-inexistente', 1)).toThrow(ServicoNotAddedError);
-    });
-
-    it('should throw ItemServicoInvalidStatusError when item is PENDENTE', () => {
-      const os = makeOsEmExecucaoComItens([new ItemServicoOS('s-1', 1, 100)]);
-
-      expect(() => os.concluirServico('s-1', 1)).toThrow(ItemServicoInvalidStatusError);
-    });
-
-    it('should throw ItemServicoInvalidStatusError when item is already CONCLUIDO', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'CONCLUIDO', new Date(), new Date(), 2),
-      ]);
-
-      expect(() => os.concluirServico('s-1', 1)).toThrow(ItemServicoInvalidStatusError);
-    });
-
-    it('should throw Error when horasTrabalhadas is zero', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-      ]);
-
-      expect(() => os.concluirServico('s-1', 0)).toThrow(Error);
-    });
-
-    it('should throw Error when horasTrabalhadas is negative', () => {
-      const os = makeOsEmExecucaoComItens([
-        new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date()),
-      ]);
-
-      expect(() => os.concluirServico('s-1', -1)).toThrow(Error);
-    });
-  });
-
-  describe('ItemServicoOS VO — execution methods', () => {
-    it('iniciar() returns new instance with EM_EXECUCAO and inicioExecucao set', () => {
-      const item = new ItemServicoOS('s-1', 2, 50);
-      const started = item.iniciar();
-
-      expect(started.statusExecucao).toBe('EM_EXECUCAO');
-      expect(started.inicioExecucao).toBeInstanceOf(Date);
-      expect(started.fimExecucao).toBeNull();
-      expect(started.horasTrabalhadas).toBeNull();
-      expect(started.servicoId).toBe('s-1');
-      expect(started.quantidade).toBe(2);
-      expect(started.precoUnitario).toBe(50);
-    });
-
-    it('concluir() returns new instance with CONCLUIDO and hours set', () => {
-      const item = new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', new Date());
-      const done = item.concluir(3.5);
-
-      expect(done.statusExecucao).toBe('CONCLUIDO');
-      expect(done.horasTrabalhadas).toBe(3.5);
-      expect(done.fimExecucao).toBeInstanceOf(Date);
-    });
-
-    it('concluir() preserves inicioExecucao from previous state', () => {
-      const inicio = new Date('2026-04-27T09:00:00Z');
-      const item = new ItemServicoOS('s-1', 1, 100, 'EM_EXECUCAO', inicio);
-      const done = item.concluir(2);
-
-      expect(done.inicioExecucao).toEqual(inicio);
-    });
-
-    it('new ItemServicoOS without execution args defaults to PENDENTE', () => {
-      const item = new ItemServicoOS('s-1', 1, 100);
-
-      expect(item.statusExecucao).toBe('PENDENTE');
-      expect(item.inicioExecucao).toBeNull();
-      expect(item.fimExecucao).toBeNull();
-      expect(item.horasTrabalhadas).toBeNull();
+      expect(os.id).toBe('id-1'); expect(os.status).toBe(StatusOS.CANCELADA); expect(os.motivoCancelamento).toBe(MotivoCancelamento.TIMEOUT_APROVACAO); expect(os.itensServico).toHaveLength(2);
     });
   });
 });

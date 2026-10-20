@@ -1,6 +1,6 @@
-import { OrdemDeServico } from "./ordem-de-servico.entity";
+import { OrdemDeServico } from './ordem-de-servico.entity';
 
-export const ORDEM_DE_SERVICO_REPOSITORY = "ORDEM_DE_SERVICO_REPOSITORY";
+export const ORDEM_DE_SERVICO_REPOSITORY = 'ORDEM_DE_SERVICO_REPOSITORY';
 
 export interface FindAllParams {
   page?: number;
@@ -18,27 +18,6 @@ export interface PaginatedResult<T> {
   limit: number;
 }
 
-export interface TempoMedioFilters {
-  servicoId?: string;
-  dataInicio?: Date;
-  dataFim?: Date;
-}
-
-export interface TempoMedioPorServico {
-  servicoId: string;
-  servicoNome: string;
-  totalConcluidos: number;
-  tempoMedioMinutos: number;
-  tempoMedioHoras: number;
-}
-
-export interface TempoMedioExecucaoResult {
-  totalServicosConcluidos: number;
-  tempoMedioGeralMinutos: number;
-  tempoMedioGeralHoras: number;
-  porServico: TempoMedioPorServico[];
-}
-
 export interface OrdemDeServicoRepository {
   create(os: OrdemDeServico): Promise<OrdemDeServico>;
   findById(id: string): Promise<OrdemDeServico | null>;
@@ -47,7 +26,4 @@ export interface OrdemDeServicoRepository {
   update(os: OrdemDeServico): Promise<OrdemDeServico>;
   delete(id: string): Promise<void>;
   existsByNumero(numero: string): Promise<boolean>;
-  getTempoMedioExecucao(
-    filters: TempoMedioFilters,
-  ): Promise<TempoMedioExecucaoResult>;
 }

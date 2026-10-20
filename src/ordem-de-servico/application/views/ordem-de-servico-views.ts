@@ -1,5 +1,3 @@
-import { StatusExecucaoItem } from '../../domain/value-objects/item-servico-os.vo';
-
 /**
  * View models (Output) produzidos por use cases de consulta da OrdemDeServico.
  * Sao objetos de saida da APLICACAO — independentes de DTO HTTP. Os presenters
@@ -27,6 +25,7 @@ export interface OsStatusView {
   id: string;
   numero: string;
   status: string;
+  motivoCancelamento: string | null;
   descricaoInicial: string;
   diagnostico: string | null;
   servicos: OsStatusServico[];
@@ -75,10 +74,6 @@ export interface OsDetalhesServicoItem {
   quantidade: number;
   precoUnitario: number;
   valorTotalDesseServico: number;
-  statusExecucao: StatusExecucaoItem;
-  inicioExecucao: Date | null;
-  fimExecucao: Date | null;
-  horasTrabalhadas: number | null;
   produtos: OsDetalhesProdutoItem[];
 }
 
@@ -88,6 +83,7 @@ export interface OsDetalhesView {
     dadosCliente: OsDetalhesClienteView;
     dadosVeiculo: OsDetalhesVeiculoView;
     status: string;
+    motivoCancelamento: string | null;
     mecanicoAtribuido: string | null;
     dataHoraAbertura: string | null;
     dataHoraUltimaAtualizacao: string | null;

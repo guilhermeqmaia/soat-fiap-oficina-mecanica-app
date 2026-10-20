@@ -1,114 +1,72 @@
-import { Test, TestingModule } from "@nestjs/testing";
-import { INestApplication, ValidationPipe } from "@nestjs/common";
-import request from "supertest";
-import { AppModule } from "../app.module";
-import { PrismaService } from "../prisma/prisma.service";
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { AppModule } from '../app.module';
+import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '@guilhermeqmaia/oficina-kit/auth';
 import { mintToken } from '@guilhermeqmaia/oficina-kit/testing';
-import { StatusOS } from "./domain/value-objects/status-os.vo";
+import { StatusOS } from './domain/value-objects/status-os.vo';
+import { MotivoCancelamento } from './domain/value-objects/motivo-cancelamento';
 import {
-  startTestDatabase,
-  stopTestDatabase,
-} from "../test/database.container";
+  RegistrarCancelamentoUseCase,
+  RegistrarDiagnosticoUseCase,
+  RegistrarEnfileiramentoUseCase,
+  RegistrarExecucaoFinalizadaUseCase,
+  RegistrarExecucaoIniciadaUseCase,
+  RegistrarOrcamentoAprovadoUseCase,
+  RegistrarOrcamentoGeradoUseCase,
+} from './application/use-cases/transicoes';
+import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 
 jest.setTimeout(120000);
 
-/** CPF do cliente dono da OS (mesmo cpfCnpj do cliente semeado). */
-const CLIENTE_CPF = "52998224725";
+const CLIENTE_CPF = '52998224725';
 
-describe("OrdemDeServico (e2e)", () => {
+/**
+ * OS Service (Fase 4): a API expoe apenas abertura, consulta, entrega e
+ * cancelamento. As demais transicoes chegam por evento (Execucao/Billing) e aqui
+ * sao disparadas direto nos use cases de transicao — o mesmo caminho que os
+ * handlers SQS percorrem (US-F4-06 PR 2).
+ */
+describe('OrdemDeServico (e2e) — OS Service', () => {
   let app: INestApplication;
   let prisma: PrismaService;
-
+  let moduleRef: TestingModule;
   const tokens: Record<string, string> = {};
-
   let clienteId: string;
   let veiculoId: string;
-  let servicoId: string;
   let mecanicoUserId: string;
 
+  const http = () => request(app.getHttpServer());
+
   beforeAll(async () => {
-    const databaseUrl = await startTestDatabase();
-    process.env.DATABASE_URL = databaseUrl;
-    // JWT_SECRET vem de src/test/jest-setup-env.ts — o mesmo valor que o
-    // ConfigModule ja validou no import do AppModule e que o mintToken usa.
-
-    const moduleRef: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
+    process.env.DATABASE_URL = await startTestDatabase();
+    moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
+    prisma = moduleRef.get(PrismaService);
 
-    prisma = moduleRef.get<PrismaService>(PrismaService);
-
-    await prisma.itemOrdemDeServicoServico.deleteMany();
     await prisma.ordemDeServico.deleteMany();
     await prisma.veiculo.deleteMany();
     await prisma.cliente.deleteMany();
-    await prisma.servico.deleteMany();
     await prisma.usuario.deleteMany();
 
-    // O mecanico ainda precisa existir no banco: atribuir-mecanico valida o
-    // usuarioId informado no body. Senha nunca e verificada (login removido).
-    const mecanico = await prisma.usuario.create({
-      data: {
-        nome: "Mecanico",
-        email: "mecanico.os@oficina.com",
-        senhaHash: "nao-usado-nos-testes",
-        role: Role.MECANICO,
-        ativo: true,
-      },
-    });
-    mecanicoUserId = mecanico.id;
+    mecanicoUserId = (await prisma.usuario.create({ data: { nome: 'Carlos Mecanico', email: 'mecanico.os@oficina.com', senhaHash: 'x', role: Role.MECANICO, ativo: true } })).id;
+    tokens.admin = mintToken({ sub: 'admin-os', nome: 'Admin', role: Role.ADMIN });
+    tokens.atendente = mintToken({ sub: 'atendente-os', nome: 'Atendente', role: Role.ATENDENTE });
+    tokens.mecanico = mintToken({ sub: mecanicoUserId, nome: 'Mecanico', role: Role.MECANICO });
+    tokens.estoquista = mintToken({ sub: 'estoquista-os', nome: 'Estoquista', role: Role.ESTOQUISTA });
+    tokens.cliente = mintToken({ sub: 'cliente-os', nome: 'Cliente', cpf: CLIENTE_CPF, role: Role.CLIENTE });
 
-    // Resource server (US-F3-03): tokens emitidos direto nos testes com o
-    // contrato da Lambda de CPF (sem POST /auth/login). O token de CLIENTE
-    // carrega o CPF do cliente dono das OS semeadas.
-    tokens.admin = mintToken({ sub: "admin-os", nome: "Admin", role: Role.ADMIN });
-    tokens.atendente = mintToken({ sub: "atendente-os", nome: "Atendente", role: Role.ATENDENTE });
-    tokens.mecanico = mintToken({ sub: mecanicoUserId, nome: "Mecanico", role: Role.MECANICO });
-    tokens.estoquista = mintToken({ sub: "estoquista-os", nome: "Estoquista", role: Role.ESTOQUISTA });
-    tokens.cliente = mintToken({ sub: "cliente-os", nome: "Cliente", cpf: CLIENTE_CPF, role: Role.CLIENTE });
-
-    const clienteRes = await request(app.getHttpServer())
-      .post("/clientes")
-      .set("Authorization", `Bearer ${tokens.admin}`)
-      .send({
-        nome: "Joao Silva",
-        cpfCnpj: "529.982.247-25",
-        telefone: "11999990000",
-        email: "cliente.os@oficina.com",
-      });
+    const clienteRes = await http().post('/clientes').set('Authorization', `Bearer ${tokens.admin}`)
+      .send({ nome: 'Joao Silva', cpfCnpj: '529.982.247-25', telefone: '11999990000', email: 'cliente.os@oficina.com' });
     expect(clienteRes.status).toBe(201);
     clienteId = clienteRes.body.id;
-
-    const veiculoRes = await request(app.getHttpServer())
-      .post("/veiculos")
-      .set("Authorization", `Bearer ${tokens.admin}`)
-      .send({
-        placa: "TES1T23",
-        marca: "Toyota",
-        modelo: "Corolla",
-        ano: 2024,
-        clienteId,
-      });
+    const veiculoRes = await http().post('/veiculos').set('Authorization', `Bearer ${tokens.admin}`)
+      .send({ placa: 'TES1T23', marca: 'Toyota', modelo: 'Corolla', ano: 2024, clienteId });
     expect(veiculoRes.status).toBe(201);
     veiculoId = veiculoRes.body.id;
-
-    const servicoRes = await request(app.getHttpServer())
-      .post("/servicos")
-      .set("Authorization", `Bearer ${tokens.admin}`)
-      .send({
-        nome: "Troca de pastilha",
-        precoBase: 200,
-        tempoEstimadoHoras: 1,
-      });
-    expect(servicoRes.status).toBe(201);
-    servicoId = servicoRes.body.id;
   });
 
   afterAll(async () => {
@@ -116,510 +74,170 @@ describe("OrdemDeServico (e2e)", () => {
     await stopTestDatabase();
   });
 
-  // ─── Helper ────────────────────────────────────────────────────────────────
-
   const createOs = async (token = tokens.admin) => {
-    const res = await request(app.getHttpServer())
-      .post("/ordens-servico")
-      .set("Authorization", `Bearer ${token}`)
-      .send({
-        clienteId,
-        veiculoId,
-        descricaoInicial: "Cliente relata barulho ao frenar",
-      });
+    const res = await http().post('/ordens-servico').set('Authorization', `Bearer ${token}`)
+      .send({ clienteId, veiculoId, descricaoInicial: 'Cliente relata barulho ao frenar' });
     expect(res.status).toBe(201);
     return res.body as { id: string; status: string; numero: string };
   };
+  /** Simula os eventos da saga ate AGUARDANDO_APROVACAO. */
+  const ateAguardandoAprovacao = async (numero: string) => {
+    await moduleRef.get(RegistrarEnfileiramentoUseCase).execute({ numero });
+    await moduleRef.get(RegistrarDiagnosticoUseCase).execute({
+      numero, mecanicoId: mecanicoUserId, diagnostico: 'Pastilhas gastas e disco empenado',
+      itens: [
+        { tipo: 'SERVICO', referenciaId: 'srv-1', nome: 'Troca de pastilha', quantidade: 1, precoUnitario: '200.00' },
+        { tipo: 'PRODUTO', referenciaId: 'prd-1', nome: 'Pastilha dianteira', quantidade: 2, precoUnitario: '50.00', servicoId: 'srv-1' },
+      ],
+    });
+    await moduleRef.get(RegistrarOrcamentoGeradoUseCase).execute({ numero, total: '300.00' });
+  };
 
-  // ─── POST /ordens-servico ──────────────────────────────────────────────────
-
-  describe("POST /ordens-servico", () => {
-    it("should create OS with status RECEBIDA", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ clienteId, veiculoId, descricaoInicial: "Barulho ao frear" });
-
+  describe('POST /ordens-servico', () => {
+    it('abre a OS RECEBIDA sem itens e sem mecanico', async () => {
+      const res = await http().post('/ordens-servico').set('Authorization', `Bearer ${tokens.atendente}`)
+        .send({ clienteId, veiculoId, descricaoInicial: 'Cliente relata barulho ao frenar' });
       expect(res.status).toBe(201);
-      expect(res.body.status).toBe(StatusOS.RECEBIDA);
-      expect(res.body.numero).toMatch(/^OS-/);
-      expect(res.body.clienteId).toBe(clienteId);
-      expect(res.body.veiculoId).toBe(veiculoId);
-      expect(res.body.usuarioId).toBeNull();
+      expect(res.body).toMatchObject({ status: StatusOS.RECEBIDA, mecanicoId: null, motivoCancelamento: null, valorTotal: 0, itensServico: [] });
+      expect(res.body.numero).toMatch(/^OS-\d{4}-/);
     });
-
-    it("should return 404 when cliente does not exist", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({
-          clienteId: "00000000-0000-0000-0000-000000000000",
-          veiculoId,
-          descricaoInicial: "Teste",
-        });
-
-      expect(res.status).toBe(404);
+    it('404 cliente/veiculo inexistente, 409 veiculo de outro cliente, 400 descricao curta', async () => {
+      const auth = (r: request.Test) => r.set('Authorization', `Bearer ${tokens.admin}`);
+      expect((await auth(http().post('/ordens-servico')).send({ clienteId: '00000000-0000-4000-8000-000000000000', veiculoId, descricaoInicial: 'Barulho ao frenar' })).status).toBe(404);
+      expect((await auth(http().post('/ordens-servico')).send({ clienteId, veiculoId: '00000000-0000-4000-8000-000000000000', descricaoInicial: 'Barulho ao frenar' })).status).toBe(404);
+      const outro = await auth(http().post('/clientes')).send({ nome: 'Outro', cpfCnpj: '11.222.333/0001-81', telefone: '11000000000' });
+      const vOutro = await auth(http().post('/veiculos')).send({ placa: 'OUT1R23', marca: 'Fiat', modelo: 'Uno', ano: 2020, clienteId: outro.body.id });
+      expect((await auth(http().post('/ordens-servico')).send({ clienteId, veiculoId: vOutro.body.id, descricaoInicial: 'Barulho ao frenar' })).status).toBe(409);
+      expect((await auth(http().post('/ordens-servico')).send({ clienteId, veiculoId, descricaoInicial: 'abc' })).status).toBe(400);
     });
-
-    it("should return 404 when veiculo does not exist", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({
-          clienteId,
-          veiculoId: "00000000-0000-0000-0000-000000000000",
-          descricaoInicial: "Teste",
-        });
-
-      expect(res.status).toBe(404);
-    });
-
-    it("should return 409 when veiculo does not belong to cliente", async () => {
-      const outroCliente = await request(app.getHttpServer())
-        .post("/clientes")
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({
-          nome: "Outro Cliente",
-          cpfCnpj: "836.076.971-08",
-          telefone: "11000000001",
-        });
-      expect(outroCliente.status).toBe(201);
-
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({
-          clienteId: outroCliente.body.id,
-          veiculoId,
-          descricaoInicial: "Veiculo de outro cliente",
-        });
-
-      expect(res.status).toBe(409);
-    });
-
-    it("should return 400 for short descricaoInicial", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ clienteId, veiculoId, descricaoInicial: "ab" });
-
-      expect(res.status).toBe(400);
-    });
-
-    it("should return 401 without token", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .send({ clienteId, veiculoId, descricaoInicial: "Teste" });
-
-      expect(res.status).toBe(401);
-    });
-
-    it("should return 403 for CLIENTE role", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.cliente}`)
-        .send({ clienteId, veiculoId, descricaoInicial: "Teste" });
-
-      expect(res.status).toBe(403);
-    });
-
-    it("should return 403 for MECANICO role", async () => {
-      const res = await request(app.getHttpServer())
-        .post("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.mecanico}`)
-        .send({ clienteId, veiculoId, descricaoInicial: "Teste" });
-
-      expect(res.status).toBe(403);
+    it('401 sem token; 403 para CLIENTE, MECANICO e ESTOQUISTA', async () => {
+      expect((await http().post('/ordens-servico').send({ clienteId, veiculoId, descricaoInicial: 'Barulho ao frenar' })).status).toBe(401);
+      for (const t of ['cliente', 'mecanico', 'estoquista']) {
+        expect((await http().post('/ordens-servico').set('Authorization', `Bearer ${tokens[t]}`).send({ clienteId, veiculoId, descricaoInicial: 'Barulho ao frenar' })).status).toBe(403);
+      }
     });
   });
 
-  // ─── GET /ordens-servico ───────────────────────────────────────────────────
-
-  describe("GET /ordens-servico", () => {
-    it("should return paginated list", async () => {
-      const res = await request(app.getHttpServer())
-        .get("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
+  describe('GET /ordens-servico e GET /ordens-servico/:id', () => {
+    it('lista paginada com filtros; MECANICO pode, CLIENTE nao', async () => {
+      await createOs();
+      const res = await http().get('/ordens-servico?page=1&limit=5').set('Authorization', `Bearer ${tokens.mecanico}`);
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(typeof res.body.total).toBe("number");
+      expect(res.body).toMatchObject({ page: 1, limit: 5 });
+      expect(res.body.data.length).toBeGreaterThan(0);
+      const porStatus = await http().get(`/ordens-servico?status=${StatusOS.RECEBIDA}&clienteId=${clienteId}`).set('Authorization', `Bearer ${tokens.admin}`);
+      expect(porStatus.body.data.every((o: any) => o.status === StatusOS.RECEBIDA)).toBe(true);
+      expect((await http().get('/ordens-servico').set('Authorization', `Bearer ${tokens.cliente}`)).status).toBe(403);
     });
-
-    it("should filter by clienteId", async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/ordens-servico?clienteId=${clienteId}`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
-      expect(res.status).toBe(200);
-      res.body.data.forEach((os: any) => expect(os.clienteId).toBe(clienteId));
-    });
-
-    it("should filter by status", async () => {
-      const res = await request(app.getHttpServer())
-        .get(`/ordens-servico?status=${StatusOS.RECEBIDA}`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
-      expect(res.status).toBe(200);
-      res.body.data.forEach((os: any) =>
-        expect(os.status).toBe(StatusOS.RECEBIDA),
-      );
-    });
-
-    it("should deny CLIENTE role", async () => {
-      const res = await request(app.getHttpServer())
-        .get("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.cliente}`);
-      expect(res.status).toBe(403);
-    });
-
-    it("should allow MECANICO role", async () => {
-      const res = await request(app.getHttpServer())
-        .get("/ordens-servico")
-        .set("Authorization", `Bearer ${tokens.mecanico}`);
-      expect(res.status).toBe(200);
-    });
-  });
-
-  // ─── GET /ordens-servico/:id ───────────────────────────────────────────────
-
-  describe("GET /ordens-servico/:id", () => {
-    it("should return OS by id", async () => {
+    it('detalhe traz cabecalho/corpo/rodape com snapshot e mecanico', async () => {
       const os = await createOs();
-
-      const res = await request(app.getHttpServer())
-        .get(`/ordens-servico/${os.id}`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
+      await ateAguardandoAprovacao(os.numero);
+      const res = await http().get(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.atendente}`);
       expect(res.status).toBe(200);
-      expect(res.body.cabecalho).toBeDefined();
-      expect(res.body.cabecalho.dadosCliente.id).toBe(clienteId);
-    });
-
-    it("should deny CLIENTE role", async () => {
-      const os = await createOs();
-
-      const res = await request(app.getHttpServer())
-        .get(`/ordens-servico/${os.id}`)
-        .set("Authorization", `Bearer ${tokens.cliente}`);
-
-      expect(res.status).toBe(403);
+      expect(res.body.cabecalho).toMatchObject({ status: StatusOS.AGUARDANDO_APROVACAO, mecanicoAtribuido: 'Carlos Mecanico', motivoCancelamento: null });
+      expect(res.body.corpo.servicos[0]).toMatchObject({ descricaoServico: 'Troca de pastilha', precoUnitario: 200 });
+      expect(res.body.corpo.servicos[0].produtos[0]).toMatchObject({ descricaoProduto: 'Pastilha dianteira', quantidade: 2 });
+      expect(res.body.rodape.valorTotalOrdemServico).toBe(300);
+      expect((await http().get(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.cliente}`)).status).toBe(403);
+      expect((await http().get('/ordens-servico/00000000-0000-4000-8000-000000000000').set('Authorization', `Bearer ${tokens.admin}`)).status).toBe(404);
     });
   });
 
-  // ─── Full lifecycle — approval path ───────────────────────────────────────
+  describe('ciclo de vida dirigido por eventos (RECEBIDA -> ENTREGUE)', () => {
+    let os: { id: string; numero: string };
+    const statusAtual = async () => (await http().get(`/ordens-servico/numero/${os.numero}/status`)).body;
 
-  describe("Full lifecycle — approval path (RECEBIDA → ENTREGUE)", () => {
-    let osId: string;
-
-    it("1. creates OS with status RECEBIDA", async () => {
-      const os = await createOs(tokens.atendente);
-      osId = os.id;
-      expect(os.status).toBe(StatusOS.RECEBIDA);
+    it('1. abre e enfileira -> EM_DIAGNOSTICO', async () => {
+      os = await createOs();
+      await moduleRef.get(RegistrarEnfileiramentoUseCase).execute({ numero: os.numero });
+      expect((await statusAtual()).status).toBe(StatusOS.EM_DIAGNOSTICO);
     });
-
-    it("2. assigns mechanic → EM_DIAGNOSTICO", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/atribuir-mecanico`)
-        .set("Authorization", `Bearer ${tokens.mecanico}`)
-        .send({ usuarioId: mecanicoUserId });
-
-      expect(res.status).toBe(201);
-      expect(res.body.status).toBe(StatusOS.EM_DIAGNOSTICO);
-      expect(res.body.usuarioId).toBe(mecanicoUserId);
+    it('2. diagnostico concluido grava snapshot; orcamento gerado -> AGUARDANDO_APROVACAO', async () => {
+      await moduleRef.get(RegistrarDiagnosticoUseCase).execute({
+        numero: os.numero, mecanicoId: mecanicoUserId, diagnostico: 'Pastilhas gastas',
+        itens: [{ tipo: 'SERVICO', referenciaId: 'srv-1', nome: 'Troca de pastilha', quantidade: 1, precoUnitario: '200.00' }],
+      });
+      await moduleRef.get(RegistrarOrcamentoGeradoUseCase).execute({ numero: os.numero, total: '200.00' });
+      const s = await statusAtual();
+      expect(s.status).toBe(StatusOS.AGUARDANDO_APROVACAO);
+      expect(s.servicos[0]).toMatchObject({ nome: 'Troca de pastilha', subtotal: 200 });
+      expect(s.valorTotal).toBe(200);
     });
-
-    it("3. adds service from catalog", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/servicos`)
-        .set("Authorization", `Bearer ${tokens.mecanico}`)
-        .send({ servicoId, quantidade: 2 });
-
-      expect(res.status).toBe(201);
-      expect(res.body.itensServico).toHaveLength(1);
-      expect(res.body.itensServico[0].servicoId).toBe(servicoId);
-      expect(res.body.itensServico[0].quantidade).toBe(2);
-      expect(res.body.valorTotalServicos).toBe(400);
+    it('3. aprovado -> AGUARDANDO_PAGAMENTO; execucao iniciada -> EM_EXECUCAO; finalizada -> FINALIZADA', async () => {
+      await moduleRef.get(RegistrarOrcamentoAprovadoUseCase).execute({ numero: os.numero });
+      expect((await statusAtual()).status).toBe(StatusOS.AGUARDANDO_PAGAMENTO);
+      await moduleRef.get(RegistrarExecucaoIniciadaUseCase).execute({ numero: os.numero });
+      expect((await statusAtual()).status).toBe(StatusOS.EM_EXECUCAO);
+      // cancelamento manual nao e mais possivel
+      expect((await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.atendente}`).send({})).status).toBe(400);
+      await moduleRef.get(RegistrarExecucaoFinalizadaUseCase).execute({ numero: os.numero });
+      expect((await statusAtual()).status).toBe(StatusOS.FINALIZADA);
     });
-
-    it("4. completes diagnosis → AGUARDANDO_APROVACAO", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/completar-diagnostico`)
-        .set("Authorization", `Bearer ${tokens.mecanico}`)
-        .send({
-          diagnostico:
-            "Pastilhas de freio totalmente desgastadas, troca urgente",
-        });
-
-      expect(res.status).toBe(201);
-      expect(res.body.status).toBe(StatusOS.AGUARDANDO_APROVACAO);
-      expect(res.body.diagnostico).toBeTruthy();
-    });
-
-    it("5. client approves budget → EM_EXECUCAO", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/aprovar-orcamento`)
-        .set("Authorization", `Bearer ${tokens.cliente}`);
-
-      expect(res.status).toBe(201);
-      expect(res.body.status).toBe(StatusOS.EM_EXECUCAO);
-    });
-
-    it("6. mechanic finalizes execution → FINALIZADA", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/finalizar-execucao`)
-        .set("Authorization", `Bearer ${tokens.mecanico}`);
-
-      expect(res.status).toBe(201);
-      expect(res.body.status).toBe(StatusOS.FINALIZADA);
-    });
-
-    it("7. attendant delivers vehicle → ENTREGUE", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/entregar`)
-        .set("Authorization", `Bearer ${tokens.atendente}`);
-
+    it('4. atendente entrega -> ENTREGUE; reentrega -> 400', async () => {
+      const res = await http().post(`/ordens-servico/${os.id}/entregar`).set('Authorization', `Bearer ${tokens.atendente}`);
       expect(res.status).toBe(201);
       expect(res.body.status).toBe(StatusOS.ENTREGUE);
+      expect((await http().post(`/ordens-servico/${os.id}/entregar`).set('Authorization', `Bearer ${tokens.atendente}`)).status).toBe(400);
+      expect((await http().post(`/ordens-servico/${os.id}/entregar`).set('Authorization', `Bearer ${tokens.mecanico}`)).status).toBe(403);
+    });
+    it('5. audit log registra as transicoes', async () => {
+      const res = await http().get(`/ordens-servico/${os.id}/audit-log`).set('Authorization', `Bearer ${tokens.admin}`);
+      expect(res.status).toBe(200);
+      expect(res.body.map((l: any) => l.statusNovo)).toEqual(expect.arrayContaining([StatusOS.EM_DIAGNOSTICO, StatusOS.AGUARDANDO_APROVACAO, StatusOS.EM_EXECUCAO, StatusOS.ENTREGUE]));
+      expect(res.body.find((l: any) => l.statusNovo === StatusOS.ENTREGUE).acao).toBe('FINALIZADA -> ENTREGUE');
+    });
+    it('evento fora de ordem e rejeitado (vai para a DLQ) e nao corrompe a OS', async () => {
+      await expect(moduleRef.get(RegistrarExecucaoFinalizadaUseCase).execute({ numero: os.numero })).rejects.toThrow();
+      expect((await statusAtual()).status).toBe(StatusOS.ENTREGUE);
     });
   });
 
-  // ─── Full lifecycle — rejection path ──────────────────────────────────────
-
-  describe("Full lifecycle — rejection path (AGUARDANDO_APROVACAO → CANCELADA)", () => {
-    let osId: string;
-
-    it("1. creates OS and progresses to AGUARDANDO_APROVACAO", async () => {
+  describe('cancelamento', () => {
+    it('POST :id/cancelar pelo atendente -> CANCELADA com motivo OPERADOR', async () => {
       const os = await createOs();
-      osId = os.id;
-
-      await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/atribuir-mecanico`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ usuarioId: mecanicoUserId });
-
-      const diagRes = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/completar-diagnostico`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({
-          diagnostico: "Motor com desgaste severo, reparo muito custoso",
-        });
-
-      expect(diagRes.status).toBe(201);
-      expect(diagRes.body.status).toBe(StatusOS.AGUARDANDO_APROVACAO);
-    });
-
-    it("2. client rejects budget → CANCELADA", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/rejeitar-orcamento`)
-        .set("Authorization", `Bearer ${tokens.cliente}`);
-
+      const res = await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.atendente}`).send({});
       expect(res.status).toBe(201);
-      expect(res.body.status).toBe(StatusOS.CANCELADA);
+      expect(res.body).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.OPERADOR });
+      expect((await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.atendente}`).send({})).status).toBe(400);
     });
-
-    it("3. cannot transition from CANCELADA", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/atribuir-mecanico`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ usuarioId: mecanicoUserId });
-
-      expect(res.status).toBe(400);
+    it('motivo explicito e validado; MECANICO/CLIENTE nao podem', async () => {
+      const os = await createOs();
+      expect((await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.admin}`).send({ motivo: 'INVALIDO' })).status).toBe(400);
+      expect((await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.mecanico}`).send({})).status).toBe(403);
+      expect((await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.cliente}`).send({})).status).toBe(403);
+      const ok = await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.admin}`).send({ motivo: MotivoCancelamento.TIMEOUT_APROVACAO });
+      expect(ok.body.motivoCancelamento).toBe(MotivoCancelamento.TIMEOUT_APROVACAO);
+    });
+    it('compensacao da saga (evento) cancela com o motivo recebido', async () => {
+      const os = await createOs();
+      await ateAguardandoAprovacao(os.numero);
+      await moduleRef.get(RegistrarCancelamentoUseCase).execute({ numero: os.numero, motivo: MotivoCancelamento.ORCAMENTO_REJEITADO });
+      const s = (await http().get(`/ordens-servico/numero/${os.numero}/status`)).body;
+      expect(s).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.ORCAMENTO_REJEITADO });
     });
   });
 
-  // ─── Service management on OS ─────────────────────────────────────────────
-
-  describe("Service management on OS", () => {
-    let osId: string;
-
-    beforeEach(async () => {
+  describe('consultas do cliente', () => {
+    it('GET /ordens-servico/numero/:numero/status e publico e 404 quando nao existe', async () => {
       const os = await createOs();
-      osId = os.id;
-      await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/atribuir-mecanico`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ usuarioId: mecanicoUserId });
+      const res = await http().get(`/ordens-servico/numero/${os.numero}/status`);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ numero: os.numero, status: StatusOS.RECEBIDA, valorTotal: 0 });
+      expect((await http().get('/ordens-servico/numero/OS-0000/status')).status).toBe(404);
     });
-
-    it("should add a service and reflect in valorTotalServicos", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/servicos`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ servicoId, quantidade: 1 });
-
-      expect(res.status).toBe(201);
-      expect(res.body.itensServico).toHaveLength(1);
-      expect(res.body.valorTotalServicos).toBeGreaterThan(0);
-    });
-
-    it("should return 409 when adding the same service twice", async () => {
-      await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/servicos`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ servicoId, quantidade: 1 });
-
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/servicos`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ servicoId, quantidade: 1 });
-
-      expect(res.status).toBe(409);
-    });
-
-    it("should return 404 when adding a non-existent service", async () => {
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/servicos`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({
-          servicoId: "00000000-0000-0000-0000-000000000000",
-          quantidade: 1,
-        });
-
-      expect(res.status).toBe(404);
-    });
-
-    it("should remove an added service", async () => {
-      await request(app.getHttpServer())
-        .post(`/ordens-servico/${osId}/servicos`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ servicoId, quantidade: 1 });
-
-      const res = await request(app.getHttpServer())
-        .delete(`/ordens-servico/${osId}/servicos/${servicoId}`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
-      expect(res.status).toBe(204);
-
-      const osRes = await request(app.getHttpServer())
-        .get(`/ordens-servico/${osId}`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-      expect(osRes.body.corpo.servicos).toHaveLength(0);
-    });
-
-    it("should return 404 when removing a service not in OS", async () => {
-      const res = await request(app.getHttpServer())
-        .delete(`/ordens-servico/${osId}/servicos/${servicoId}`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
-      expect(res.status).toBe(404);
-    });
-
-    it("should not allow adding services when OS is not EM_DIAGNOSTICO", async () => {
-      const os = await createOs();
-
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${os.id}/servicos`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ servicoId, quantidade: 1 });
-
-      expect(res.status).toBe(400);
+    it('GET /clientes/:cpfCnpj/ordens-servico — historico do proprio cliente', async () => {
+      const res = await http().get(`/clientes/${CLIENTE_CPF}/ordens-servico`).set('Authorization', `Bearer ${tokens.cliente}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body) ? res.body.length : res.body.data.length).toBeGreaterThan(0);
     });
   });
 
-  // ─── RBAC for OS-specific transitions ─────────────────────────────────────
-
-  describe("RBAC — transition endpoints", () => {
-    it("POST atribuir-mecanico: only ADMIN and MECANICO allowed", async () => {
+  describe('DELETE /ordens-servico/:id', () => {
+    it('somente ADMIN; 404 quando nao existe', async () => {
       const os = await createOs();
-
-      for (const role of ["admin", "mecanico"]) {
-        const freshOs = await createOs();
-        const res = await request(app.getHttpServer())
-          .post(`/ordens-servico/${freshOs.id}/atribuir-mecanico`)
-          .set("Authorization", `Bearer ${tokens[role]}`)
-          .send({ usuarioId: mecanicoUserId });
-        expect(res.status).not.toBe(403);
-        expect(res.status).not.toBe(401);
-      }
-
-      for (const role of ["atendente", "estoquista", "cliente"]) {
-        const res = await request(app.getHttpServer())
-          .post(`/ordens-servico/${os.id}/atribuir-mecanico`)
-          .set("Authorization", `Bearer ${tokens[role]}`)
-          .send({ usuarioId: mecanicoUserId });
-        expect(res.status).toBe(403);
-      }
-    });
-
-    it("POST completar-diagnostico: only ADMIN and MECANICO allowed", async () => {
-      const os = await createOs();
-      await request(app.getHttpServer())
-        .post(`/ordens-servico/${os.id}/atribuir-mecanico`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ usuarioId: mecanicoUserId });
-
-      for (const role of ["atendente", "estoquista", "cliente"]) {
-        const res = await request(app.getHttpServer())
-          .post(`/ordens-servico/${os.id}/completar-diagnostico`)
-          .set("Authorization", `Bearer ${tokens[role]}`)
-          .send({ diagnostico: "Diagnostico teste para rbac" });
-        expect(res.status).toBe(403);
-      }
-    });
-
-    it("POST entregar: only ADMIN and ATENDENTE allowed", async () => {
-      for (const role of ["mecanico", "estoquista", "cliente"]) {
-        const res = await request(app.getHttpServer())
-          .post(`/ordens-servico/00000000-0000-0000-0000-000000000000/entregar`)
-          .set("Authorization", `Bearer ${tokens[role]}`);
-        expect(res.status).toBe(403);
-      }
-    });
-
-    it("DELETE /ordens-servico/:id: only ADMIN allowed", async () => {
-      const os = await createOs();
-
-      for (const role of ["atendente", "mecanico", "estoquista", "cliente"]) {
-        const res = await request(app.getHttpServer())
-          .delete(`/ordens-servico/${os.id}`)
-          .set("Authorization", `Bearer ${tokens[role]}`);
-        expect(res.status).toBe(403);
-      }
-
-      const res = await request(app.getHttpServer())
-        .delete(`/ordens-servico/${os.id}`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-      expect(res.status).toBe(204);
-    });
-  });
-
-  // ─── Invalid state transitions ────────────────────────────────────────────
-
-  describe("Invalid state transitions", () => {
-    it("should return 400 when completing diagnosis on RECEBIDA OS", async () => {
-      const os = await createOs();
-
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${os.id}/completar-diagnostico`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ diagnostico: "Diagnostico sem atribuicao de mecanico" });
-
-      expect(res.status).toBe(400);
-    });
-
-    it("should return 400 when approving budget on RECEBIDA OS", async () => {
-      const os = await createOs();
-
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${os.id}/aprovar-orcamento`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
-      expect(res.status).toBe(400);
-    });
-
-    it("should return 400 when finalizing execution on EM_DIAGNOSTICO OS", async () => {
-      const os = await createOs();
-      await request(app.getHttpServer())
-        .post(`/ordens-servico/${os.id}/atribuir-mecanico`)
-        .set("Authorization", `Bearer ${tokens.admin}`)
-        .send({ usuarioId: mecanicoUserId });
-
-      const res = await request(app.getHttpServer())
-        .post(`/ordens-servico/${os.id}/finalizar-execucao`)
-        .set("Authorization", `Bearer ${tokens.admin}`);
-
-      expect(res.status).toBe(400);
+      expect((await http().delete(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.atendente}`)).status).toBe(403);
+      expect((await http().delete(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.admin}`)).status).toBe(204);
+      expect((await http().delete(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.admin}`)).status).toBe(404);
     });
   });
 });

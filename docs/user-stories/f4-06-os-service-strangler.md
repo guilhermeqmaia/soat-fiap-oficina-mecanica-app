@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 8
-**Status:** To Do
+**Status:** Em andamento — PR 1 (domínio/API/banco) entregue; PR 2 (outbox + consumidores SQS) e PR 3 (NodePort, rename do repo) a seguir. QA: [QA_PLAN_US-F4-06](../qa-plans/QA_PLAN_US-F4-06.md)
 **DDD Domain:** Atendimento (OrdemDeServico, Cliente, Veiculo) + Notificacao
 **DDD Layer:** Domain + Application + Infrastructure
 **Repositorio:** `soat-fiap-oficina-mecanica-app` -> OS Service
@@ -19,12 +19,13 @@ servico. `@OnEvent` in-process vira publicacao via outbox (ADR-0001 previu isso)
 
 ## Criterios de Aceite
 
-- [ ] Modulos `produto`, `servico` e casos de uso de execucao/orcamento removidos; `architecture.spec.ts` atualizado
-- [ ] OS mantem Cliente, Veiculo, historico/auditoria de status, consulta por CPF (posse via claim) e tempo medio por status
-- [ ] Novo status **`AGUARDANDO_PAGAMENTO`** entre `AGUARDANDO_APROVACAO` e `EM_EXECUCAO`; maquina de estados atualizada e testada
+- [x] Modulos `produto`, `servico` e casos de uso de execucao/orcamento removidos; `architecture.spec.ts` atualizado
+- [x] OS mantem Cliente, Veiculo, historico/auditoria de status, consulta por CPF (posse via claim) e tempo medio por status (metrica Prometheus `oficina_os_tempo_no_status_seconds`; o tempo medio de *execucao* por servico vai com a Execucao)
+- [x] Novo status **`AGUARDANDO_PAGAMENTO`** entre `AGUARDANDO_APROVACAO` e `EM_EXECUCAO`; maquina de estados atualizada e testada (+ `motivoCancelamento` para as compensacoes)
 - [ ] Publica via **outbox**: `os.aberta` (com veiculo/cliente resumidos), `os.cancelada`, `os.finalizada`, `os.entregue`
-- [ ] Consome: `execucao.diagnostico-concluido` (grava snapshot dos itens), `billing.orcamento-gerado`, `billing.pagamento-aprovado`, `execucao.finalizada` — consumidores idempotentes
-- [ ] Endpoints de mutacao removidos: adicionar servico/produto, aprovar/rejeitar, iniciar/concluir servico (agora nos outros servicos) — Swagger atualizado; UIs `admin`/`cliente` apontam para os novos servicos
+- [ ] Consome: `execucao.diagnostico-concluido` (grava snapshot dos itens), `billing.orcamento-gerado`, `billing.pagamento-aprovado`, `execucao.finalizada` — consumidores idempotentes *(PR 1: use cases de transicao idempotentes em `application/use-cases/transicoes/`; PR 2: handlers SQS)*
+- [x] Endpoints de mutacao removidos: adicionar servico/produto, aprovar/rejeitar, iniciar/concluir servico (agora nos outros servicos) — Swagger atualizado; novo `POST /ordens-servico/:id/cancelar`
+- [ ] UIs `admin`/`cliente` apontam para os novos servicos *(depende dos endpoints da Execucao/Billing — US-F4-07/08)*
 - [ ] Notificacao ao cliente continua aqui, alimentada pelos eventos ([US-F4-12](f4-12-notificacoes-por-eventos.md))
 - [ ] Usa o kit ([US-F4-01](f4-01-kit-compartilhado.md)); cobertura >= 80%; repositorio renomeado para `soat-fiap-oficina-os-service` (GitHub redireciona; decisao registrada)
 ## Dependencias

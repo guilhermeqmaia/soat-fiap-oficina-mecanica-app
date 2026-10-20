@@ -32,65 +32,6 @@ enum Role {
   CLIENTE
 }
 
-model Servico {
-  id                 String   @id @default(uuid())
-  nome               String
-  descricao          String?
-  precoBase          Decimal  @map("preco_base")
-  tempoEstimadoHoras Float    @map("tempo_estimado_horas")
-  ativo              Boolean  @default(true)
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-
-  itensOrdemDeServico ItemOrdemDeServicoServico[]
-
-  @@map("servico")
-}
-
-model Produto {
-  id                   String   @id @default(uuid())
-  nome                 String
-  descricao            String?
-  precoUnitario        Decimal  @map("preco_unitario")
-  quantidadeEstoque    Int      @map("quantidade_estoque")
-  quantidadeReservada  Int      @default(0) @map("quantidade_reservada")
-  estoqueMinimo        Int      @map("estoque_minimo")
-  ativo                Boolean  @default(true)
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
-
-  movimentacoes        MovimentacaoEstoque[]
-  itensOrdemDeServico  ItemOrdemDeServicoProduto[]
-
-  @@map("produto")
-}
-
-model MovimentacaoEstoque {
-  id                String                  @id @default(uuid())
-  produtoId         String                  @map("produto_id")
-  tipo              TipoMovimentacaoEstoque
-  quantidade        Int
-  estoqueResultante Int                     @map("estoque_resultante")
-  ordemDeServicoId  String?                 @map("ordem_de_servico_id")
-  motivo            String?
-  usuarioId         String?                 @map("usuario_id")
-  createdAt         DateTime                @default(now()) @map("created_at")
-
-  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
-
-  @@index([produtoId, createdAt])
-  @@index([ordemDeServicoId])
-  @@map("movimentacao_estoque")
-}
-
-enum TipoMovimentacaoEstoque {
-  ENTRADA
-  SAIDA
-  RESERVA
-  ESTORNO_RESERVA
-  BAIXA
-}
-
 model Cliente {
   id        String   @id @default(uuid())
   nome      String
@@ -100,7 +41,7 @@ model Cliente {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  veiculos  Veiculo[]
+  veiculos        Veiculo[]
   ordensDeServico OrdemDeServico[]
 
   @@map("cliente")
@@ -117,27 +58,29 @@ model Veiculo {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  cliente   Cliente  @relation(fields: [clienteId], references: [id])
+  cliente         Cliente          @relation(fields: [clienteId], references: [id])
   ordensDeServico OrdemDeServico[]
 
   @@map("veiculo")
 }
 
 model OrdemDeServico {
-  id                  String   @id @default(uuid())
-  numero              String   @unique
-  clienteId           String   @map("cliente_id")
-  veiculoId           String   @map("veiculo_id")
-  usuarioId           String?  @map("usuario_id")
-  descricaoInicial    String   @map("descricao_inicial")
-  diagnostico         String?
-  status              StatusOrdemDeServico @default(RECEBIDA)
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                 String               @id @default(uuid())
+  numero             String               @unique
+  clienteId          String               @map("cliente_id")
+  veiculoId          String               @map("veiculo_id")
+  usuarioId          String?              @map("usuario_id")
+  descricaoInicial   String               @map("descricao_inicial")
+  diagnostico        String?
+  status             StatusOrdemDeServico @default(RECEBIDA)
+  /// Preenchido quando status=CANCELADA (compensacoes da saga — RFC-0005)
+  motivoCancelamento String?              @map("motivo_cancelamento")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
 
-  cliente   Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  veiculo   Veiculo  @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
-  usuario   Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  cliente Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  veiculo Veiculo  @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
 
   itensServico ItemOrdemDeServicoServico[]
   auditLogs    OrdemDeServicoAuditLog[]
@@ -146,19 +89,16 @@ model OrdemDeServico {
 }
 
 model ItemOrdemDeServicoServico {
-  id               String             @id @default(uuid())
-  ordemDeServicoId String             @map("ordem_de_servico_id")
-  servicoId        String             @map("servico_id")
+  id               String   @id @default(uuid())
+  ordemDeServicoId String   @map("ordem_de_servico_id")
+  /// Referencia do servico no catalogo do Execucao Service (sem FK: snapshot — RFC-0004)
+  servicoId        String   @map("servico_id")
+  nome             String
   quantidade       Int
-  precoUnitario    Decimal            @map("preco_unitario")
-  statusExecucao   StatusExecucaoItem @default(PENDENTE) @map("status_execucao")
-  inicioExecucao   DateTime?          @map("inicio_execucao")
-  fimExecucao      DateTime?          @map("fim_execucao")
-  horasTrabalhadas Float?             @map("horas_trabalhadas")
-  createdAt        DateTime           @default(now()) @map("created_at")
+  precoUnitario    Decimal  @map("preco_unitario")
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  ordemDeServico OrdemDeServico @relation(fields: [ordemDeServicoId], references: [id], onDelete: Cascade)
-  servico        Servico        @relation(fields: [servicoId], references: [id])
+  ordemDeServico OrdemDeServico              @relation(fields: [ordemDeServicoId], references: [id], onDelete: Cascade)
   produtos       ItemOrdemDeServicoProduto[]
 
   @@unique([ordemDeServicoId, servicoId])
@@ -168,28 +108,24 @@ model ItemOrdemDeServicoServico {
 model ItemOrdemDeServicoProduto {
   id                          String   @id @default(uuid())
   itemOrdemDeServicoServicoId String   @map("item_ordem_de_servico_servico_id")
+  /// Referencia do produto no catalogo/estoque do Execucao Service (sem FK: snapshot)
   produtoId                   String   @map("produto_id")
+  nome                        String
   quantidade                  Int
   precoUnitario               Decimal  @map("preco_unitario")
   createdAt                   DateTime @default(now()) @map("created_at")
 
   itemOrdemDeServicoServico ItemOrdemDeServicoServico @relation(fields: [itemOrdemDeServicoServicoId], references: [id], onDelete: Cascade)
-  produto                   Produto                   @relation(fields: [produtoId], references: [id])
 
   @@unique([itemOrdemDeServicoServicoId, produtoId])
   @@map("item_ordem_de_servico_produto")
-}
-
-enum StatusExecucaoItem {
-  PENDENTE
-  EM_EXECUCAO
-  CONCLUIDO
 }
 
 enum StatusOrdemDeServico {
   RECEBIDA
   EM_DIAGNOSTICO
   AGUARDANDO_APROVACAO
+  AGUARDANDO_PAGAMENTO
   EM_EXECUCAO
   FINALIZADA
   ENTREGUE
@@ -213,9 +149,9 @@ model OrdemDeServicoAuditLog {
 }
 
 model Notificacao {
-  id               String             @id @default(uuid())
-  clienteId        String             @map("cliente_id")
-  ordemDeServicoId String?            @map("ordem_de_servico_id")
+  id               String            @id @default(uuid())
+  clienteId        String            @map("cliente_id")
+  ordemDeServicoId String?           @map("ordem_de_servico_id")
   tipo             TipoNotificacao
   canal            CanalNotificacao
   destinatario     String
@@ -223,8 +159,8 @@ model Notificacao {
   mensagem         String
   status           StatusNotificacao
   erro             String?
-  enviadaEm        DateTime?          @map("enviada_em")
-  createdAt        DateTime           @default(now()) @map("created_at")
+  enviadaEm        DateTime?         @map("enviada_em")
+  createdAt        DateTime          @default(now()) @map("created_at")
 
   @@index([clienteId])
   @@index([ordemDeServicoId])
