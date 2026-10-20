@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { Produto, CreateProdutoProps } from '../../domain/produto.entity';
 import { DuplicateNameError } from '../../domain/errors/duplicate-name.error';
 import {

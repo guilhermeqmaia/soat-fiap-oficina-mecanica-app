@@ -2,7 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { PrismaUsuarioRepository } from "./prisma-usuario.repository";
 import { Usuario } from "../domain/usuario.entity";
-import { Role } from "../domain/role.enum";
+import { Role } from '@guilhermeqmaia/oficina-kit/auth';
 import {
   startTestDatabase,
   stopTestDatabase,

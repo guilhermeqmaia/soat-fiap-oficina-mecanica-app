@@ -1,4 +1,4 @@
-import { DomainEventPublisher } from "../../../shared/application/domain-event-publisher";
+import { DomainEventPublisher } from '@guilhermeqmaia/oficina-kit/core';
 import { OrdemDeServico } from "../../domain/ordem-de-servico.entity";
 import { StatusOS } from "../../domain/value-objects/status-os.vo";
 import { OsStatusAlteradoEvent } from "../../domain/events/os-status-alterado.event";

@@ -1,5 +1,5 @@
 import { OrcamentoProntoEvent } from './orcamento-pronto.event';
-import { DomainEvent } from '../domain-event';
+import { DomainEvent } from '@guilhermeqmaia/oficina-kit/core';
 
 describe('OrcamentoProntoEvent', () => {
   it('preenche todos os campos do payload', () => {

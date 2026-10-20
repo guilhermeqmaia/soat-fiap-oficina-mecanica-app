@@ -1,8 +1,16 @@
+import type { ExecutionContext } from '@nestjs/common';
 import {
   THROTTLER_LIMIT,
   THROTTLER_TTL_MS,
+  isRotaDeInfra,
   shouldSkipThrottling,
 } from './throttler.config';
+
+const httpContext = (path: string, type = 'http'): ExecutionContext =>
+  ({
+    getType: () => type,
+    switchToHttp: () => ({ getRequest: () => ({ path }) }),
+  }) as unknown as ExecutionContext;
 
 describe('throttler.config', () => {
   describe('shouldSkipThrottling', () => {
@@ -59,6 +67,28 @@ describe('throttler.config', () => {
         if (original === undefined) delete process.env.THROTTLER_DISABLED;
         else process.env.THROTTLER_DISABLED = original;
       }
+    });
+  });
+
+  describe('isRotaDeInfra (probes/scrape vindos do kit, sem @SkipThrottle)', () => {
+    it('ignora o throttler em /health, /health/ready e /metrics', () => {
+      for (const path of ['/health', '/health/ready', '/metrics']) {
+        expect(isRotaDeInfra(httpContext(path))).toBe(true);
+        expect(shouldSkipThrottling({ NODE_ENV: 'production' }, httpContext(path))).toBe(true);
+      }
+    });
+
+    it('nao ignora rotas de negocio nem prefixos parecidos', () => {
+      for (const path of ['/clientes', '/healthcheck', '/metricsx', '/ordens-servico/health']) {
+        expect(isRotaDeInfra(httpContext(path))).toBe(false);
+      }
+      expect(shouldSkipThrottling({ NODE_ENV: 'production' }, httpContext('/clientes'))).toBe(false);
+    });
+
+    it('e falso sem contexto, fora de HTTP ou sem path', () => {
+      expect(isRotaDeInfra()).toBe(false);
+      expect(isRotaDeInfra(httpContext('/health', 'rpc'))).toBe(false);
+      expect(isRotaDeInfra(httpContext(undefined as unknown as string))).toBe(false);
     });
   });
 

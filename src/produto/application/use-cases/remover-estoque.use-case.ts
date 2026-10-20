@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { Produto } from '../../domain/produto.entity';
 import { InsufficientStockError } from '../../domain/errors/insufficient-stock.error';
 import { TipoMovimentacaoEstoque } from '../../domain/value-objects/tipo-movimentacao-estoque.vo';
@@ -12,7 +12,7 @@ import { MovimentacaoContext } from '../../domain/movimentacao-context';
 import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
-} from '../../../shared/application/domain-event-publisher';
+} from '@guilhermeqmaia/oficina-kit/core';
 
 export interface RemoverEstoqueInput {
   id: string;

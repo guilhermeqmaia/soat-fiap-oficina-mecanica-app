@@ -1,6 +1,6 @@
 import { UsuarioPresenter } from './usuario.presenter';
 import { Usuario } from '../../../auth/domain/usuario.entity';
-import { Role } from '../../../auth/domain/role.enum';
+import { Role } from '@guilhermeqmaia/oficina-kit/auth';
 
 function fakeUsuario(overrides: Partial<{
   id: string;

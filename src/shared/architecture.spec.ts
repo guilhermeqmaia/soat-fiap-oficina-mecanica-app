@@ -51,6 +51,20 @@ const NEST_HTTP_EXCEPTIONS =
  */
 const ALLOWED_NEST_IN_APPLICATION = ['@nestjs/common', '@nestjs/event-emitter'];
 
+/**
+ * Subpaths do kit compartilhado (ADR-0010) que dominio e aplicacao podem
+ * importar: `core` (DomainError, UseCase, portas) e `auth` (Role,
+ * AuthenticatedUser). `logging`, `metrics`, `health` e `messaging` sao
+ * infraestrutura — entram apenas na camada de infra/modulos.
+ */
+const KIT = '@guilhermeqmaia/oficina-kit';
+const KIT_ALLOWED_IN_INNER_LAYERS = [`${KIT}/core`, `${KIT}/auth`];
+
+function isDisallowedKitImport(imp: string): boolean {
+  if (!imp.startsWith(KIT)) return false;
+  return !KIT_ALLOWED_IN_INNER_LAYERS.includes(imp);
+}
+
 function isDisallowedNestImport(imp: string): boolean {
   if (imp !== '@nestjs' && !imp.startsWith('@nestjs/')) return false;
   return !ALLOWED_NEST_IN_APPLICATION.some(
@@ -80,7 +94,8 @@ describe('Clean Architecture dependency rule', () => {
           imp.includes('/infrastructure/') ||
           imp.startsWith('@nestjs') ||
           imp.includes('generated/prisma') ||
-          imp.includes('@prisma')
+          imp.includes('@prisma') ||
+          isDisallowedKitImport(imp)
         ) {
           violations.push(`${path.relative(SRC, file)} -> ${imp}`);
         }
@@ -103,7 +118,8 @@ describe('Clean Architecture dependency rule', () => {
           imp.includes('@prisma') ||
           imp === 'bcrypt' ||
           imp.startsWith('bcrypt/') ||
-          isDisallowedNestImport(imp)
+          isDisallowedNestImport(imp) ||
+          isDisallowedKitImport(imp)
         ) {
           violations.push(`${path.relative(SRC, file)} -> ${imp}`);
         }

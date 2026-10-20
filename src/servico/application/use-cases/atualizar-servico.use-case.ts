@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { Servico } from '../../domain/servico.entity';
 import { ServicoNotFoundError } from '../../domain/errors/servico-not-found.error';
 import { DuplicateNameError } from '../../domain/errors/duplicate-name.error';

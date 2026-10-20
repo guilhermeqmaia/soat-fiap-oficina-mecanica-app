@@ -3,8 +3,8 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../app.module';
 import { PrismaService } from '../prisma/prisma.service';
-import { Role } from '../auth/domain/role.enum';
-import { mintToken } from '../auth/testing/token-factory';
+import { Role } from '@guilhermeqmaia/oficina-kit/auth';
+import { mintToken } from '@guilhermeqmaia/oficina-kit/testing';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 
 jest.setTimeout(120000);

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { Notificacao } from '../../domain/notificacao.entity';
 import { CanalNotificacao } from '../../domain/value-objects/canal-notificacao.vo';
 import { TipoNotificacao } from '../../domain/value-objects/tipo-notificacao.vo';

@@ -1,4 +1,4 @@
-import { DomainError, DomainErrorKind } from '../../../shared/domain/domain-error';
+import { DomainError, DomainErrorKind } from '@guilhermeqmaia/oficina-kit/core';
 export class InvalidRoleError extends DomainError {
   readonly kind = DomainErrorKind.INVALID_INPUT;
 

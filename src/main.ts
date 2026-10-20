@@ -1,5 +1,5 @@
 // Tracing precisa ser inicializado antes de qualquer outro import (US-F3-10).
-import { iniciarTracing } from './observabilidade/tracing';
+import { iniciarTracing } from '@guilhermeqmaia/oficina-kit/metrics';
 iniciarTracing();
 
 import { NestFactory } from '@nestjs/core';

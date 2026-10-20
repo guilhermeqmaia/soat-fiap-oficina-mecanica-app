@@ -57,11 +57,11 @@ flowchart LR
 | Autenticação serverless por CPF (Lambda + Authorizer) | repo [soat-fiap-oficina-auth-lambda](https://github.com/guilhermeqmaia/soat-fiap-oficina-auth-lambda) |
 | API Gateway, cluster EKS e observabilidade (Terraform) | repo [soat-fiap-oficina-infra-k8s](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s) |
 | Banco gerenciado RDS (Terraform) | repo [soat-fiap-oficina-infra-db](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-db) |
-| App como resource server (valida o JWT da Lambda) | [`src/auth/`](src/auth) · [US-F3-03](docs/user-stories/f3-03-app-resource-server.md) |
+| App como resource server (valida o JWT da Lambda) | [`@guilhermeqmaia/oficina-kit/auth`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) (extraído na Fase 4) · [US-F3-03](docs/user-stories/f3-03-app-resource-server.md) |
 | Manifestos de deploy no EKS | [`k8s-aws/`](k8s-aws/README.md) |
 | CI/CD com deploy automático (4 repos) | [`.github/workflows/cd-aws.yml`](.github/workflows/cd-aws.yml) + workflows de cada repo |
-| Logs estruturados JSON + correlação trace↔log | [`src/shared/infrastructure/logging/`](src/shared/infrastructure/logging) · [US-F3-09](docs/user-stories/f3-09-logs-estruturados-correlacao.md) |
-| Métricas, APM e `/metrics` (OpenMetrics) | [`src/observabilidade/`](src/observabilidade) · [US-F3-10](docs/user-stories/f3-10-observabilidade-apm.md) |
+| Logs estruturados JSON + correlação trace↔log | [`@guilhermeqmaia/oficina-kit/logging`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) · [US-F3-09](docs/user-stories/f3-09-logs-estruturados-correlacao.md) |
+| Métricas, APM e `/metrics` (OpenMetrics) | [`@guilhermeqmaia/oficina-kit/metrics`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) + [`src/observabilidade/`](src/observabilidade) (métricas de negócio) · [US-F3-10](docs/user-stories/f3-10-observabilidade-apm.md) |
 | Dashboards e alertas como código | [infra-k8s/observability](https://github.com/guilhermeqmaia/soat-fiap-oficina-infra-k8s/tree/main/observability) |
 | QA Plans (Fase 3 + backfill + integração) | [`docs/qa-plans/`](docs/qa-plans/README.md) |
 | Índice de toda a documentação | [`docs/README.md`](docs/README.md) |
@@ -227,11 +227,11 @@ Cada linha de log de requisição tem o formato:
 - **traceId** (correlação log ↔ APM — [US-F3-10](docs/user-stories/f3-10-observabilidade-apm.md)): quando há um span de APM ativo (`dd-trace`, ligado por `DD_TRACE_ENABLED`), vem do **id real do trace** e os campos `dd.trace_id`/`dd.span_id` são emitidos no log — formato que o pipeline do Datadog casa automaticamente com o trace. Sem APM local, usa o trace vindo da borda (`traceparent` → `x-datadog-trace-id` → `X-Amzn-Trace-Id`) e, na ausência de qualquer um, o próprio `correlationId`. Com APM ativo, o `correlationId` também é gravado como tag `correlation_id` no span, habilitando o pivô **trace → logs** no painel.
 - **Nível por ambiente**: `debug` fora de produção, `info` em produção — sobrescrevível via `LOG_LEVEL`. Em `NODE_ENV=test` o logger fica silencioso.
 - **Sem dados sensíveis**: `authorization`, `cookie` e chaves como `password`/`senha`/`token`/`secret` são redigidos (`[REDACTED]`) em qualquer objeto logado; mensagens de erro de domínio que interpolam CPF/CNPJ (ex.: `DuplicateCpfCnpjError`) são mascaradas automaticamente (`529******25`) antes de irem para o log.
-- **Erros logados com contexto**: `DomainError` (`src/shared/infrastructure/domain-exception.filter.ts`) e exceções não tratadas são logados com `correlationId`, `kind`/tipo e path — insumo para o alerta de falha de OS ([US-F3-11](docs/user-stories/f3-11-dashboards-alertas.md)).
+- **Erros logados com contexto**: `DomainError` (`DomainExceptionFilter` do kit, `@guilhermeqmaia/oficina-kit/core`) e exceções não tratadas são logados com `correlationId`, `kind`/tipo e path — insumo para o alerta de falha de OS ([US-F3-11](docs/user-stories/f3-11-dashboards-alertas.md)).
 
 **Como consultar por correlationId**: pegue o valor do header `X-Correlation-Id` na resposta (ou do log do cliente) e filtre o backend de logs por `correlationId:"<valor>"` — todas as linhas da mesma requisição, em qualquer camada, carregam o mesmo valor.
 
-Código-fonte: `src/shared/infrastructure/logging/` (contexto de correlação, resolução do ID, configuração do pino) e `src/shared/infrastructure/correlation-id.middleware.ts`.
+Código-fonte: `@guilhermeqmaia/oficina-kit/logging` ([repo do kit](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit)) — contexto de correlação, resolução do ID, configuração do pino e `CorrelationIdMiddleware`; desde a Fase 4 esse código é compartilhado pelos três microsserviços (ADR-0010).
 
 ---
 

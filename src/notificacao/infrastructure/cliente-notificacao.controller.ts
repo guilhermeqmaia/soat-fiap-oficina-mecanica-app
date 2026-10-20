@@ -15,10 +15,10 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { Role } from '../../auth/domain/role.enum';
-import { CurrentUser } from '../../auth/infrastructure/decorators/current-user.decorator';
-import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
-import { AuthenticatedUser } from '../../auth/domain/authenticated-user';
+import { Role } from '@guilhermeqmaia/oficina-kit/auth';
+import { CurrentUser } from '@guilhermeqmaia/oficina-kit/auth';
+import { Roles } from '@guilhermeqmaia/oficina-kit/auth';
+import { AuthenticatedUser } from '@guilhermeqmaia/oficina-kit/auth';
 import { ListarNotificacoesPorCpfCnpjUseCase } from '../application/use-cases/listar-notificacoes-por-cpf-cnpj.use-case';
 import { NotificacaoResponseDto } from './dto/notificacao-response.dto';
 import { QueryNotificacaoDto } from './dto/query-notificacao.dto';

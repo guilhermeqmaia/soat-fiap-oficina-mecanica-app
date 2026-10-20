@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
 import { ItemProdutoOS } from '../../domain/value-objects/item-produto-os.vo';
 import { ProdutoNotFoundInCatalogError } from '../../domain/errors/produto-not-found-in-catalog.error';

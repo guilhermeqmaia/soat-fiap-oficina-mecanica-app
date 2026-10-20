@@ -1,8 +1,8 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CurrentUser } from './decorators/current-user.decorator';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { AuthenticatedUser } from '../domain/authenticated-user';
+import { CurrentUser } from '@guilhermeqmaia/oficina-kit/auth';
+import { JwtAuthGuard } from '@guilhermeqmaia/oficina-kit/auth';
+import { AuthenticatedUser } from '@guilhermeqmaia/oficina-kit/auth';
 
 /**
  * Resource server (US-F3-03): a aplicacao NAO possui mais POST /auth/login.

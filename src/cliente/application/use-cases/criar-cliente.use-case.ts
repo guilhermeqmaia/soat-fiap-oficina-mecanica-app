@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { Cliente } from '../../domain/cliente.entity';
 import { DuplicateCpfCnpjError } from '../../domain/errors/duplicate-cpf-cnpj.error';
 import { CLIENTE_GATEWAY, ClienteGateway } from '../gateways/cliente.gateway';

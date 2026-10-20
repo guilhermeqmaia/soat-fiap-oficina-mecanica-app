@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { Notificacao } from '../../domain/notificacao.entity';
 import { ClienteNotFoundError } from '../../../ordem-de-servico/domain/errors/cliente-not-found.error';
 import {

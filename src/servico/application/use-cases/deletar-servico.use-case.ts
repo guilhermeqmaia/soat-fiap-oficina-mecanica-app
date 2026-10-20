@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { ServicoNotFoundError } from '../../domain/errors/servico-not-found.error';
 import {
   SERVICO_GATEWAY,
