@@ -31,8 +31,7 @@ import { ListarServicosUseCase } from '../application/use-cases/listar-servicos.
 import { BuscarServicoPorIdUseCase } from '../application/use-cases/buscar-servico-por-id.use-case';
 import { AtualizarServicoUseCase } from '../application/use-cases/atualizar-servico.use-case';
 import { DeletarServicoUseCase } from '../application/use-cases/deletar-servico.use-case';
-import { Roles } from '@guilhermeqmaia/oficina-kit/auth';
-import { Role } from '@guilhermeqmaia/oficina-kit/auth';
+import { Roles, Role } from '@guilhermeqmaia/oficina-kit/auth';
 
 @ApiTags('Servicos')
 @ApiBearerAuth()

@@ -7,8 +7,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { Role } from '@guilhermeqmaia/oficina-kit/auth';
-import { Roles } from '@guilhermeqmaia/oficina-kit/auth';
+import { Role, Roles } from '@guilhermeqmaia/oficina-kit/auth';
 import { ListarNotificacoesUseCase } from '../application/use-cases/listar-notificacoes.use-case';
 import { NotificacaoResponseDto } from './dto/notificacao-response.dto';
 import { QueryNotificacaoDto } from './dto/query-notificacao.dto';

@@ -1,6 +1,5 @@
 import { NameRequiredError } from './errors/name-required.error';
-import { Role } from '@guilhermeqmaia/oficina-kit/auth';
-import { Cpf } from '@guilhermeqmaia/oficina-kit/auth';
+import { Role, Cpf } from '@guilhermeqmaia/oficina-kit/auth';
 import { Email } from './value-objects/email.vo';
 
 export interface CreateUsuarioProps {

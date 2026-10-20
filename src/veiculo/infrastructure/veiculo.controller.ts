@@ -31,8 +31,7 @@ import { ListarVeiculosUseCase } from '../application/use-cases/listar-veiculos.
 import { BuscarVeiculoPorIdUseCase } from '../application/use-cases/buscar-veiculo-por-id.use-case';
 import { AtualizarVeiculoUseCase } from '../application/use-cases/atualizar-veiculo.use-case';
 import { DeletarVeiculoUseCase } from '../application/use-cases/deletar-veiculo.use-case';
-import { Roles } from '@guilhermeqmaia/oficina-kit/auth';
-import { Role } from '@guilhermeqmaia/oficina-kit/auth';
+import { Roles, Role } from '@guilhermeqmaia/oficina-kit/auth';
 
 @ApiTags('Veiculos')
 @ApiBearerAuth()

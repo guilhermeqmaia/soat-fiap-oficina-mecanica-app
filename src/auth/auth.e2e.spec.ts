@@ -9,10 +9,7 @@ import {
 import request from 'supertest';
 import * as jwt from 'jsonwebtoken';
 import { AppModule } from '../app.module';
-import { Role } from '@guilhermeqmaia/oficina-kit/auth';
-import { Roles } from '@guilhermeqmaia/oficina-kit/auth';
-import { Public } from '@guilhermeqmaia/oficina-kit/auth';
-import { RolesGuard } from '@guilhermeqmaia/oficina-kit/auth';
+import { Role, Roles, Public, RolesGuard } from '@guilhermeqmaia/oficina-kit/auth';
 import { mintToken } from '@guilhermeqmaia/oficina-kit/testing';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 

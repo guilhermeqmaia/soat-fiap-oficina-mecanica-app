@@ -17,10 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { QueryOrdemDeServicoDto } from './dto/query-ordem-de-servico.dto';
 import { ListarHistoricoPorCpfCnpjUseCase } from '../application/use-cases/listar-historico-por-cpf-cnpj.use-case';
-import { Roles } from '@guilhermeqmaia/oficina-kit/auth';
-import { CurrentUser } from '@guilhermeqmaia/oficina-kit/auth';
-import { Role } from '@guilhermeqmaia/oficina-kit/auth';
-import { AuthenticatedUser } from '@guilhermeqmaia/oficina-kit/auth';
+import { Roles, CurrentUser, Role, AuthenticatedUser } from '@guilhermeqmaia/oficina-kit/auth';
 
 const CPF_CNPJ_DIGITS_REGEX = /^\d{11}(\d{3})?$/;
 
