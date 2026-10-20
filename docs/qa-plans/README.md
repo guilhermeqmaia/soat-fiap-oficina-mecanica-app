@@ -9,6 +9,9 @@ Legenda: ✅ tem QA Plan · ⚠️ pendente (nao prioritario neste ciclo) · —
 | Story | Titulo | QA Plan |
 |---|---|---|
 | US-F4-01 | Kit Compartilhado dos Servicos | ✅ [QA_PLAN_US-F4-01](QA_PLAN_US-F4-01.md) |
+| US-F4-02 | Mensageria — SNS + SQS FIFO com DLQ | ✅ [QA_PLAN_US-F4-02](QA_PLAN_US-F4-02.md) |
+| US-F4-03 | Bancos por Servico (Postgres + DynamoDB) | ✅ [QA_PLAN_US-F4-03](QA_PLAN_US-F4-03.md) |
+| US-F4-05 | API Gateway Multi-servico | ✅ [QA_PLAN_US-F4-05](QA_PLAN_US-F4-05.md) |
 
 ## Fase 3 (`f3-*`) — cobertura completa das historias testaveis
 
