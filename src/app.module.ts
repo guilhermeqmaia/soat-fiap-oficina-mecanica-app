@@ -8,6 +8,8 @@ import { CorrelationIdMiddleware, LoggerModule } from '@guilhermeqmaia/oficina-k
 import { MetricsModule } from '@guilhermeqmaia/oficina-kit/metrics';
 import { HealthModule } from '@guilhermeqmaia/oficina-kit/health';
 import { InProcessMessagingModule } from '@guilhermeqmaia/oficina-kit/messaging';
+import { OutboxModule } from './messaging/outbox.module';
+import { messagingModule } from './messaging/messaging.config';
 import { validateEnv } from './config/env.validation';
 import { SERVICE_NAME } from './config/service-name';
 import { THROTTLER_LIMIT, THROTTLER_TTL_MS, shouldSkipThrottling } from './config/throttler.config';
@@ -45,6 +47,9 @@ import { ObservabilidadeModule } from './observabilidade/observabilidade.module'
     MetricsModule.forRoot({ serviceName: SERVICE_NAME }),
     HealthModule.forRoot({ imports: [PrismaModule], indicators: [PrismaHealthIndicator] }),
     InProcessMessagingModule,
+    // Fase 4 (US-F4-06): outbox sempre; SNS/SQS so com SNS_TOPIC_ARN (RFC-0006)
+    OutboxModule,
+    ...messagingModule(),
     // Rate limiting global (anti brute-force/DoS). Desabilitado sob jest
     // (JEST_WORKER_ID), sob THROTTLER_DISABLED=true (testes de carga) e nas
     // rotas de infra (/health, /metrics) consumidas pelo cluster.

@@ -35,7 +35,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@guilhermeqmaia/oficina-kit": "^0.1.0",
+    "@aws-sdk/client-sns": "^3.1153.0",
+    "@aws-sdk/client-sqs": "^3.1153.0",
+    "@guilhermeqmaia/oficina-kit": "^0.2.1",
     "@nestjs/common": "^11.1.17",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.1.17",
