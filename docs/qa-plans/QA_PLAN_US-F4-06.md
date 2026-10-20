@@ -23,7 +23,7 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 - **Tipo:** Automatizado (integracao sobe banco limpo e aplica todas as migrations)
 - **Criterio:** Schema do OS Service
 - **Passos:** `npx prisma migrate deploy` num banco da Fase 3 com OS e itens existentes
-- **Resultado esperado:** tabelas `servico`, `produto`, `movimentacao_estoque` removidas; itens ganham `nome` (backfill `''` para linhas antigas); colunas de execucao removidas; enum ganha `AGUARDANDO_PAGAMENTO`; `ordem_de_servico.motivo_cancelamento`
+- **Resultado esperado:** tabelas `servico`, `produto`, `movimentacao_estoque` removidas; itens ganham `nome` **preenchido a partir do catalogo** antes do drop (linhas orfas ficam `''`); colunas de execucao removidas; enum ganha `AGUARDANDO_PAGAMENTO`; `ordem_de_servico.motivo_cancelamento`; `version` (lock otimista). OS em voo: runbook na story
 
 ### TS-03: Maquina de estados completa
 - **Tipo:** Automatizado (`ordem-de-servico.entity.spec.ts`)
@@ -81,7 +81,7 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 ### TS-12: Handlers da fila `os-eventos`
 - **Tipo:** Automatizado (`eventos.handlers.spec.ts`; e2e "handlers traduzem o contrato")
 - **Criterio:** Consome `execucao.*` e `billing.*` com idempotencia
-- **Passos:** entregar envelopes AsyncAPI aos handlers (`execucao.enfileirada` -> `diagnostico-concluido` -> `billing.orcamento-gerado`; `execucao.recusada`)
+- **Passos:** entregar envelopes AsyncAPI aos handlers (`execucao.enfileirada` -> `diagnostico-concluido` com `Item.servicoId` nos PRODUTOs -> `billing.orcamento-gerado`; `execucao.recusada`)
 - **Resultado esperado:** status/snapshot da OS seguem o contrato; 12 types cobertos sem duplicata; compensacoes cancelam com o motivo correto (`EXECUCAO_RECUSADA`, `ORCAMENTO_REJEITADO`, `PAGAMENTO_RECUSADO`); OS inexistente/evento incompativel lancam (sem ack -> retry -> DLQ)
 
 ### TS-13: Ponta a ponta com LocalStack
@@ -91,10 +91,16 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 - **Resultado esperado:** linha do outbox vira ENVIADA; `os.aberta` chega na fila de notificacao; a OS vai para EM_DIAGNOSTICO e o id entra em `processed_messages`; republicar o mesmo envelope nao reprocessa (log `duplicate: true`)
 
 ### TS-14: Service NodePort 30080 atras do NLB unico
-- **Tipo:** Automatizado (CI: `kubectl kustomize k8s-aws`) + Manual (EKS)
+- **Tipo:** Automatizado (CI `ci-cd.yml`, passo "Validar overlay k8s-aws": build + `nodePort: 30080` + sem `LoadBalancer`) + Manual (EKS)
 - **Criterio:** Deploy compativel com o gateway multi-servico (US-F4-05)
 - **Passos:** `kubectl kustomize k8s-aws | grep -A8 'kind: Service'`; apos deploy: `kubectl -n oficina get svc oficina-app -o jsonpath='{.spec.ports[0].nodePort}'`; `aws elbv2 describe-target-health --target-group-arn <tg os>`; `curl $GW/health`
 - **Resultado esperado:** `type: NodePort`, `nodePort: 30080`; targets `healthy`; gateway responde pelo NLB unico com `backend_listener_arn` vazio; ConfigMap com `SNS_TOPIC_ARN`/`SQS_QUEUE_URL` preenchidos pelo CD (vars) ou aviso quando ausentes
+
+### TS-16: Lock otimista entre HTTP e eventos
+- **Tipo:** Automatizado (`prisma-ordem-de-servico.repository.integration.spec.ts` "lock otimista"; unitario "update com versao desatualizada")
+- **Criterio:** Nenhuma transicao sobrescreve outra silenciosamente
+- **Passos:** carregar a mesma OS duas vezes; aplicar `cancelar` numa copia e `update`; aplicar transicao na outra copia e `update`
+- **Resultado esperado:** segundo `update` lanca `ConcurrentModificationError` (409 na API); a OS permanece no primeiro estado; `version` incrementa a cada gravacao
 
 ### TS-15: Repositorio renomeado com CI/CD verde
 - **Tipo:** Manual
@@ -103,7 +109,9 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 - **Resultado esperado:** repo acessivel pelos dois nomes; `AssumeRoleWithWebIdentity` aceito (sub `repo:guilhermeqmaia/soat-fiap-oficina-os-service:*` na trust do `github-actions-oficina`); nenhum link quebrado nos READMEs dos 7 repos
 
 ## Casos de Borda
-- Itens antigos (pre-migration) ficam com `nome = ''` — exibidos como vazio ate o Execucao reemitir o diagnostico
+- Itens antigos (pre-migration) recebem o nome do catalogo no backfill; so linhas orfas ficam `''`
+- Concorrencia: `POST :id/cancelar` enquanto um evento transiciona a mesma OS -> um dos lados recebe 409/`ConcurrentModificationError` (lock otimista, TS-16)
+- `PRODUTO` sem `servicoId` no diagnostico -> agrupado em "Pecas avulsas" (contrato permite; a Execucao deve enviar o campo)
 - `RegistrarDiagnostico` com `precoUnitario` string (`"200.00"`) ou number — ambos aceitos
 - Cancelamento manual durante `AGUARDANDO_PAGAMENTO` e permitido (compensacao no Billing via evento, PR 2)
 - Listagem ordena `EM_EXECUCAO > AGUARDANDO_PAGAMENTO > AGUARDANDO_APROVACAO > EM_DIAGNOSTICO > RECEBIDA`
@@ -119,6 +127,7 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 | Endpoints de mutacao removidos; Swagger | TS-06, TS-07 |
 | Notificacao continua por eventos | US-F4-12 |
 | Kit, cobertura, rename | TS-10, TS-14, TS-15 (PR 3) |
+| Concorrencia HTTP x eventos (review) | TS-16 |
 
 ## Checklist de Validacao
 - [x] TS-01..TS-10 (20/10/2026, PR 1)
@@ -126,3 +135,4 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 - [ ] TS-13 — manual com LocalStack (ou no EKS apos PR 3)
 - [x] TS-14 (kustomize no CI, 20/10/2026); validacao no EKS no proximo ciclo de deploy
 - [x] TS-15 (20/10/2026)
+- [x] TS-16 (20/10/2026, PR de review)

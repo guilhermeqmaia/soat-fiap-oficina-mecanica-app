@@ -182,7 +182,7 @@ describe('OrdemDeServico (e2e) — OS Service', () => {
     });
     it('4. atendente entrega -> ENTREGUE; reentrega -> 400', async () => {
       const res = await http().post(`/ordens-servico/${os.id}/entregar`).set('Authorization', `Bearer ${tokens.atendente}`);
-      expect(res.status).toBe(201);
+      expect(res.status).toBe(200);
       expect(res.body.status).toBe(StatusOS.ENTREGUE);
       expect((await http().post(`/ordens-servico/${os.id}/entregar`).set('Authorization', `Bearer ${tokens.atendente}`)).status).toBe(400);
       expect((await http().post(`/ordens-servico/${os.id}/entregar`).set('Authorization', `Bearer ${tokens.mecanico}`)).status).toBe(403);
@@ -192,6 +192,7 @@ describe('OrdemDeServico (e2e) — OS Service', () => {
       expect(res.status).toBe(200);
       expect(res.body.map((l: any) => l.statusNovo)).toEqual(expect.arrayContaining([StatusOS.EM_DIAGNOSTICO, StatusOS.AGUARDANDO_APROVACAO, StatusOS.EM_EXECUCAO, StatusOS.ENTREGUE]));
       expect(res.body.find((l: any) => l.statusNovo === StatusOS.ENTREGUE).acao).toBe('FINALIZADA -> ENTREGUE');
+      expect(res.body.find((l: any) => l.acao === 'DIAGNOSTICO_REGISTRADO')).toMatchObject({ usuarioId: mecanicoUserId });
     });
     it('evento fora de ordem e rejeitado (vai para a DLQ) e nao corrompe a OS', async () => {
       await expect(moduleRef.get(RegistrarExecucaoFinalizadaUseCase).execute({ numero: os.numero })).rejects.toThrow();
@@ -203,7 +204,7 @@ describe('OrdemDeServico (e2e) — OS Service', () => {
     it('POST :id/cancelar pelo atendente -> CANCELADA com motivo OPERADOR', async () => {
       const os = await createOs();
       const res = await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.atendente}`).send({});
-      expect(res.status).toBe(201);
+      expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.OPERADOR });
       expect((await http().post(`/ordens-servico/${os.id}/cancelar`).set('Authorization', `Bearer ${tokens.atendente}`).send({})).status).toBe(400);
     });
@@ -312,7 +313,10 @@ describe('OrdemDeServico (e2e) — OS Service', () => {
       await moduleRef.get(ExecucaoRecusadaHandler).handle(envelope('execucao.recusada', { numeroOS: os.numero, motivo: 'veiculo ja em execucao' }));
       const s = (await http().get(`/ordens-servico/numero/${os.numero}/status`)).body;
       expect(s).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.EXECUCAO_RECUSADA });
-      expect((await outboxDe(os.numero)).map((r) => r.type)).toEqual(['os.aberta', 'os.cancelada']);
+      const rows = await outboxDe(os.numero);
+      expect(rows.map((r) => r.type)).toEqual(['os.aberta', 'os.cancelada']);
+      // causationId aponta para o envelope execucao.recusada que originou a compensacao
+      expect((rows[1].envelope as any).causationId).toBeDefined();
     });
 
     it('handler com OS inexistente lanca (mensagem volta para a fila -> DLQ)', async () => {

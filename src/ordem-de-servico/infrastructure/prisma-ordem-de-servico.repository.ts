@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import {
   criarEnvelope,
   OUTBOX_REPOSITORY,
@@ -15,6 +15,7 @@ import { StatusOS } from "../domain/value-objects/status-os.vo";
 import { MotivoCancelamento } from "../domain/value-objects/motivo-cancelamento";
 import { ItemServicoOS } from "../domain/value-objects/item-servico-os.vo";
 import { ItemProdutoOS } from "../domain/value-objects/item-produto-os.vo";
+import { ConcurrentModificationError } from "../domain/errors/concurrent-modification.error";
 
 const INCLUDE_ITENS = {
   itensServico: { include: { produtos: true } },
@@ -36,10 +37,9 @@ const STATUS_PRIORITY: Record<string, number> = {
 export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository {
   constructor(
     private prisma: PrismaService,
-    /** Outbox (ADR-0009). Opcional para os testes unitarios do repositorio. */
-    @Optional()
+    /** Outbox (ADR-0009) — obrigatorio: nenhuma mudanca de OS sem o evento correspondente. */
     @Inject(OUTBOX_REPOSITORY)
-    private readonly outbox?: OutboxRepository<unknown>,
+    private readonly outbox: OutboxRepository<unknown>,
   ) {}
 
   async create(os: OrdemDeServico): Promise<OrdemDeServico> {
@@ -124,16 +124,19 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
 
   async update(os: OrdemDeServico): Promise<OrdemDeServico> {
     const data = await this.prisma.$transaction(async (tx) => {
-      await tx.ordemDeServico.update({
-        where: { id: os.id },
+      // Lock otimista: so grava se ninguem alterou a OS desde a leitura.
+      const { count } = await tx.ordemDeServico.updateMany({
+        where: { id: os.id, version: os.version },
         data: {
           descricaoInicial: os.descricaoInicial,
           diagnostico: os.diagnostico,
           status: os.status,
           usuarioId: os.mecanicoId,
           motivoCancelamento: os.motivoCancelamento,
+          version: { increment: 1 },
         },
       });
+      if (count === 0) throw new ConcurrentModificationError(os.id as string);
       // Snapshot substitui o anterior (cascade apaga os produtos filhos).
       await tx.itemOrdemDeServicoServico.deleteMany({
         where: { ordemDeServicoId: os.id },
@@ -165,13 +168,13 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
     tx: unknown,
   ): Promise<void> {
     for (const evento of os.consumirEventosIntegracao()) {
-      if (!this.outbox) continue;
       await this.outbox.gravar(
         criarEnvelope({
           type: evento.type,
           data: evento.data,
           producer: "os-service",
           correlationId: os.numero,
+          causationId: evento.causationId,
         }),
         tx,
       );
@@ -235,6 +238,7 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
         (data.motivoCancelamento as MotivoCancelamento | null) ?? null,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
+      version: data.version ?? 0,
       itensServico,
     });
   }

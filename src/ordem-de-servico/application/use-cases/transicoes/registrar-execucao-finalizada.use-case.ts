@@ -8,6 +8,7 @@ import { registrarTransicao } from './registrar-transicao.base';
 
 export interface RegistrarExecucaoFinalizadaInput {
   numero: string;
+  causationId?: string;
 }
 
 /** `execucao.finalizada` -> FINALIZADA + notificacao "veiculo pronto". */
@@ -20,7 +21,7 @@ export class RegistrarExecucaoFinalizadaUseCase implements UseCase<RegistrarExec
 
   async execute(input: RegistrarExecucaoFinalizadaInput): Promise<OrdemDeServico> {
     const { ordem, aplicada } = await registrarTransicao(this.gateway, this.events, input.numero, StatusOS.FINALIZADA, (os) =>
-      os.finalizar(),
+      os.finalizar(input.causationId),
     );
     if (aplicada && ordem.id) {
       this.events.publish(new OsFinalizadaEvent(ordem.id, ordem.numero, ordem.clienteId));

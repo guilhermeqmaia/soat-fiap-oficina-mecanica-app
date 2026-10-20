@@ -47,7 +47,9 @@ import { ObservabilidadeModule } from './observabilidade/observabilidade.module'
     MetricsModule.forRoot({ serviceName: SERVICE_NAME }),
     HealthModule.forRoot({ imports: [PrismaModule], indicators: [PrismaHealthIndicator] }),
     InProcessMessagingModule,
-    // Fase 4 (US-F4-06): outbox sempre; SNS/SQS so com SNS_TOPIC_ARN (RFC-0006)
+    // Fase 4 (US-F4-06): outbox sempre; SNS/SQS so com SNS_TOPIC_ARN (RFC-0006).
+    // `messagingModule()` le process.env no momento da decoracao: depende de o
+    // ConfigModule.forRoot acima ja ter carregado o .env (sincrono) — nao mover.
     OutboxModule,
     ...messagingModule(),
     // Rate limiting global (anti brute-force/DoS). Desabilitado sob jest

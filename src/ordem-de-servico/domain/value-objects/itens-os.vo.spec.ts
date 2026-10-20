@@ -15,6 +15,7 @@ describe('ItemServicoOS / ItemProdutoOS (snapshot)', () => {
     expect(() => new ItemServicoOS('s', 'n', 0, 10)).toThrow(InvalidQuantityError);
     expect(() => new ItemServicoOS('s', 'n', 1.5, 10)).toThrow(InvalidQuantityError);
     expect(() => new ItemServicoOS('s', 'n', 1, -1)).toThrow(InvalidPriceError);
+    expect(() => new ItemServicoOS('s', 'n', 1, Number('abc'))).toThrow(InvalidPriceError);
     expect(() => new ItemProdutoOS('p', 'n', 0, 10)).toThrow(InvalidQuantityError);
     expect(() => new ItemProdutoOS('p', 'n', 1, -1)).toThrow(InvalidPriceError);
   });

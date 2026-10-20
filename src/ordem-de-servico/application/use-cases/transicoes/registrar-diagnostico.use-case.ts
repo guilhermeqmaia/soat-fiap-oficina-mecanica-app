@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
+import { DOMAIN_EVENT_PUBLISHER, DomainEventPublisher, UseCase } from '@guilhermeqmaia/oficina-kit/core';
+import { OsAcaoEvent } from '../../../../shared/domain/events/os-acao.event';
 import { OrdemDeServico } from '../../../domain/ordem-de-servico.entity';
 import { ItemServicoOS } from '../../../domain/value-objects/item-servico-os.vo';
 import { ItemProdutoOS } from '../../../domain/value-objects/item-produto-os.vo';
@@ -31,7 +32,10 @@ export interface RegistrarDiagnosticoInput {
  */
 @Injectable()
 export class RegistrarDiagnosticoUseCase implements UseCase<RegistrarDiagnosticoInput, OrdemDeServico> {
-  constructor(@Inject(ORDEM_DE_SERVICO_GATEWAY) private readonly gateway: OrdemDeServicoGateway) {}
+  constructor(
+    @Inject(ORDEM_DE_SERVICO_GATEWAY) private readonly gateway: OrdemDeServicoGateway,
+    @Inject(DOMAIN_EVENT_PUBLISHER) private readonly events: DomainEventPublisher,
+  ) {}
 
   async execute(input: RegistrarDiagnosticoInput): Promise<OrdemDeServico> {
     const ordem = await this.gateway.findByNumero(input.numero);
@@ -42,7 +46,15 @@ export class RegistrarDiagnosticoUseCase implements UseCase<RegistrarDiagnostico
       mecanicoId: input.mecanicoId,
       itens: RegistrarDiagnosticoUseCase.montarItens(input.itens),
     });
-    return this.gateway.update(ordem);
+    const updated = await this.gateway.update(ordem);
+    // Nao muda o status, mas e uma acao rastreavel (quem diagnosticou, quantos itens).
+    this.events.publish(
+      new OsAcaoEvent(updated.id as string, updated.numero, 'DIAGNOSTICO_REGISTRADO', updated.status, updated.status, input.mecanicoId, {
+        itens: updated.itensServico.length,
+        valorTotal: updated.valorTotal(),
+      }),
+    );
+    return updated;
   }
 
   /** Agrupa os produtos sob o servico pai; produtos sem pai entram num servico "Pecas avulsas". */

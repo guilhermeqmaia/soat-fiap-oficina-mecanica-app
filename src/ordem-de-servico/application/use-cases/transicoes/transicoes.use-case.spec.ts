@@ -79,7 +79,7 @@ describe('transicoes dirigidas por eventos (idempotentes — ADR-0009)', () => {
 
   it('execucao.diagnostico-concluido grava snapshot agrupando produtos sob o servico pai', async () => {
     const os = nova(StatusOS.EM_DIAGNOSTICO); const g = fakeGateway(os);
-    const r = await new RegistrarDiagnosticoUseCase(g).execute({
+    const r = await new RegistrarDiagnosticoUseCase(g, events).execute({
       numero: os.numero, mecanicoId: 'mec-1', diagnostico: 'Pastilhas gastas e oleo vencido',
       itens: [
         { tipo: 'SERVICO', referenciaId: 'srv-1', nome: 'Troca de pastilha', quantidade: 1, precoUnitario: '200.00' },
@@ -89,6 +89,8 @@ describe('transicoes dirigidas por eventos (idempotentes — ADR-0009)', () => {
     });
     expect(r.mecanicoId).toBe('mec-1');
     expect(r.itensServico.map((i) => [i.nome, i.produtos.length])).toEqual([['Troca de pastilha', 1], ['Pecas avulsas', 1]]);
+    // audit log: diagnostico e uma acao rastreavel mesmo sem mudar o status
+    expect(events.ultimo<OsAcaoEvent>()).toMatchObject({ acao: 'DIAGNOSTICO_REGISTRADO', usuarioId: 'mec-1', metadata: { itens: 2 } });
     expect(r.valorTotal()).toBe(200 + 100 + 15);
   });
 
@@ -116,11 +118,12 @@ describe('transicoes dirigidas por eventos (idempotentes — ADR-0009)', () => {
     expect(events.publicados.filter((e) => e instanceof OsFinalizadaEvent)).toHaveLength(1);
   });
 
-  it('compensacao: cancelamento com motivo da saga', async () => {
+  it('compensacao: cancelamento com motivo da saga e causationId no evento os.cancelada', async () => {
     const os = nova(StatusOS.AGUARDANDO_PAGAMENTO); const g = fakeGateway(os);
-    const r = await new RegistrarCancelamentoUseCase(g, events).execute({ numero: os.numero, motivo: MotivoCancelamento.PAGAMENTO_RECUSADO });
+    const r = await new RegistrarCancelamentoUseCase(g, events).execute({ numero: os.numero, motivo: MotivoCancelamento.PAGAMENTO_RECUSADO, causationId: 'env-1' });
     expect(r.status).toBe(StatusOS.CANCELADA);
     expect(r.motivoCancelamento).toBe(MotivoCancelamento.PAGAMENTO_RECUSADO);
+    expect(r.eventosIntegracao[0]).toMatchObject({ type: 'os.cancelada', causationId: 'env-1' });
     // reentrega e no-op mesmo com motivo diferente
     expect((await new RegistrarCancelamentoUseCase(g, events).execute({ numero: os.numero, motivo: MotivoCancelamento.OPERADOR })).motivoCancelamento).toBe(MotivoCancelamento.PAGAMENTO_RECUSADO);
   });

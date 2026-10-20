@@ -7,6 +7,9 @@ import { MotivoCancelamento } from '../domain/value-objects/motivo-cancelamento'
 import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { ItemProdutoOS } from '../domain/value-objects/item-produto-os.vo';
 import { startTestDatabase, stopTestDatabase } from '../../test/database.container';
+import { ConcurrentModificationError } from '../domain/errors/concurrent-modification.error';
+import { OUTBOX_REPOSITORY } from '@guilhermeqmaia/oficina-kit/messaging';
+import { PrismaOutbox } from '../../messaging/prisma-messaging.adapters';
 
 jest.setTimeout(60000);
 
@@ -19,7 +22,9 @@ describe('PrismaOrdemDeServicoRepository (integration)', () => {
 
   beforeAll(async () => {
     process.env.DATABASE_URL = await startTestDatabase();
-    const module: TestingModule = await Test.createTestingModule({ providers: [PrismaService, PrismaOrdemDeServicoRepository] }).compile();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [PrismaService, PrismaOrdemDeServicoRepository, PrismaOutbox, { provide: OUTBOX_REPOSITORY, useExisting: PrismaOutbox }],
+    }).compile();
     prisma = module.get(PrismaService);
     repository = module.get(PrismaOrdemDeServicoRepository);
     await prisma.onModuleInit();
@@ -103,5 +108,21 @@ describe('PrismaOrdemDeServicoRepository (integration)', () => {
     await repository.delete(os.id as string);
     expect(await repository.findById(os.id as string)).toBeNull();
     expect(await prisma.itemOrdemDeServicoServico.count({ where: { ordemDeServicoId: os.id } })).toBe(0);
+  });
+
+  it('lock otimista: a segunda gravacao sobre a mesma versao falha e nao sobrescreve', async () => {
+    const criada = await repository.create(nova());
+    const a = (await repository.findById(criada.id as string))!;
+    const b = (await repository.findById(criada.id as string))!;
+    expect(a.version).toBe(0);
+    a.cancelar(MotivoCancelamento.OPERADOR);
+    const salva = await repository.update(a);
+    expect(salva.version).toBe(1);
+    b.iniciarDiagnostico();
+    await expect(repository.update(b)).rejects.toThrow(ConcurrentModificationError);
+    expect((await repository.findById(criada.id as string))?.status).toBe(StatusOS.CANCELADA);
+    // o evento da gravacao perdida nao foi para o outbox
+    const outbox = await prisma.outbox.findMany({ where: { correlationId: criada.numero } });
+    expect(outbox.map((o) => o.type)).toEqual(['os.cancelada']);
   });
 });

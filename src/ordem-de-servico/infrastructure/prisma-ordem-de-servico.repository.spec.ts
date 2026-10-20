@@ -7,6 +7,7 @@ import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { ItemProdutoOS } from '../domain/value-objects/item-produto-os.vo';
 import { MotivoCancelamento } from '../domain/value-objects/motivo-cancelamento';
 import { OUTBOX_REPOSITORY } from '@guilhermeqmaia/oficina-kit/messaging';
+import { ConcurrentModificationError } from '../domain/errors/concurrent-modification.error';
 
 const dbRecord = {
   id: 'os-123', numero: 'OS-2026-00001', clienteId: 'cliente-123', veiculoId: 'veiculo-456', usuarioId: null,
@@ -18,7 +19,7 @@ const dbRecordWithItens = {
   itensServico: [{ servicoId: 'serv-abc', nome: 'Troca', quantidade: 2, precoUnitario: '150.00', produtos: [{ produtoId: 'p1', nome: 'Pastilha', quantidade: 1, precoUnitario: '80.00' }] }],
 };
 const tx = {
-  ordemDeServico: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+  ordemDeServico: { create: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findUnique: jest.fn() },
   itemOrdemDeServicoServico: { deleteMany: jest.fn(), create: jest.fn() },
 };
 const outbox = { gravar: jest.fn(), pendentes: jest.fn(), marcarEnviada: jest.fn(), marcarFalha: jest.fn() };
@@ -69,15 +70,15 @@ describe('PrismaOrdemDeServicoRepository (unit)', () => {
     expect(outbox.gravar.mock.calls[0][1]).toBe(tx);
   });
 
-  it('sem outbox configurado (testes/legado) os eventos sao descartados sem erro', async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaOrdemDeServicoRepository, { provide: PrismaService, useValue: mockPrisma }],
-    }).compile();
-    const semOutbox = module.get(PrismaOrdemDeServicoRepository);
-    tx.ordemDeServico.create.mockResolvedValue(dbRecord);
-    const os = OrdemDeServico.create({ clienteId: 'c', veiculoId: 'v', descricaoInicial: 'Cliente relata problemas' });
-    os.registrarAbertura({ cliente: { nome: 'J', cpfCnpj: '52998224725' }, veiculo: { placa: 'A', modelo: 'B' } });
-    await expect(semOutbox.create(os)).resolves.toBeInstanceOf(OrdemDeServico);
+  it('update com versao desatualizada lanca ConcurrentModificationError e nao grava evento (lock otimista)', async () => {
+    tx.ordemDeServico.updateMany.mockResolvedValueOnce({ count: 0 });
+    const os = OrdemDeServico.reconstitute({
+      id: 'os-123', numero: 'OS-2026-00001', clienteId: 'c', veiculoId: 'v', mecanicoId: null, descricaoInicial: 'Cliente relata', diagnostico: null, status: StatusOS.RECEBIDA,
+      motivoCancelamento: null, createdAt: new Date(), updatedAt: new Date(), itensServico: [], version: 3,
+    });
+    os.cancelar(MotivoCancelamento.OPERADOR);
+    await expect(repository.update(os)).rejects.toThrow(ConcurrentModificationError);
+    expect(tx.ordemDeServico.updateMany.mock.calls[0][0].where).toEqual({ id: 'os-123', version: 3 });
     expect(outbox.gravar).not.toHaveBeenCalled();
   });
 
@@ -118,7 +119,7 @@ describe('PrismaOrdemDeServicoRepository (unit)', () => {
       motivoCancelamento: null, createdAt: new Date(), updatedAt: new Date(), itensServico: [new ItemServicoOS('serv-abc', 'Troca', 2, 150, [new ItemProdutoOS('p1', 'Pastilha', 1, 80)])],
     });
     const r = await repository.update(os);
-    expect(tx.ordemDeServico.update.mock.calls[0][0].data).toMatchObject({ status: 'AGUARDANDO_APROVACAO', usuarioId: 'mec-1', motivoCancelamento: null });
+    expect(tx.ordemDeServico.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: 'os-123', version: 0 }, data: { status: 'AGUARDANDO_APROVACAO', usuarioId: 'mec-1', motivoCancelamento: null, version: { increment: 1 } } });
     expect(tx.itemOrdemDeServicoServico.deleteMany).toHaveBeenCalledWith({ where: { ordemDeServicoId: 'os-123' } });
     expect(tx.itemOrdemDeServicoServico.create.mock.calls[0][0].data).toMatchObject({ nome: 'Troca', produtos: { create: [{ nome: 'Pastilha', produtoId: 'p1' }] } });
     expect(r.itensServico).toHaveLength(1);

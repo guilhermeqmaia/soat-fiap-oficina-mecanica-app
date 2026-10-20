@@ -67,7 +67,7 @@ describe('handlers da fila os-eventos', () => {
     await get(ExecucaoFinalizadaHandler).handle(env('execucao.finalizada', { numeroOS: 'OS-1', finalizadaEm: new Date().toISOString() }));
     expect(ucs.enfileiramento.execute).toHaveBeenCalledWith({ numero: 'OS-1' });
     expect(ucs.iniciada.execute).toHaveBeenCalledWith({ numero: 'OS-1' });
-    expect(ucs.finalizada.execute).toHaveBeenCalledWith({ numero: 'OS-1' });
+    expect(ucs.finalizada.execute).toHaveBeenCalledWith({ numero: 'OS-1', causationId: expect.any(String) });
   });
 
   it('execucao.diagnostico-concluido repassa mecanico, diagnostico e itens do contrato', async () => {
@@ -90,6 +90,8 @@ describe('handlers da fila os-eventos', () => {
     expect(ucs.cancelamento.execute.mock.calls.map((c) => c[0].motivo)).toEqual([
       MotivoCancelamento.EXECUCAO_RECUSADA, MotivoCancelamento.ORCAMENTO_REJEITADO, MotivoCancelamento.PAGAMENTO_RECUSADO,
     ]);
+    // causationId = id do envelope consumido (ADR-0009)
+    expect(ucs.cancelamento.execute.mock.calls.every((c) => typeof c[0].causationId === 'string')).toBe(true);
   });
 
   it('eventos sem transicao (pagamento-aprovado etc.) so registram no log e confirmam', async () => {

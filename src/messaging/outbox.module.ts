@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { OUTBOX_REPOSITORY } from '@guilhermeqmaia/oficina-kit/messaging';
 import { PrismaOutbox } from './prisma-messaging.adapters';
+import { ManutencaoMensageriaService } from './manutencao-mensageria.service';
 
 /**
  * O outbox existe SEMPRE (e so uma tabela): os repositorios gravam os eventos
@@ -10,7 +11,7 @@ import { PrismaOutbox } from './prisma-messaging.adapters';
  */
 @Global()
 @Module({
-  providers: [PrismaOutbox, { provide: OUTBOX_REPOSITORY, useExisting: PrismaOutbox }],
+  providers: [PrismaOutbox, { provide: OUTBOX_REPOSITORY, useExisting: PrismaOutbox }, ManutencaoMensageriaService],
   exports: [OUTBOX_REPOSITORY],
 })
 export class OutboxModule {}

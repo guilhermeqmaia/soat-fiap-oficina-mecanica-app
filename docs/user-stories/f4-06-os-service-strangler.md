@@ -31,3 +31,35 @@ servico. `@OnEvent` in-process vira publicacao via outbox (ADR-0001 previu isso)
 ## Dependencias
 
 - [US-F4-01](f4-01-kit-compartilhado.md), [US-F4-02](f4-02-mensageria.md), [US-F4-03](f4-03-bancos-por-servico.md)
+
+## Review e ajustes (20/10)
+
+Revisao independente dos PRs #87–#89 gerou um lote de correcoes (PR de review):
+
+- **Contrato:** `Item.servicoId` (opcional) entrou no AsyncAPI — a Execucao deve preenche-lo nos
+  PRODUTOs para o snapshot agrupar as pecas sob o servico; `diagnostico` limitado a 5..1000 chars.
+- **Migration:** backfill do `nome` dos itens a partir de `servico`/`produto` **antes** do drop.
+- **Lock otimista** (`ordem_de_servico.version`): cancelar/entregar por HTTP e transicoes por evento
+  concorrem pela mesma OS; conflito devolve 409 (HTTP) ou falha o handler (retry -> DLQ).
+- **Notificacao:** e-mail de orcamento sem links para rotas removidas; `WEBHOOK_APPROVAL_TOKEN` apagado.
+- `causationId` nos eventos `os.*` gerados a partir de eventos consumidos; audit log do diagnostico;
+  purga de `outbox`/`processed_messages` (7 dias); LocalStack usa `scripts/messaging-local.sh`
+  (copia do kit); CI valida o overlay `k8s-aws`.
+
+### Runbook — dados da Fase 3 no RDS (executar ANTES do primeiro deploy do OS Service)
+
+Catalogo e estoque **nao migram** automaticamente (tabelas sao removidas): exportar antes
+(`pg_dump -t servico -t produto`) se a Execucao (US-F4-07) quiser semear o DynamoDB com eles.
+OS em voo nao tem contraparte no Billing/Execucao e precisam de decisao manual:
+
+```sql
+-- antes da migration: OS que ainda nao estavam em execucao -> cancelar (cliente reabre na Fase 4)
+UPDATE ordem_de_servico SET status = 'CANCELADA', updated_at = now()
+ WHERE status IN ('RECEBIDA','EM_DIAGNOSTICO','AGUARDANDO_APROVACAO');
+-- OS em execucao: concluir na oficina e marcar FINALIZADA (entrega continua pela API)
+UPDATE ordem_de_servico SET status = 'FINALIZADA', updated_at = now() WHERE status = 'EM_EXECUCAO';
+-- depois da migration: registrar o motivo nas canceladas acima
+UPDATE ordem_de_servico SET motivo_cancelamento = 'OPERADOR' WHERE status = 'CANCELADA' AND motivo_cancelamento IS NULL;
+```
+
+No ambiente de demonstracao o banco e recriado pelos seeds; o runbook existe para um RDS com historico real.

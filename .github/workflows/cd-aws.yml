@@ -168,7 +168,6 @@ jobs:
           type: Opaque
           stringData:
             JWT_SECRET: "${JWT_SECRET}"
-            WEBHOOK_APPROVAL_TOKEN: "${{ secrets.WEBHOOK_APPROVAL_TOKEN || 'gerado-no-deploy' }}"
             NOTIFICATION_WEBHOOK_SECRET: "${{ secrets.NOTIFICATION_WEBHOOK_SECRET || 'gerado-no-deploy' }}"
           YAML
           sed -i 's/^          //' k8s/secret.yaml
@@ -188,7 +187,7 @@ jobs:
       - name: Mensageria (SNS/SQS) no overlay
         if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
         run: |
-          sed -i "s|__SNS_TOPIC_ARN__|${{ vars.SNS_TOPIC_ARN }}|g; s|__SQS_QUEUE_URL__|${{ vars.SQS_QUEUE_URL }}|g" k8s-aws/patch-configmap.yaml
+          sed -i "s|__SNS_TOPIC_ARN__|${{ vars.SNS_TOPIC_ARN }}|g; s|__SQS_QUEUE_URL__|${{ vars.SQS_QUEUE_URL }}|g; s|__AWS_REGION__|$AWS_REGION|g" k8s-aws/patch-configmap.yaml
           [ -n "${{ vars.SNS_TOPIC_ARN }}" ] || echo "::warning::var SNS_TOPIC_ARN ausente — o OS Service sobe sem broker (outbox acumula, consumer desligado)."
 
       - name: Deploy (kustomize) + migrations
@@ -221,10 +220,13 @@ jobs:
         if: steps.guard.outputs.configured == 'true' && steps.guard.outputs.eks == 'true'
         run: |
           NODE_PORT=$(kubectl -n oficina get svc oficina-app -o jsonpath='{.spec.ports[0].nodePort}')
-          echo "### Backend interno (target group `os` do stage gateway/)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Backend interno (target group \`os\` do stage gateway/)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Service: \`oficina-app\` · NodePort: \`${NODE_PORT:-pendente}\` (esperado 30080)" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`backend_listener_arn\` do gateway deve ficar VAZIO a partir da US-F4-06" >> "$GITHUB_STEP_SUMMARY"
-          TG=$(aws elbv2 describe-target-groups --query "TargetGroups[?Port==\`30080\`].TargetGroupArn" --output text 2>/dev/null | head -n1 || true)
+          # Um TG por ambiente pode existir na mesma porta: pega o primeiro do NLB do gateway.
+          TG=$(aws elbv2 describe-target-groups \
+                --query "TargetGroups[?Port==\`30080\` && contains(TargetGroupName, 'os')].TargetGroupArn | [0]" \
+                --output text 2>/dev/null || true); [ "$TG" = "None" ] && TG=""
           if [ -n "$TG" ]; then
             echo "- Target group: \`$TG\`" >> "$GITHUB_STEP_SUMMARY"
             aws elbv2 describe-target-health --target-group-arn "$TG" \

@@ -12,7 +12,6 @@ import { CanalNotificacao } from '../../domain/value-objects/canal-notificacao.v
 import { TipoNotificacao } from '../../domain/value-objects/tipo-notificacao.vo';
 import { EnviarNotificacaoUseCase } from '../use-cases/enviar-notificacao.use-case';
 import { PUBLIC_BASE_URL } from '../ports/public-base-url';
-import { APPROVAL_LINK_TOKEN } from '../ports/approval-link-token';
 
 /**
  * Transicoes que ja disparam uma notificacao dedicada e mais rica
@@ -29,7 +28,6 @@ const STATUS_COM_NOTIFICACAO_DEDICADA: ReadonlySet<StatusOS> = new Set([
 export class OrdemDeServicoNotificacaoListener {
   private readonly logger = new Logger(OrdemDeServicoNotificacaoListener.name);
   private readonly baseUrl: string;
-  private readonly approvalToken: string;
 
   constructor(
     private readonly enviarNotificacao: EnviarNotificacaoUseCase,
@@ -37,11 +35,8 @@ export class OrdemDeServicoNotificacaoListener {
     private readonly clienteRepository: ClienteRepository,
     @Inject(PUBLIC_BASE_URL)
     baseUrl: string,
-    @Inject(APPROVAL_LINK_TOKEN)
-    approvalToken: string,
   ) {
     this.baseUrl = baseUrl;
-    this.approvalToken = approvalToken;
   }
 
   @OnEvent(OrcamentoProntoEvent.EVENT_NAME)
@@ -60,21 +55,14 @@ export class OrdemDeServicoNotificacaoListener {
         currency: 'BRL',
       });
 
-      const tokenQuery = encodeURIComponent(this.approvalToken);
-      const aprovarUrl =
-        `${this.baseUrl}/webhooks/ordens-servico/${event.ordemDeServicoId}` +
-        `/aprovar?token=${tokenQuery}`;
-      const rejeitarUrl =
-        `${this.baseUrl}/webhooks/ordens-servico/${event.ordemDeServicoId}` +
-        `/rejeitar?token=${tokenQuery}`;
-
       const mensagem =
         `Ola ${cliente.nome},\n\n` +
         `O orcamento da sua Ordem de Servico ${event.numero} esta pronto.\n\n` +
         `Diagnostico: ${event.diagnostico}\n` +
         `Valor total estimado: ${valorFormatado}\n\n` +
-        `Para aprovar, clique aqui:\n${aprovarUrl}\n\n` +
-        `Para rejeitar, clique aqui:\n${rejeitarUrl}\n`;
+        // Fase 4: aprovacao/rejeicao e pagamento acontecem no Billing; o link de
+        // pagamento chega na notificacao de `billing.orcamento-aprovado` (US-F4-12).
+        `Acesse o portal do cliente para aprovar ou rejeitar o orcamento.\n`;
 
       await this.enviarNotificacao.execute({
         clienteId: event.clienteId,

@@ -141,6 +141,12 @@ components:
         nome: { type: string }
         quantidade: { type: integer, minimum: 1 }
         precoUnitario: { $ref: '#/components/schemas/Dinheiro' }
+        servicoId:
+          type: string
+          description: >-
+            Somente para tipo PRODUTO: referenciaId do SERVICO do mesmo diagnostico ao qual a peca
+            pertence. O OS Service agrupa os produtos sob o servico pai no snapshot; sem este campo a
+            peca entra como "Pecas avulsas".
     NumeroOS:
       type: object
       required: [numeroOS]
@@ -221,7 +227,7 @@ components:
                 properties:
                   numeroOS: { type: string }
                   mecanicoId: { type: string }
-                  diagnostico: { type: string }
+                  diagnostico: { type: string, minLength: 5, maxLength: 1000 }
                   itens: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Item' } }
     execucaoIniciada:
       name: execucao.iniciada

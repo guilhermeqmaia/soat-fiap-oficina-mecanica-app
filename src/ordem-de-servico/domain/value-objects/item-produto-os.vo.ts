@@ -16,7 +16,7 @@ export class ItemProdutoOS {
     if (!Number.isInteger(quantidade) || quantidade <= 0) {
       throw new InvalidQuantityError(quantidade);
     }
-    if (precoUnitario < 0) {
+    if (!Number.isFinite(precoUnitario) || precoUnitario < 0) {
       throw new InvalidPriceError(precoUnitario);
     }
     this.produtoId = produtoId;
