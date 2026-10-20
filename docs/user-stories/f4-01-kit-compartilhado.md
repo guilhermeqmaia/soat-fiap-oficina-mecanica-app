@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 8
-**Status:** Em andamento — v0.1.0 e v0.2.0 (mensageria/outbox/LocalStack) entregues; monolito consome o kit (PR #81); falta o template de servico
+**Status:** Concluída — kit v0.2.1 no npmjs.org (core, auth, logging, metrics, health, messaging SNS/SQS + outbox, testing), monolito consumindo (PR #81), template de servico validado no CI; QA Plan: [QA_PLAN_US-F4-01](../qa-plans/QA_PLAN_US-F4-01.md)
 **DDD Domain:** Transversal (nenhum dominio)
 **DDD Layer:** Infrastructure (biblioteca)
 **Repositorio:** novo — `soat-fiap-oficina-kit`
@@ -24,7 +24,7 @@ mensageria de tres jeitos. O kit extrai o que a Fase 3 ja provou no monolito.
 - [x] `OutboxModule`: tabela `outbox` + poller com lock; adaptador Prisma (Postgres) e adaptador DynamoDB (Streams) documentados — v0.2.0 (`OutboxPublisher`, `OutboxPoller` com varreduras nao sobrepostas, `PrismaOutboxRepository`/`PrismaProcessedMessageStore` com schema documentado). Adapter DynamoDB Streams fica com a [US-F4-07](f4-07-execucao-service.md)
 - [x] Emulacao local: LocalStack (SNS/SQS/DynamoDB) via compose de referencia — `docker-compose.localstack.yml` + `scripts/messaging-local.sh` (topologia da RFC-0006)
 - [x] Testes unitarios >= 80% e SonarCloud no CI do kit — 116 testes, 99,6% linhas / 92% branches; job do Sonar pronto, ativa com o `SONAR_TOKEN` (US-F4-13)
-- [ ] Template de servico (`templates/service/`) usado por [US-F4-04](f4-04-repos-e-cicd-por-servico.md)
+- [x] Template de servico (`templates/service/`) usado por [US-F4-04](f4-04-repos-e-cicd-por-servico.md) — `scripts/new-service.sh <servico> <destino> [porta] [nodePort] [descricao]`; o CI do kit gera um servico a cada PR e roda lint/typecheck/unitarios/e2e/build/docker
 ## Dependencias
 
 - [US-F4-DOC-02](f4-doc-02-adrs.md) (ADR-0009/0010)

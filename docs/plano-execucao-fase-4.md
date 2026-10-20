@@ -167,7 +167,7 @@ AWS, [Padrão Saga — Prescriptive Guidance](https://docs.aws.amazon.com/pt_br/
 | `soat-fiap-oficina-mecanica-app` (4) | monólito + docs | → **`soat-fiap-oficina-os-service`**: OS Service + orquestrador da saga + notificação + **hub de docs/BDD** |
 | [`soat-fiap-oficina-billing-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-billing-service) (5, criado 30/09) | — | Orçamento, aprovação, Mercado Pago, ledger — **Postgres** |
 | [`soat-fiap-oficina-execucao-service`](https://github.com/guilhermeqmaia/soat-fiap-oficina-execucao-service) (6, criado 30/09) | — | Fila de execução, diagnóstico, catálogo, estoque — **DynamoDB** |
-| [`soat-fiap-oficina-kit`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) (7, criado 30/09) | — | `@guilhermeqmaia/oficina-kit` + template de serviço + schemas dos eventos |
+| [`soat-fiap-oficina-kit`](https://github.com/guilhermeqmaia/soat-fiap-oficina-kit) (7, criado 30/09; **v0.2.1 publicada 20/10**) | — | `@guilhermeqmaia/oficina-kit` + template de serviço + schemas dos eventos |
 
 ---
 
