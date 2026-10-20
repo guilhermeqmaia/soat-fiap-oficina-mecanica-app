@@ -42,6 +42,8 @@ import { SagaTimeoutsService } from './saga/application/saga-timeouts.service';
 import { ConsultarSagaUseCase } from './saga/application/consultar-saga.use-case';
 import { PrismaSagaRepository } from './saga/infrastructure/prisma-saga.repository';
 import { SAGA_REPOSITORY } from './saga/domain/saga.repository';
+import { PrismaUnitOfWork } from './infrastructure/prisma-unit-of-work';
+import { UNIT_OF_WORK } from './application/ports/unit-of-work';
 
 const USE_CASES = [
   CriarOrdemDeServicoUseCase,
@@ -77,6 +79,8 @@ export const TRANSICOES_USE_CASES = [
     ConsultarSagaUseCase,
     PrismaSagaRepository,
     { provide: SAGA_REPOSITORY, useExisting: PrismaSagaRepository },
+    PrismaUnitOfWork,
+    { provide: UNIT_OF_WORK, useExisting: PrismaUnitOfWork },
     AuditLogService,
     OsAuditListener,
     PrismaOrdemDeServicoRepository,

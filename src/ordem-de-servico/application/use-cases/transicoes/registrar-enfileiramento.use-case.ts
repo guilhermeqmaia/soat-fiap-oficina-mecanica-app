@@ -7,6 +7,8 @@ import { registrarTransicao } from './registrar-transicao.base';
 
 export interface RegistrarEnfileiramentoInput {
   numero: string;
+  /** Unit of work do orquestrador (OS + saga + outbox na mesma transacao). */
+  tx?: unknown;
 }
 
 /** `execucao.enfileirada` -> EM_DIAGNOSTICO. */
@@ -20,6 +22,7 @@ export class RegistrarEnfileiramentoUseCase implements UseCase<RegistrarEnfileir
   async execute(input: RegistrarEnfileiramentoInput): Promise<OrdemDeServico> {
     const { ordem } = await registrarTransicao(this.gateway, this.events, input.numero, StatusOS.EM_DIAGNOSTICO, (os) =>
       os.iniciarDiagnostico(),
+      input.tx,
     );
     return ordem;
   }

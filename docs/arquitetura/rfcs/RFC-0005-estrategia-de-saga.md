@@ -52,7 +52,7 @@ e depurar ficou ainda mais difícil" — o estado da saga não era explícito.
 O orquestrador envia **comandos** (`execucao.enfileirar`, `billing.gerar-orcamento`,
 `execucao.iniciar`, `billing.cancelar-orcamento`, `execucao.liberar-reservas`) e
 avança ao receber **eventos** dos participantes. Estado em `saga_os`, exposto em
-`GET /ordens-servico/:numero/saga`.
+`GET /ordens-servico/numero/:numero/saga`.
 
 **Notificação é coreografada**: apenas assina fatos (`billing.orcamento-gerado`,
 `os.finalizada`…) e não participa da saga — o sistema demonstra os dois estilos

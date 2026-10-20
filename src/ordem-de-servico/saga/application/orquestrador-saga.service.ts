@@ -2,7 +2,9 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
 import { OrdemDeServicoNotFoundError } from '../../domain/errors/ordem-de-servico-not-found.error';
 import { InvalidStatusTransitionError } from '../../domain/errors/invalid-status-transition.error';
+import { ConcurrentModificationError } from '../../domain/errors/concurrent-modification.error';
 import { ORDEM_DE_SERVICO_GATEWAY, OrdemDeServicoGateway } from '../../application/gateways/ordem-de-servico.gateway';
+import { UNIT_OF_WORK, UnitOfWork } from '../../application/ports/unit-of-work';
 import {
   RegistrarCancelamentoUseCase,
   RegistrarDiagnosticoUseCase,
@@ -12,7 +14,7 @@ import {
   RegistrarOrcamentoAprovadoUseCase,
   RegistrarOrcamentoGeradoUseCase,
 } from '../../application/use-cases/transicoes';
-import { EventoSaga, Prazos, PRAZOS_DEFAULT, SagaOS, TransicaoOS } from '../domain/saga-os.entity';
+import { EventoSaga, Prazos, SagaOS, TransicaoOS } from '../domain/saga-os.entity';
 import { SAGA_REPOSITORY, SagaRepository } from '../domain/saga.repository';
 import { sagaPassoDuracao, sagaPassos } from '../../../observabilidade/metrics.registry';
 
@@ -26,15 +28,18 @@ export function prazosDoAmbiente(env: NodeJS.ProcessEnv = process.env): Prazos {
   };
 }
 
+const TENTATIVAS_CONFLITO = 3;
+
 /**
  * Orquestrador da saga (RFC-0005): liga a maquina de estados pura (SagaOS) a
  * persistencia, as transicoes da OS e ao outbox de comandos.
  *
- * Ordem por evento: carrega a saga -> aplica (decide) -> transiciona a OS
- * (use cases idempotentes, transacao propria) -> salva saga + comandos
- * (transacao propria). Se a segunda gravacao falhar, a reentrega refaz tudo:
- * a transicao da OS vira no-op e a saga reaplica — por isso cada passo e
- * idempotente e a saga e a unica fonte de "o que fazer agora".
+ * Cada evento roda numa UNICA transacao (unit of work): carrega a saga ->
+ * aplica (decide) -> transiciona a OS -> grava saga + comandos/eventos no
+ * outbox. Ou tudo e gravado, ou nada — nao existe OS cancelada sem
+ * compensacao nem comando sem passo. Conflito de lock otimista (outro evento
+ * ou o atendente mexeram na mesma OS) e refeito em processo ate 3 vezes;
+ * depois disso o erro sobe (409 no HTTP, reentrega no SQS).
  */
 @Injectable()
 export class OrquestradorSagaService {
@@ -43,6 +48,7 @@ export class OrquestradorSagaService {
   constructor(
     @Inject(SAGA_REPOSITORY) private readonly sagas: SagaRepository,
     @Inject(ORDEM_DE_SERVICO_GATEWAY) private readonly ordens: OrdemDeServicoGateway,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     private readonly enfileiramento: RegistrarEnfileiramentoUseCase,
     private readonly diagnostico: RegistrarDiagnosticoUseCase,
     private readonly orcamentoGerado: RegistrarOrcamentoGeradoUseCase,
@@ -52,9 +58,12 @@ export class OrquestradorSagaService {
     private readonly cancelamento: RegistrarCancelamentoUseCase,
   ) {}
 
-  /** Abertura da OS: cria a saga e envia `execucao.enfileirar` (outbox). */
-  async iniciar(ordem: OrdemDeServico, resumo: { descricaoProblema: string }): Promise<SagaOS> {
-    const existente = await this.sagas.findByNumero(ordem.numero);
+  /**
+   * Abertura da OS: cria a saga e grava `execucao.enfileirar` no outbox. Deve
+   * rodar na MESMA transacao em que a OS foi criada (`tx` do chamador).
+   */
+  async iniciar(ordem: OrdemDeServico, resumo: { descricaoProblema: string }, tx?: unknown): Promise<SagaOS> {
+    const existente = await this.sagas.findByNumero(ordem.numero, tx);
     if (existente) return existente;
     const saga = SagaOS.iniciar({
       numero: ordem.numero,
@@ -63,15 +72,29 @@ export class OrquestradorSagaService {
       descricaoProblema: resumo.descricaoProblema,
     });
     sagaPassos.inc({ passo: saga.passo, resultado: 'avancou' });
-    return this.sagas.save(saga);
+    return this.sagas.save(saga, tx);
   }
 
   /** Evento de participante, do atendente (`os.cancelamento-manual`) ou do relogio (`saga.timeout`). */
   async processar(evento: EventoSaga, agora: Date = new Date()): Promise<SagaOS> {
+    for (let tentativa = 1; ; tentativa++) {
+      try {
+        return await this.uow.executar((tx) => this.processarNaTransacao(evento, agora, tx));
+      } catch (e) {
+        if (e instanceof ConcurrentModificationError && tentativa < TENTATIVAS_CONFLITO) {
+          this.logger.warn({ msg: 'conflito de versao — refazendo', numeroOS: evento.data.numeroOS, type: evento.type, tentativa });
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+
+  private async processarNaTransacao(evento: EventoSaga, agora: Date, tx: unknown): Promise<SagaOS> {
     const numero = String(evento.data.numeroOS ?? '');
-    const saga = (await this.sagas.findByNumero(numero)) ?? (await this.adotar(numero, agora));
+    const saga = (await this.sagas.findByNumero(numero, tx)) ?? (await this.adotar(numero, agora, tx));
     const passoAntes = saga.passo;
-    const entradaNoPasso = saga.updatedAt ?? saga.createdAt ?? agora;
+    const entradaNoPasso = saga.passoDesde;
 
     const resultado = saga.aplicar(evento, agora, prazosDoAmbiente());
     const rotulo = resultado.aplicado ? saga.historico[saga.historico.length - 1]?.resultado ?? 'avancou' : 'ignorado';
@@ -82,12 +105,11 @@ export class OrquestradorSagaService {
     }
     if (!resultado.aplicado) {
       this.logger.warn({ msg: 'evento ignorado pela saga', numeroOS: numero, type: evento.type, passo: passoAntes, motivo: resultado.motivo });
-      await this.sagas.save(saga);
-      return saga;
+      return this.sagas.save(saga, tx);
     }
 
-    if (resultado.transicaoOS) await this.transicionar(numero, resultado.transicaoOS, evento);
-    const salva = await this.sagas.save(saga);
+    if (resultado.transicaoOS) await this.transicionar(numero, resultado.transicaoOS, evento, tx);
+    const salva = await this.sagas.save(saga, tx);
     if (salva.passo !== passoAntes) {
       sagaPassoDuracao.observe({ passo: passoAntes }, Math.max(0, (agora.getTime() - entradaNoPasso.getTime()) / 1000));
     }
@@ -103,10 +125,10 @@ export class OrquestradorSagaService {
     return salva;
   }
 
-  private async transicionar(numero: string, t: TransicaoOS, evento: EventoSaga): Promise<void> {
+  private async transicionar(numero: string, t: TransicaoOS, evento: EventoSaga, tx: unknown): Promise<void> {
     switch (t.tipo) {
       case 'iniciarDiagnostico':
-        await this.enfileiramento.execute({ numero });
+        await this.enfileiramento.execute({ numero, tx });
         return;
       case 'registrarDiagnostico':
         await this.diagnostico.execute({
@@ -114,29 +136,30 @@ export class OrquestradorSagaService {
           mecanicoId: evento.data.mecanicoId,
           diagnostico: evento.data.diagnostico,
           itens: evento.data.itens ?? [],
+          tx,
         });
         return;
       case 'aguardarAprovacao':
-        await this.orcamentoGerado.execute({ numero, total: evento.data.total });
+        await this.orcamentoGerado.execute({ numero, total: evento.data.total, tx });
         return;
       case 'aguardarPagamento':
-        await this.orcamentoAprovado.execute({ numero });
+        await this.orcamentoAprovado.execute({ numero, tx });
         return;
       case 'iniciarExecucao':
-        await this.execucaoIniciada.execute({ numero });
+        await this.execucaoIniciada.execute({ numero, tx });
         return;
       case 'finalizar':
-        await this.execucaoFinalizada.execute({ numero, causationId: evento.id });
+        await this.execucaoFinalizada.execute({ numero, causationId: evento.id, tx });
         return;
       case 'cancelar':
-        await this.cancelamento.execute({ numero, motivo: t.motivo, causationId: evento.id });
+        await this.cancelamento.execute({ numero, motivo: t.motivo, causationId: evento.id, tx });
         return;
     }
   }
 
   /** OS sem saga (anterior a US-F4-10): adota o passo equivalente ao status atual. */
-  private async adotar(numero: string, agora: Date): Promise<SagaOS> {
-    const ordem = await this.ordens.findByNumero(numero);
+  private async adotar(numero: string, agora: Date, tx: unknown): Promise<SagaOS> {
+    const ordem = await this.ordens.findByNumero(numero, tx);
     if (!ordem) throw new OrdemDeServicoNotFoundError(numero);
     this.logger.warn({ msg: 'OS sem saga — adotando a partir do status atual', numeroOS: numero, status: ordem.status });
     return this.sagas.save(
@@ -147,9 +170,11 @@ export class OrquestradorSagaService {
           veiculoId: ordem.veiculoId,
           descricaoProblema: ordem.descricaoInicial,
           statusOS: ordem.status,
+          temDiagnostico: ordem.diagnostico !== null,
         },
         agora,
       ),
+      tx,
     );
   }
 }

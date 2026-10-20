@@ -29,13 +29,13 @@ Valida o orquestrador da saga no OS Service (RFC-0005): estado persistido em `sa
 - **Resultado esperado:** `aplicado: false`, historico com `ignorado` e motivo; OS e passo inalterados; nenhum comando
 
 ### TS-04: Compensacoes (matriz)
-- **Tipo:** Automatizado (entity "compensacoes"; e2e "orcamento rejeitado", "cancelamento manual")
+- **Tipo:** Automatizado (entity "compensacoes"; e2e "orcamento rejeitado", "pagamento recusado", "falha ao iniciar execucao", "cancelamento manual em cada passo")
 - **Criterio:** Compensacoes em ordem inversa, registradas e confirmadas
-- **Passos:** `execucao.recusada` em ENFILEIRAR; `billing.orcamento-rejeitado`; `billing.pagamento-recusado`; `execucao.recusada` em INICIAR_EXECUCAO; `POST :id/cancelar` em cada passo
+- **Passos:** `execucao.recusada` em ENFILEIRAR; `billing.orcamento-rejeitado`; `billing.pagamento-recusado`; `execucao.recusada` em INICIAR_EXECUCAO; `POST :id/cancelar` em cada passo (tabela no e2e)
 - **Resultado esperado:** OS CANCELADA com o motivo da matriz; comandos `billing.cancelar-orcamento` e/ou `execucao.liberar-reservas`; saga `COMPENSANDO` ate as confirmacoes (`billing.orcamento-cancelado`, `execucao.reservas-liberadas`) e entao `CANCELADA`; cancelar apos `execucao.iniciada` -> 400
 
 ### TS-05: Timeouts
-- **Tipo:** Automatizado (entity "timeouts"; orquestrador "SagaTimeoutsService"; e2e "timeout de aprovacao")
+- **Tipo:** Automatizado (entity "timeouts"; orquestrador "SagaTimeoutsService"; e2e "timeout de aprovacao" e "timeout de pagamento")
 - **Criterio:** Orcamento sem resposta / pagamento pendente -> compensacao
 - **Passos:** `SAGA_TIMEOUT_APROVACAO_MS=1`; chegar a AGUARDAR_APROVACAO; `SagaTimeoutsService.varrer(agora)`
 - **Resultado esperado:** OS CANCELADA `TIMEOUT_APROVACAO` (ou `TIMEOUT_PAGAMENTO`); compensacoes enviadas; gauge `oficina_os_sagas{status}` atualizada
@@ -53,7 +53,7 @@ Valida o orquestrador da saga no OS Service (RFC-0005): estado persistido em `sa
 - **Resultado esperado:** `oficina_os_saga_passos_total{passo,resultado}` incrementa por evento; `oficina_os_saga_passo_duracao_seconds` observa ao sair do passo; `oficina_os_sagas{status="COMPENSANDO"}` > 0 durante compensacao
 
 ### TS-08: OS anterior a saga
-- **Tipo:** Automatizado (orquestrador "OS sem saga e adotada")
+- **Tipo:** Automatizado (orquestrador "OS sem saga e adotada"; e2e "OS sem saga e adotada")
 - **Criterio:** Robustez
 - **Passos:** OS sem linha em `saga_os` recebe `execucao.finalizada`
 - **Resultado esperado:** saga adotada no passo equivalente ao status; evento aplicado; OS inexistente -> erro (DLQ)
@@ -61,6 +61,16 @@ Valida o orquestrador da saga no OS Service (RFC-0005): estado persistido em `sa
 ### TS-09: Cobertura
 - **Tipo:** Automatizado
 - **Resultado esperado:** modulo `saga/` >= 90% no unitario
+
+### TS-10: Consistencia transacional e conflitos
+- **Tipo:** Automatizado (e2e "transacao unica"; orquestrador "refaz em conflito")
+- **Criterio:** Nenhuma OS cancelada sem compensacao; nenhum comando sem passo
+- **Passos:** forcar falha na gravacao da saga durante um evento; disparar dois eventos concorrentes sobre a mesma saga
+- **Resultado esperado:** OS e saga ficam no estado anterior (rollback); conflito e refeito em processo (ate 3x) e depois devolve 409 (HTTP) ou reentrega (SQS)
+
+### TS-11: Validacao manual com broker (20/10/2026)
+- **Tipo:** Manual — app + Postgres + LocalStack (`docker compose --profile messaging`)
+- **Resultado:** caminho feliz completo pelo SNS/SQS (comandos nas filas certas, snapshot, entrega), rejeicao com confirmacao, timeout de aprovacao (20 s), cancelamento manual com compensacao dupla, duplicado absorvido pelo dedup do SNS FIFO, fora de ordem ignorado, mensagem invalida na DLQ apos 5 tentativas, metricas em `/metrics`
 
 ## Casos de Borda
 - Cancelamento manual durante `COMPENSANDO`: ignorado (a OS ja esta CANCELADA)
@@ -82,6 +92,7 @@ Valida o orquestrador da saga no OS Service (RFC-0005): estado persistido em `sa
 | Testes >= 90% | TS-09 |
 
 ## Checklist de Validacao
-- [x] TS-01..TS-06, TS-08, TS-09 (21/10/2026)
+- [x] TS-01..TS-06, TS-08, TS-09, TS-10 (21/10/2026)
+- [x] TS-11 manual (20/10/2026)
 - [ ] TS-07 — manual com `/metrics`
 - [ ] Ponta a ponta com Execucao/Billing reais (apos US-F4-07/08)

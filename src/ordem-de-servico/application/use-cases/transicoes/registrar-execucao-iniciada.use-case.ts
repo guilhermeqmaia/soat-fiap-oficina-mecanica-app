@@ -7,6 +7,8 @@ import { registrarTransicao } from './registrar-transicao.base';
 
 export interface RegistrarExecucaoIniciadaInput {
   numero: string;
+  /** Unit of work do orquestrador (OS + saga + outbox na mesma transacao). */
+  tx?: unknown;
 }
 
 /** `execucao.iniciada` -> EM_EXECUCAO. */
@@ -20,6 +22,7 @@ export class RegistrarExecucaoIniciadaUseCase implements UseCase<RegistrarExecuc
   async execute(input: RegistrarExecucaoIniciadaInput): Promise<OrdemDeServico> {
     const { ordem } = await registrarTransicao(this.gateway, this.events, input.numero, StatusOS.EM_EXECUCAO, (os) =>
       os.iniciarExecucao(),
+      input.tx
     );
     return ordem;
   }

@@ -5,6 +5,8 @@ import { ConcurrentModificationError } from '../../domain/errors/concurrent-modi
 import { Compensacao, PassoHistorico, PassoSaga, SagaOS, StatusSaga } from '../domain/saga-os.entity';
 import { SagaRepository } from '../domain/saga.repository';
 
+type PrismaTx = { sagaOS: PrismaService['sagaOS'] };
+
 /** Tabela `saga_os`; os comandos pendentes vao para o outbox na mesma transacao. */
 @Injectable()
 export class PrismaSagaRepository implements SagaRepository {
@@ -13,12 +15,12 @@ export class PrismaSagaRepository implements SagaRepository {
     @Inject(OUTBOX_REPOSITORY) private readonly outbox: OutboxRepository<unknown>,
   ) {}
 
-  async findByNumero(numero: string): Promise<SagaOS | null> {
-    const row = await this.prisma.sagaOS.findUnique({ where: { numero } });
+  async findByNumero(numero: string, tx?: unknown): Promise<SagaOS | null> {
+    const row = await this.db(tx).sagaOS.findUnique({ where: { numero } });
     return row ? this.toDomain(row) : null;
   }
 
-  async save(saga: SagaOS): Promise<SagaOS> {
+  async save(saga: SagaOS, txExterno?: unknown): Promise<SagaOS> {
     const data = {
       numero: saga.numero,
       clienteId: saga.clienteId,
@@ -26,15 +28,22 @@ export class PrismaSagaRepository implements SagaRepository {
       descricaoProblema: saga.descricaoProblema,
       passo: saga.passo,
       status: saga.status,
+      passoDesde: saga.passoDesde,
       historico: saga.historico as unknown as object[],
       compensacoes: saga.compensacoes as unknown as object[],
       prazoAprovacao: saga.prazoAprovacao,
       prazoPagamento: saga.prazoPagamento,
     };
-    const row = await this.prisma.$transaction(async (tx) => {
+    const row = await this.naTransacao(txExterno, async (tx) => {
       let id = saga.id;
       if (!id) {
-        id = (await tx.sagaOS.create({ data })).id;
+        try {
+          id = (await tx.sagaOS.create({ data })).id;
+        } catch (e) {
+          // Duas replicas adotando a mesma OS ao mesmo tempo: unique(numero).
+          if ((e as { code?: string }).code === 'P2002') throw new ConcurrentModificationError(`saga ${saga.numero}`);
+          throw e;
+        }
       } else {
         const { count } = await tx.sagaOS.updateMany({
           where: { id, version: saga.version },
@@ -59,6 +68,10 @@ export class PrismaSagaRepository implements SagaRepository {
     return this.toDomain(row);
   }
 
+  async deleteByNumero(numero: string, tx?: unknown): Promise<void> {
+    await this.db(tx).sagaOS.deleteMany({ where: { numero } });
+  }
+
   async findComPrazoVencido(agora: Date, limite = 100): Promise<SagaOS[]> {
     const rows = await this.prisma.sagaOS.findMany({
       where: {
@@ -76,7 +89,24 @@ export class PrismaSagaRepository implements SagaRepository {
     return Object.fromEntries(grupos.map((g) => [g.status, g._count._all]));
   }
 
-  private toDomain(r: any): SagaOS {
+  async countParadasDesde(desde: Date): Promise<number> {
+    return this.prisma.sagaOS.count({ where: { status: StatusSaga.EM_ANDAMENTO, passoDesde: { lte: desde } } });
+  }
+
+  private db(tx?: unknown): PrismaTx {
+    return (tx as PrismaTx | undefined) ?? (this.prisma as unknown as PrismaTx);
+  }
+
+  private naTransacao<T>(txExterno: unknown, fn: (tx: PrismaTx) => Promise<T>): Promise<T> {
+    if (txExterno) return fn(txExterno as PrismaTx);
+    return this.prisma.$transaction((tx) => fn(tx as unknown as PrismaTx));
+  }
+
+  private toDomain(r: {
+    id: string; numero: string; clienteId: string; veiculoId: string; descricaoProblema: string; passo: string; status: string;
+    passoDesde: Date; historico: unknown; compensacoes: unknown; prazoAprovacao: Date | null; prazoPagamento: Date | null;
+    version: number; createdAt: Date; updatedAt: Date;
+  }): SagaOS {
     return SagaOS.reconstitute({
       id: r.id,
       numero: r.numero,
@@ -85,8 +115,9 @@ export class PrismaSagaRepository implements SagaRepository {
       descricaoProblema: r.descricaoProblema,
       passo: r.passo as PassoSaga,
       status: r.status as StatusSaga,
-      historico: (r.historico ?? []) as PassoHistorico[],
-      compensacoes: (r.compensacoes ?? []) as Compensacao[],
+      passoDesde: r.passoDesde,
+      historico: Array.isArray(r.historico) ? (r.historico as PassoHistorico[]) : [],
+      compensacoes: Array.isArray(r.compensacoes) ? (r.compensacoes as Compensacao[]) : [],
       prazoAprovacao: r.prazoAprovacao ?? null,
       prazoPagamento: r.prazoPagamento ?? null,
       version: r.version ?? 0,

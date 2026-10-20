@@ -17,6 +17,12 @@ import { ItemServicoOS } from "../domain/value-objects/item-servico-os.vo";
 import { ItemProdutoOS } from "../domain/value-objects/item-produto-os.vo";
 import { ConcurrentModificationError } from "../domain/errors/concurrent-modification.error";
 
+/** Subconjunto do client Prisma usado por este repositorio (vale para o client global e o transacional). */
+type PrismaTx = {
+  ordemDeServico: PrismaService['ordemDeServico'];
+  itemOrdemDeServicoServico: PrismaService['itemOrdemDeServicoServico'];
+};
+
 const INCLUDE_ITENS = {
   itensServico: { include: { produtos: true } },
 } as const;
@@ -42,8 +48,8 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
     private readonly outbox: OutboxRepository<unknown>,
   ) {}
 
-  async create(os: OrdemDeServico): Promise<OrdemDeServico> {
-    const data = await this.prisma.$transaction(async (tx) => {
+  async create(os: OrdemDeServico, txExterno?: unknown): Promise<OrdemDeServico> {
+    const data = await this.naTransacao(txExterno, async (tx) => {
       const criada = await tx.ordemDeServico.create({
         data: {
           numero: os.numero,
@@ -114,16 +120,16 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
     };
   }
 
-  async findByNumero(numero: string): Promise<OrdemDeServico | null> {
-    const data = await this.prisma.ordemDeServico.findUnique({
+  async findByNumero(numero: string, tx?: unknown): Promise<OrdemDeServico | null> {
+    const data = await (this.db(tx)).ordemDeServico.findUnique({
       where: { numero },
       include: INCLUDE_ITENS,
     });
     return data ? this.toDomain(data) : null;
   }
 
-  async update(os: OrdemDeServico): Promise<OrdemDeServico> {
-    const data = await this.prisma.$transaction(async (tx) => {
+  async update(os: OrdemDeServico, txExterno?: unknown): Promise<OrdemDeServico> {
+    const data = await this.naTransacao(txExterno, async (tx) => {
       // Lock otimista: so grava se ninguem alterou a OS desde a leitura.
       const { count } = await tx.ordemDeServico.updateMany({
         where: { id: os.id, version: os.version },
@@ -187,6 +193,17 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
 
   async existsByNumero(numero: string): Promise<boolean> {
     return (await this.prisma.ordemDeServico.count({ where: { numero } })) > 0;
+  }
+
+  /** Client transacional: o do unit of work do chamador ou o global. */
+  private db(tx?: unknown): PrismaTx {
+    return (tx as PrismaTx | undefined) ?? (this.prisma as unknown as PrismaTx);
+  }
+
+  /** Reusa a transacao do chamador (unit of work) ou abre uma propria. */
+  private naTransacao<T>(txExterno: unknown, fn: (tx: PrismaTx) => Promise<T>): Promise<T> {
+    if (txExterno) return fn(txExterno as PrismaTx);
+    return this.prisma.$transaction((tx) => fn(tx as unknown as PrismaTx));
   }
 
   private toItemCreate(item: ItemServicoOS) {

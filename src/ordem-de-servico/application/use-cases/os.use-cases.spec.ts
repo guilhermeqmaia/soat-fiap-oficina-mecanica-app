@@ -27,6 +27,8 @@ const osComItens = (status = StatusOS.AGUARDANDO_APROVACAO) => {
   });
 };
 const orquestrador = { iniciar: jest.fn().mockResolvedValue(undefined), processar: jest.fn().mockResolvedValue(undefined) } as any;
+const uow = { executar: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn('tx-1')) } as any;
+const sagas = { deleteByNumero: jest.fn().mockResolvedValue(undefined) } as any;
 const gatewayCom = (os: OrdemDeServico | null) => ({
   findById: jest.fn(async () => os), findByNumero: jest.fn(async () => os),
   create: jest.fn(async (o: OrdemDeServico) => o), update: jest.fn(async (o: OrdemDeServico) => o), delete: jest.fn(async () => undefined),
@@ -40,9 +42,11 @@ describe('CriarOrdemDeServicoUseCase', () => {
 
   it('abre a OS RECEBIDA sem itens', async () => {
     const g = gatewayCom(null);
-    const os = await new CriarOrdemDeServicoUseCase(g, clienteGw, veiculoGw, orquestrador).execute({ clienteId: 'cli-1', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' });
+    const os = await new CriarOrdemDeServicoUseCase(g, clienteGw, veiculoGw, orquestrador, uow).execute({ clienteId: 'cli-1', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' });
     expect(os.status).toBe(StatusOS.RECEBIDA); expect(os.itensServico).toHaveLength(0); expect(g.create).toHaveBeenCalled();
-    expect(orquestrador.iniciar).toHaveBeenCalledWith(expect.objectContaining({ numero: os.numero }), { descricaoProblema: 'Barulho ao frenar' });
+    // OS e saga na mesma transacao: o mesmo tx vai para o gateway e para o orquestrador
+    expect(g.create).toHaveBeenCalledWith(expect.anything(), 'tx-1');
+    expect(orquestrador.iniciar).toHaveBeenCalledWith(expect.objectContaining({ numero: os.numero }), { descricaoProblema: 'Barulho ao frenar' }, 'tx-1');
     // os.aberta pendente no agregado entregue ao gateway (vai para o outbox na mesma transacao)
     const entregue: OrdemDeServico = g.create.mock.calls[0][0];
     expect(entregue.eventosIntegracao[0]).toMatchObject({
@@ -51,7 +55,7 @@ describe('CriarOrdemDeServicoUseCase', () => {
     });
   });
   it('valida cliente, veiculo e posse do veiculo', async () => {
-    const uc = new CriarOrdemDeServicoUseCase(gatewayCom(null), clienteGw, veiculoGw, orquestrador);
+    const uc = new CriarOrdemDeServicoUseCase(gatewayCom(null), clienteGw, veiculoGw, orquestrador, uow);
     await expect(uc.execute({ clienteId: 'cli-x', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' })).rejects.toThrow(ClienteNotFoundError);
     await expect(uc.execute({ clienteId: 'cli-1', veiculoId: 'vei-x', descricaoInicial: 'Barulho ao frenar' })).rejects.toThrow(VeiculoNotFoundError);
     await expect(uc.execute({ clienteId: 'cli-1', veiculoId: 'vei-outro', descricaoInicial: 'Barulho ao frenar' })).rejects.toThrow(VeiculoClienteMismatchError);
@@ -68,7 +72,9 @@ describe('Cancelar / Entregar / Deletar', () => {
     orquestrador.processar.mockClear();
     await new CancelarOrdemDeServicoUseCase(gatewayCom(osComItens()), orquestrador).execute({ id: 'os-1', motivo: MotivoCancelamento.TIMEOUT_APROVACAO });
     expect(orquestrador.processar.mock.calls[0][0].data.motivo).toBe(MotivoCancelamento.TIMEOUT_APROVACAO);
+    orquestrador.processar.mockClear();
     await expect(new CancelarOrdemDeServicoUseCase(gatewayCom(osComItens(StatusOS.FINALIZADA)), orquestrador).execute({ id: 'os-1' })).rejects.toThrow();
+    expect(orquestrador.processar).not.toHaveBeenCalled();
     await expect(new CancelarOrdemDeServicoUseCase(gatewayCom(null), orquestrador).execute({ id: 'x' })).rejects.toThrow(OrdemDeServicoNotFoundError);
   });
   it('entregar exige FINALIZADA', async () => {
@@ -79,9 +85,10 @@ describe('Cancelar / Entregar / Deletar', () => {
   });
   it('deletar remove a OS existente', async () => {
     const g = gatewayCom(osComItens());
-    await new DeletarOrdemDeServicoUseCase(g).execute({ id: 'os-1' });
+    await new DeletarOrdemDeServicoUseCase(g, sagas).execute({ id: 'os-1' });
     expect(g.delete).toHaveBeenCalledWith('os-1');
-    await expect(new DeletarOrdemDeServicoUseCase(gatewayCom(null)).execute({ id: 'x' })).rejects.toThrow(OrdemDeServicoNotFoundError);
+    expect(sagas.deleteByNumero).toHaveBeenCalledWith(expect.any(String));
+    await expect(new DeletarOrdemDeServicoUseCase(gatewayCom(null), sagas).execute({ id: 'x' })).rejects.toThrow(OrdemDeServicoNotFoundError);
   });
 });
 

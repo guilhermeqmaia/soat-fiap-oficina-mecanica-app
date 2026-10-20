@@ -19,11 +19,12 @@ export interface PaginatedResult<T> {
 }
 
 export interface OrdemDeServicoRepository {
-  create(os: OrdemDeServico): Promise<OrdemDeServico>;
+  /** `tx`: client transacional (unit of work) — quando presente, a gravacao participa da transacao do chamador. */
+  create(os: OrdemDeServico, tx?: unknown): Promise<OrdemDeServico>;
   findById(id: string): Promise<OrdemDeServico | null>;
   findAll(params: FindAllParams): Promise<PaginatedResult<OrdemDeServico>>;
-  findByNumero(numero: string): Promise<OrdemDeServico | null>;
-  update(os: OrdemDeServico): Promise<OrdemDeServico>;
+  findByNumero(numero: string, tx?: unknown): Promise<OrdemDeServico | null>;
+  update(os: OrdemDeServico, tx?: unknown): Promise<OrdemDeServico>;
   delete(id: string): Promise<void>;
   existsByNumero(numero: string): Promise<boolean>;
 }

@@ -44,6 +44,8 @@ export class ListarHistoricoPorCpfCnpjUseCase
       clienteId: cliente.id,
       page: input.page ?? 1,
       limit: input.limit ?? 10,
+      // Historico do cliente inclui OS entregues/canceladas (US-16).
+      incluirEncerradas: true,
     });
 
     return {

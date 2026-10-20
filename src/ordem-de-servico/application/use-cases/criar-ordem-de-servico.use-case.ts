@@ -6,6 +6,7 @@ import { VeiculoNotFoundError } from '../../domain/errors/veiculo-not-found.erro
 import { VeiculoClienteMismatchError } from '../../domain/errors/veiculo-cliente-mismatch.error';
 import { ORDEM_DE_SERVICO_GATEWAY, OrdemDeServicoGateway } from '../gateways/ordem-de-servico.gateway';
 import { OrquestradorSagaService } from '../../saga/application/orquestrador-saga.service';
+import { UNIT_OF_WORK, UnitOfWork } from '../ports/unit-of-work';
 import {
   CLIENTE_CONSULTA_GATEWAY,
   ClienteConsultaGateway,
@@ -36,6 +37,7 @@ export class CriarOrdemDeServicoUseCase implements UseCase<CriarOrdemDeServicoIn
     @Inject(VEICULO_CONSULTA_GATEWAY)
     private readonly veiculoGateway: VeiculoConsultaGateway,
     private readonly orquestrador: OrquestradorSagaService,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
   async execute(input: CriarOrdemDeServicoInput): Promise<OrdemDeServico> {
@@ -57,9 +59,12 @@ export class CriarOrdemDeServicoUseCase implements UseCase<CriarOrdemDeServicoIn
       cliente: { nome: cliente.nome, cpfCnpj: cliente.cpfCnpj.value },
       veiculo: { placa: veiculo.placa.value, modelo: veiculo.modelo },
     });
-    const criada = await this.gateway.create(ordem);
-    // Saga (US-F4-10): primeiro passo = comando execucao.enfileirar via outbox.
-    await this.orquestrador.iniciar(criada, { descricaoProblema: input.descricaoInicial });
-    return criada;
+    // OS + os.aberta + saga + execucao.enfileirar numa unica transacao: nao
+    // existe OS sem saga nem saga sem comando (US-F4-10).
+    return this.uow.executar(async (tx) => {
+      const criada = await this.gateway.create(ordem, tx);
+      await this.orquestrador.iniciar(criada, { descricaoProblema: input.descricaoInicial }, tx);
+      return criada;
+    });
   }
 }

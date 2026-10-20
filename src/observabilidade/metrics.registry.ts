@@ -61,6 +61,13 @@ export const sagasPorStatus = new Gauge({
   registers: [registry],
 });
 
+/** Sagas EM_ANDAMENTO paradas no mesmo passo alem de SAGA_ALERTA_PARADA_MIN (alerta "saga travada"). */
+export const sagasParadas = new Gauge({
+  name: 'oficina_os_sagas_paradas',
+  help: 'Sagas em andamento sem avancar de passo ha mais tempo que o limite configurado',
+  registers: [registry],
+});
+
 /**
  * Pre-registra as series de negocio com valor 0. Contadores/histogramas com
  * labels so aparecem no /metrics depois do primeiro evento; sem isto os
@@ -84,6 +91,7 @@ export function inicializarSeriesDeNegocio(): void {
     integracaoResultados.inc({ integracao: 'webhook-notificacao', resultado }, 0);
   }
   for (const status of ['EM_ANDAMENTO', 'COMPENSANDO', 'CONCLUIDA', 'CANCELADA']) sagasPorStatus.set({ status }, 0);
+  sagasParadas.set(0);
   for (const resultado of ['avancou', 'ignorado', 'compensando', 'concluida', 'cancelada']) {
     sagaPassos.inc({ passo: 'ENFILEIRAR_EXECUCAO', resultado }, 0);
   }

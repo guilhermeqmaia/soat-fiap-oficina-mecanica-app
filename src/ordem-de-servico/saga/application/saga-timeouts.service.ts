@@ -1,17 +1,24 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { SAGA_REPOSITORY, SagaRepository } from '../domain/saga.repository';
 import { OrquestradorSagaService } from './orquestrador-saga.service';
-import { sagasPorStatus } from '../../../observabilidade/metrics.registry';
+import { sagasParadas, sagasPorStatus } from '../../../observabilidade/metrics.registry';
 
 /**
  * Relogio da saga: varre sagas com prazo de aprovacao/pagamento vencido e
  * entrega `saga.timeout` ao orquestrador (compensacao, US-F4-11). Tambem
- * atualiza a gauge de sagas por status. Desligado com MESSAGING_AUTOSTART=false.
+ * atualiza as gauges de sagas por status e de sagas paradas (EM_ANDAMENTO no
+ * mesmo passo ha mais de SAGA_ALERTA_PARADA_MIN minutos — insumo do alerta
+ * "saga travada" ate a US-F4-11 trazer o reprocessamento).
+ *
+ * Replicas: cada pod varre; o lock otimista da saga garante que so uma
+ * aplica o timeout (a outra registra um aviso). Desligado com
+ * MESSAGING_AUTOSTART=false.
  */
 @Injectable()
 export class SagaTimeoutsService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(SagaTimeoutsService.name);
   private timer?: NodeJS.Timeout;
+  private varrendo = false;
 
   constructor(
     @Inject(SAGA_REPOSITORY) private readonly sagas: SagaRepository,
@@ -29,18 +36,28 @@ export class SagaTimeoutsService implements OnApplicationBootstrap, OnApplicatio
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Um ciclo: timeouts vencidos -> orquestrador; gauge por status. Devolve quantas sagas expiraram. */
+  /** Um ciclo (sem reentrancia): timeouts vencidos -> orquestrador; gauges. Devolve quantas sagas expiraram. */
   async varrer(agora: Date = new Date()): Promise<number> {
-    const vencidas = await this.sagas.findComPrazoVencido(agora);
-    for (const saga of vencidas) {
-      try {
-        await this.orquestrador.processar({ type: 'saga.timeout', data: { numeroOS: saga.numero, passo: saga.passo } }, agora);
-      } catch (e) {
-        this.logger.warn({ msg: 'timeout nao aplicado', numeroOS: saga.numero, erro: (e as Error).message });
+    if (this.varrendo) return 0;
+    this.varrendo = true;
+    try {
+      const vencidas = await this.sagas.findComPrazoVencido(agora);
+      for (const saga of vencidas) {
+        try {
+          await this.orquestrador.processar({ type: 'saga.timeout', data: { numeroOS: saga.numero, passo: saga.passo } }, agora);
+        } catch (e) {
+          this.logger.warn({ msg: 'timeout nao aplicado', numeroOS: saga.numero, erro: (e as Error).message });
+        }
       }
+      const porStatus = await this.sagas.countPorStatus();
+      for (const status of ['EM_ANDAMENTO', 'COMPENSANDO', 'CONCLUIDA', 'CANCELADA']) sagasPorStatus.set({ status }, porStatus[status] ?? 0);
+      const limiteMin = Number(process.env.SAGA_ALERTA_PARADA_MIN ?? 60);
+      const paradas = await this.sagas.countParadasDesde(new Date(agora.getTime() - limiteMin * 60_000));
+      sagasParadas.set(paradas);
+      if (paradas > 0) this.logger.warn({ msg: 'sagas paradas no mesmo passo', quantidade: paradas, limiteMin });
+      return vencidas.length;
+    } finally {
+      this.varrendo = false;
     }
-    const porStatus = await this.sagas.countPorStatus();
-    for (const status of ['EM_ANDAMENTO', 'COMPENSANDO', 'CONCLUIDA', 'CANCELADA']) sagasPorStatus.set({ status }, porStatus[status] ?? 0);
-    return vencidas.length;
   }
 }

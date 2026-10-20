@@ -140,6 +140,7 @@ export class OrdemDeServicoController {
   @Roles(Role.ADMIN, Role.ATENDENTE)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Entregar veiculo (encerrar OS; publica os.entregue)' })
+  @ApiConflictResponse({ description: 'OS alterada por outra operacao ao mesmo tempo (releia e repita)' })
   @ApiOkResponse({ description: 'Veiculo entregue com sucesso' })
   @ApiNotFoundResponse({ description: 'OS nao encontrada' })
   @ApiBadRequestResponse({ description: 'Transicao de status invalida' })

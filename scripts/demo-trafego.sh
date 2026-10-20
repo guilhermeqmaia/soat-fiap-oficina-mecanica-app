@@ -5,8 +5,10 @@
 #
 # Fase 4 (US-F4-06): este servico so abre, consulta, cancela e entrega a OS;
 # diagnostico, orcamento, aprovacao/pagamento e execucao acontecem na Execucao e
-# no Billing e chegam por evento. Ate o orquestrador (US-F4-10) e os outros
-# servicos estarem no ar, as OS criadas aqui ficam em RECEBIDA (1 em 5 e cancelada).
+# no Billing e chegam por evento. Cada OS aberta enfileira `execucao.enfileirar`
+# em execucao-comandos (US-F4-10): sem a Execucao no ar os comandos acumulam na
+# fila (retencao SQS) e as OS ficam em RECEBIDA (1 em 5 e cancelada). Rode este
+# script so com os tres servicos no ar.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH" AWS_PROFILE="${AWS_PROFILE:-oficina}" AWS_DEFAULT_REGION=us-east-1
 DURACAO_MIN="${1:-45}"; R=guilhermeqmaia/soat-fiap-oficina-os-service
 GW=$(gh variable get GATEWAY_URL -R $R); CT='content-type: application/json'

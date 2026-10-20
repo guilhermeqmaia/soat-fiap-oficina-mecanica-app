@@ -582,12 +582,16 @@ precisa ser explícito e consultável).
   AGUARDAR_PAGAMENTO → INICIAR_EXECUCAO → AGUARDAR_FINALIZACAO → CONCLUIDA`. Cada passo envia um
   **comando** pelo outbox (`execucao.enfileirar`, `billing.gerar-orcamento`, `execucao.iniciar`) e só
   avança com o **evento** esperado; duplicados e fora de ordem são ignorados e registrados.
-- **Compensação** (recuperação para trás, ordem inversa): `billing.cancelar-orcamento` e/ou
-  `execucao.liberar-reservas`, OS `CANCELADA` com o motivo; a saga fica `COMPENSANDO` até as
-  confirmações. **Timeouts** de aprovação/pagamento (`SAGA_TIMEOUT_*`) disparam a mesma compensação.
+- **Compensação** (recuperação para trás): `billing.cancelar-orcamento` e/ou
+  `execucao.liberar-reservas`, enfileirados em ordem inversa e executados em paralelo pelos
+  participantes (filas distintas); OS `CANCELADA` com o motivo; a saga fica `COMPENSANDO` até
+  todas as confirmações chegarem. Toda compensação é idempotente nos participantes. **Timeouts** de aprovação/pagamento (`SAGA_TIMEOUT_*`) disparam a mesma compensação.
   Falha de plataforma nunca compensa: retry pelo SQS e DLQ.
 - Notificação fica **coreografada** (só assina fatos) — os dois estilos convivem onde cada um cabe.
-- Métricas: `oficina_os_saga_passos_total`, `oficina_os_saga_passo_duracao_seconds`, `oficina_os_sagas`.
+- **Consistência:** cada evento roda numa única transação (OS + saga + outbox no mesmo Postgres);
+  conflito de versão é refeito em processo e, se persistir, devolve 409 (HTTP) ou reentrega (SQS).
+- Métricas: `oficina_os_saga_passos_total`, `oficina_os_saga_passo_duracao_seconds`, `oficina_os_sagas`,
+  `oficina_os_sagas_paradas` (alerta de saga travada, `SAGA_ALERTA_PARADA_MIN`).
 
 ---
 
