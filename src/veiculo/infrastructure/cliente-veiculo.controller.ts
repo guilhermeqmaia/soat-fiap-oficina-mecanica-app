@@ -15,8 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { VeiculoPresenter } from './presenters/veiculo.presenter';
 import { ListarVeiculosPorClienteUseCase } from '../application/use-cases/listar-veiculos-por-cliente.use-case';
-import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
-import { Role } from '../../auth/domain/role.enum';
+import { Roles, Role } from '@guilhermeqmaia/oficina-kit/auth';
 
 @ApiTags('Clientes')
 @ApiBearerAuth()

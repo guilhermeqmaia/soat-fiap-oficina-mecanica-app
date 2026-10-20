@@ -1,4 +1,4 @@
-import { DomainEvent } from '../../../shared/domain/domain-event';
+import { DomainEvent } from '@guilhermeqmaia/oficina-kit/core';
 
 export class EstoqueBaixoEvent implements DomainEvent {
   static readonly EVENT_NAME = 'estoque.baixo';

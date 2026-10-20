@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase, DOMAIN_EVENT_PUBLISHER, DomainEventPublisher } from '@guilhermeqmaia/oficina-kit/core';
 import { Produto } from '../../domain/produto.entity';
 import { TipoMovimentacaoEstoque } from '../../domain/value-objects/tipo-movimentacao-estoque.vo';
 import { EstoqueBaixoEvent } from '../../domain/events/estoque-baixo.event';
@@ -8,10 +8,6 @@ import {
   EstoqueUnitOfWork,
 } from '../../domain/estoque-unit-of-work';
 import { MovimentacaoContext } from '../../domain/movimentacao-context';
-import {
-  DOMAIN_EVENT_PUBLISHER,
-  DomainEventPublisher,
-} from '../../../shared/application/domain-event-publisher';
 
 export interface BaixarEstoqueInput {
   id: string;

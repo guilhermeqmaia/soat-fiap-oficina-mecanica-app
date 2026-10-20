@@ -1,4 +1,4 @@
-import { DomainError, DomainErrorKind } from '../../../shared/domain/domain-error';
+import { DomainError, DomainErrorKind } from '@guilhermeqmaia/oficina-kit/core';
 export class ServicoNotFoundInCatalogError extends DomainError {
   readonly kind = DomainErrorKind.NOT_FOUND;
 

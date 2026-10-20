@@ -1,4 +1,4 @@
-import { DomainEvent } from '../domain-event';
+import { DomainEvent } from '@guilhermeqmaia/oficina-kit/core';
 
 /**
  * Evento publicado pelo BC Atendimento (OrdemDeServico) quando

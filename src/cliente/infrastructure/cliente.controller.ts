@@ -32,8 +32,7 @@ import { ListarClientesUseCase } from '../application/use-cases/listar-clientes.
 import { BuscarClientePorIdUseCase } from '../application/use-cases/buscar-cliente-por-id.use-case';
 import { AtualizarClienteUseCase } from '../application/use-cases/atualizar-cliente.use-case';
 import { DeletarClienteUseCase } from '../application/use-cases/deletar-cliente.use-case';
-import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
-import { Role } from '../../auth/domain/role.enum';
+import { Roles, Role } from '@guilhermeqmaia/oficina-kit/auth';
 
 @ApiTags('Clientes')
 @ApiBearerAuth()

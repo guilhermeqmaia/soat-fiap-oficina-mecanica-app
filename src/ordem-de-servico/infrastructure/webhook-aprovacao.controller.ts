@@ -22,7 +22,7 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
 } from '@nestjs/swagger';
-import { Public } from '../../auth/infrastructure/decorators/public.decorator';
+import { Public } from '@guilhermeqmaia/oficina-kit/auth';
 import { WebhookTokenGuard } from './guards/webhook-token.guard';
 import { WebhookAprovacaoDto } from './dto/webhook-aprovacao.dto';
 import { AprovarOrcamentoUseCase } from '../application/use-cases/aprovar-orcamento.use-case';

@@ -1,4 +1,4 @@
-import { DomainEvent } from '../domain-event';
+import { DomainEvent } from '@guilhermeqmaia/oficina-kit/core';
 
 /**
  * Evento publicado a cada mutacao da OrdemDeServico (criar, atribuir

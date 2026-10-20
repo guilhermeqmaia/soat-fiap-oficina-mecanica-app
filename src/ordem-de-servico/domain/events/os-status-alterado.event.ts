@@ -1,4 +1,4 @@
-import { DomainEvent } from "../../../shared/domain/domain-event";
+import { DomainEvent } from '@guilhermeqmaia/oficina-kit/core';
 import { StatusOS } from "../value-objects/status-os.vo";
 
 export class OsStatusAlteradoEvent implements DomainEvent {

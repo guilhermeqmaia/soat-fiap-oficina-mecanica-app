@@ -1,5 +1,5 @@
 import { OsAcaoEvent } from './os-acao.event';
-import { DomainEvent } from '../domain-event';
+import { DomainEvent } from '@guilhermeqmaia/oficina-kit/core';
 
 describe('OsAcaoEvent', () => {
   it('preenche todos os campos do payload', () => {

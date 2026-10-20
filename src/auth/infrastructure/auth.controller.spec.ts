@@ -1,6 +1,5 @@
 import { AuthController } from './auth.controller';
-import { AuthenticatedUser } from '../domain/authenticated-user';
-import { Role } from '../domain/role.enum';
+import { AuthenticatedUser, Role } from '@guilhermeqmaia/oficina-kit/auth';
 
 describe('AuthController (resource server)', () => {
   it('GET /auth/me devolve a identidade das claims do token', () => {

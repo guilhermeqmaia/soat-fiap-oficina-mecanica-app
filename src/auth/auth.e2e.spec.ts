@@ -9,11 +9,8 @@ import {
 import request from 'supertest';
 import * as jwt from 'jsonwebtoken';
 import { AppModule } from '../app.module';
-import { Role } from './domain/role.enum';
-import { Roles } from './infrastructure/decorators/roles.decorator';
-import { Public } from './infrastructure/decorators/public.decorator';
-import { RolesGuard } from './infrastructure/guards/roles.guard';
-import { mintToken } from './testing/token-factory';
+import { Role, Roles, Public, RolesGuard } from '@guilhermeqmaia/oficina-kit/auth';
+import { mintToken } from '@guilhermeqmaia/oficina-kit/testing';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
 
 jest.setTimeout(120000);

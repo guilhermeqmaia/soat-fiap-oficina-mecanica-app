@@ -52,11 +52,7 @@ import { AdicionarProdutoAoServicoUseCase } from "../application/use-cases/adici
 import { RemoverProdutoDoServicoUseCase } from "../application/use-cases/remover-produto-do-servico.use-case";
 import { DeletarOrdemDeServicoUseCase } from "../application/use-cases/deletar-ordem-de-servico.use-case";
 import { Throttle } from "@nestjs/throttler";
-import { Public } from "../../auth/infrastructure/decorators/public.decorator";
-import { Roles } from "../../auth/infrastructure/decorators/roles.decorator";
-import { CurrentUser } from "../../auth/infrastructure/decorators/current-user.decorator";
-import { Role } from "../../auth/domain/role.enum";
-import { AuthenticatedUser } from "../../auth/domain/authenticated-user";
+import { Public, Roles, CurrentUser, Role, AuthenticatedUser } from '@guilhermeqmaia/oficina-kit/auth';
 
 @ApiTags("Ordens de Servico")
 @ApiBearerAuth()

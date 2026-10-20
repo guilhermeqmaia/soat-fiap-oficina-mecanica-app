@@ -2,7 +2,7 @@ import { createHmac } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { CanalNotificacao } from '../domain/value-objects/canal-notificacao.vo';
 import { WebhookNotificador } from './webhook-notificador.adapter';
-import { runWithCorrelation } from '../../shared/infrastructure/logging/correlation-context';
+import { runWithCorrelation } from '@guilhermeqmaia/oficina-kit/logging';
 
 describe('WebhookNotificador', () => {
   const originalFetch = global.fetch;

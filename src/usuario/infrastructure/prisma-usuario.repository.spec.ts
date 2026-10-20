@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaUsuarioRepository } from './prisma-usuario.repository';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Role } from '../../auth/domain/role.enum';
+import { Role } from '@guilhermeqmaia/oficina-kit/auth';
 import { Usuario } from '../../auth/domain/usuario.entity';
 
 const dbRecord = {

@@ -1,4 +1,4 @@
-import { DomainError, DomainErrorKind } from '../../../shared/domain/domain-error';
+import { DomainError, DomainErrorKind } from '@guilhermeqmaia/oficina-kit/core';
 export class ClienteNotOwnedByUsuarioError extends DomainError {
   readonly kind = DomainErrorKind.FORBIDDEN;
 

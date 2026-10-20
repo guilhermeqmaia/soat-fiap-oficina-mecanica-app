@@ -1,9 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { UseCase } from "../../../shared/application/use-case";
-import {
-  DOMAIN_EVENT_PUBLISHER,
-  DomainEventPublisher,
-} from "../../../shared/application/domain-event-publisher";
+import { UseCase, DOMAIN_EVENT_PUBLISHER, DomainEventPublisher } from '@guilhermeqmaia/oficina-kit/core';
 import { OrdemDeServico } from "../../domain/ordem-de-servico.entity";
 import {
   ORDEM_DE_SERVICO_GATEWAY,

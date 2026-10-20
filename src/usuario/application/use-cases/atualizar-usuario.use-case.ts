@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { UseCase } from '../../../shared/application/use-case';
+import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { Usuario } from '../../../auth/domain/usuario.entity';
-import { Role } from '../../../auth/domain/role.enum';
+import { Role } from '@guilhermeqmaia/oficina-kit/auth';
 import { UsuarioNotFoundError } from '../../domain/errors/usuario-not-found.error';
 import { EmailAlreadyExistsError } from '../../domain/errors/email-already-exists.error';
 import { InvalidRoleError } from '../../domain/errors/invalid-role.error';

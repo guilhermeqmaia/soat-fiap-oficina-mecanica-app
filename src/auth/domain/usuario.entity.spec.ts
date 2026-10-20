@@ -1,5 +1,5 @@
 import { NameRequiredError } from './errors/name-required.error';
-import { Role } from './role.enum';
+import { Role } from '@guilhermeqmaia/oficina-kit/auth';
 import { Usuario } from './usuario.entity';
 
 describe('Usuario (Entity)', () => {

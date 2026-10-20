@@ -7,7 +7,7 @@ import {
   MensagemNotificacao,
   Notificador,
 } from '../application/ports/notificador.port';
-import { getCorrelationId } from '../../shared/infrastructure/logging/correlation-context';
+import { getCorrelationId } from '@guilhermeqmaia/oficina-kit/logging';
 
 interface WebhookPayload {
   ordemId: string | null;

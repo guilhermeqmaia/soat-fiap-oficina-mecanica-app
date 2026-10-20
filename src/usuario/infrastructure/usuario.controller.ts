@@ -24,10 +24,7 @@ import {
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { QueryUsuarioDto } from './dto/query-usuario.dto';
-import { JwtAuthGuard } from '../../auth/infrastructure/guards/jwt-auth.guard';
-import { RolesGuard } from '../../auth/infrastructure/guards/roles.guard';
-import { Roles } from '../../auth/infrastructure/decorators/roles.decorator';
-import { Role } from '../../auth/domain/role.enum';
+import { JwtAuthGuard, RolesGuard, Roles, Role } from '@guilhermeqmaia/oficina-kit/auth';
 import { UsuarioOutput } from '../application/usuario-output';
 import { CriarUsuarioUseCase } from '../application/use-cases/criar-usuario.use-case';
 import { BuscarUsuarioPorIdUseCase } from '../application/use-cases/buscar-usuario-por-id.use-case';
