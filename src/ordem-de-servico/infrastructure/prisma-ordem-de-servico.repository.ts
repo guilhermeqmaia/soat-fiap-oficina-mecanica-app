@@ -1,15 +1,20 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import {
+  criarEnvelope,
+  OUTBOX_REPOSITORY,
+  OutboxRepository,
+} from "@guilhermeqmaia/oficina-kit/messaging";
+import { PrismaService } from "../../prisma/prisma.service";
 import {
   OrdemDeServicoRepository,
   FindAllParams,
   PaginatedResult,
-} from '../domain/ordem-de-servico.repository';
-import { OrdemDeServico } from '../domain/ordem-de-servico.entity';
-import { StatusOS } from '../domain/value-objects/status-os.vo';
-import { MotivoCancelamento } from '../domain/value-objects/motivo-cancelamento';
-import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
-import { ItemProdutoOS } from '../domain/value-objects/item-produto-os.vo';
+} from "../domain/ordem-de-servico.repository";
+import { OrdemDeServico } from "../domain/ordem-de-servico.entity";
+import { StatusOS } from "../domain/value-objects/status-os.vo";
+import { MotivoCancelamento } from "../domain/value-objects/motivo-cancelamento";
+import { ItemServicoOS } from "../domain/value-objects/item-servico-os.vo";
+import { ItemProdutoOS } from "../domain/value-objects/item-produto-os.vo";
 
 const INCLUDE_ITENS = {
   itensServico: { include: { produtos: true } },
@@ -29,32 +34,47 @@ const STATUS_PRIORITY: Record<string, number> = {
 
 @Injectable()
 export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    /** Outbox (ADR-0009). Opcional para os testes unitarios do repositorio. */
+    @Optional()
+    @Inject(OUTBOX_REPOSITORY)
+    private readonly outbox?: OutboxRepository<unknown>,
+  ) {}
 
   async create(os: OrdemDeServico): Promise<OrdemDeServico> {
-    const data = await this.prisma.ordemDeServico.create({
-      data: {
-        numero: os.numero,
-        clienteId: os.clienteId,
-        veiculoId: os.veiculoId,
-        usuarioId: os.mecanicoId,
-        descricaoInicial: os.descricaoInicial,
-        diagnostico: os.diagnostico,
-        status: os.status,
-        motivoCancelamento: os.motivoCancelamento,
-        itensServico: { create: os.itensServico.map(this.toItemCreate) },
-      },
-      include: INCLUDE_ITENS,
+    const data = await this.prisma.$transaction(async (tx) => {
+      const criada = await tx.ordemDeServico.create({
+        data: {
+          numero: os.numero,
+          clienteId: os.clienteId,
+          veiculoId: os.veiculoId,
+          usuarioId: os.mecanicoId,
+          descricaoInicial: os.descricaoInicial,
+          diagnostico: os.diagnostico,
+          status: os.status,
+          motivoCancelamento: os.motivoCancelamento,
+          itensServico: { create: os.itensServico.map(this.toItemCreate) },
+        },
+        include: INCLUDE_ITENS,
+      });
+      await this.gravarEventosIntegracao(os, tx);
+      return criada;
     });
     return this.toDomain(data);
   }
 
   async findById(id: string): Promise<OrdemDeServico | null> {
-    const data = await this.prisma.ordemDeServico.findUnique({ where: { id }, include: INCLUDE_ITENS });
+    const data = await this.prisma.ordemDeServico.findUnique({
+      where: { id },
+      include: INCLUDE_ITENS,
+    });
     return data ? this.toDomain(data) : null;
   }
 
-  async findAll(params: FindAllParams): Promise<PaginatedResult<OrdemDeServico>> {
+  async findAll(
+    params: FindAllParams,
+  ): Promise<PaginatedResult<OrdemDeServico>> {
     const page = params.page ?? 1;
     const limit = params.limit ?? 10;
     const skip = (page - 1) * limit;
@@ -62,10 +82,15 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
     const where: any = {};
     if (params.clienteId) where.clienteId = params.clienteId;
     if (params.status) where.status = params.status;
-    if (params.numero) where.numero = { contains: params.numero, mode: 'insensitive' };
+    if (params.numero)
+      where.numero = { contains: params.numero, mode: "insensitive" };
     // Estados terminais ficam de fora por padrao (working set = OS ativas).
     if (!params.incluirEncerradas) {
-      where.NOT = [{ status: 'FINALIZADA' }, { status: 'ENTREGUE' }, { status: 'CANCELADA' }];
+      where.NOT = [
+        { status: "FINALIZADA" },
+        { status: "ENTREGUE" },
+        { status: "CANCELADA" },
+      ];
     }
 
     // Ordenacao por prioridade de status nao e expressavel no orderBy do
@@ -77,13 +102,23 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
     const sorted = [...data].sort((a, b) => {
       const pa = STATUS_PRIORITY[a.status] ?? 999;
       const pb = STATUS_PRIORITY[b.status] ?? 999;
-      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+      return pa !== pb
+        ? pa - pb
+        : a.createdAt.getTime() - b.createdAt.getTime();
     });
-    return { data: sorted.slice(skip, skip + limit).map((d) => this.toDomain(d)), total, page, limit };
+    return {
+      data: sorted.slice(skip, skip + limit).map((d) => this.toDomain(d)),
+      total,
+      page,
+      limit,
+    };
   }
 
   async findByNumero(numero: string): Promise<OrdemDeServico | null> {
-    const data = await this.prisma.ordemDeServico.findUnique({ where: { numero }, include: INCLUDE_ITENS });
+    const data = await this.prisma.ordemDeServico.findUnique({
+      where: { numero },
+      include: INCLUDE_ITENS,
+    });
     return data ? this.toDomain(data) : null;
   }
 
@@ -100,15 +135,47 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
         },
       });
       // Snapshot substitui o anterior (cascade apaga os produtos filhos).
-      await tx.itemOrdemDeServicoServico.deleteMany({ where: { ordemDeServicoId: os.id } });
+      await tx.itemOrdemDeServicoServico.deleteMany({
+        where: { ordemDeServicoId: os.id },
+      });
       for (const item of os.itensServico) {
         await tx.itemOrdemDeServicoServico.create({
-          data: { ordemDeServicoId: os.id as string, ...this.toItemCreate(item) },
+          data: {
+            ordemDeServicoId: os.id as string,
+            ...this.toItemCreate(item),
+          },
         });
       }
-      return tx.ordemDeServico.findUnique({ where: { id: os.id }, include: INCLUDE_ITENS });
+      await this.gravarEventosIntegracao(os, tx);
+      return tx.ordemDeServico.findUnique({
+        where: { id: os.id },
+        include: INCLUDE_ITENS,
+      });
     });
     return this.toDomain(data);
+  }
+
+  /**
+   * Eventos `os.*` vao para o outbox NA MESMA transacao da OS (ADR-0009): ou a
+   * OS muda e o evento sera entregue, ou nada acontece. `correlationId` = numero
+   * da OS (MessageGroupId do FIFO, RFC-0006).
+   */
+  private async gravarEventosIntegracao(
+    os: OrdemDeServico,
+    tx: unknown,
+  ): Promise<void> {
+    for (const evento of os.consumirEventosIntegracao()) {
+      if (!this.outbox) continue;
+      await this.outbox.gravar(
+        criarEnvelope({
+          type: evento.type,
+          data: evento.data,
+          producer: "os-service",
+          correlationId: os.numero,
+        }),
+        tx,
+      );
+    }
   }
 
   async delete(id: string): Promise<void> {
@@ -144,7 +211,15 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
           i.nome,
           i.quantidade,
           Number(i.precoUnitario),
-          (i.produtos ?? []).map((p: any) => new ItemProdutoOS(p.produtoId, p.nome, p.quantidade, Number(p.precoUnitario))),
+          (i.produtos ?? []).map(
+            (p: any) =>
+              new ItemProdutoOS(
+                p.produtoId,
+                p.nome,
+                p.quantidade,
+                Number(p.precoUnitario),
+              ),
+          ),
         ),
     );
     return OrdemDeServico.reconstitute({
@@ -156,7 +231,8 @@ export class PrismaOrdemDeServicoRepository implements OrdemDeServicoRepository 
       descricaoInicial: data.descricaoInicial,
       diagnostico: data.diagnostico,
       status: data.status as StatusOS,
-      motivoCancelamento: (data.motivoCancelamento as MotivoCancelamento | null) ?? null,
+      motivoCancelamento:
+        (data.motivoCancelamento as MotivoCancelamento | null) ?? null,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
       itensServico,

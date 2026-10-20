@@ -17,6 +17,13 @@ import {
   RegistrarOrcamentoGeradoUseCase,
 } from './application/use-cases/transicoes';
 import { startTestDatabase, stopTestDatabase } from '../test/database.container';
+import { criarEnvelope, OutboxPoller, SqsConsumer } from '@guilhermeqmaia/oficina-kit/messaging';
+import {
+  BillingOrcamentoGeradoHandler,
+  ExecucaoDiagnosticoConcluidoHandler,
+  ExecucaoEnfileiradaHandler,
+  ExecucaoRecusadaHandler,
+} from './infrastructure/messaging';
 
 jest.setTimeout(120000);
 
@@ -238,6 +245,78 @@ describe('OrdemDeServico (e2e) — OS Service', () => {
       expect((await http().delete(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.atendente}`)).status).toBe(403);
       expect((await http().delete(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.admin}`)).status).toBe(204);
       expect((await http().delete(`/ordens-servico/${os.id}`).set('Authorization', `Bearer ${tokens.admin}`)).status).toBe(404);
+    });
+  });
+
+  describe('mensageria (US-F4-06 PR 2): outbox transacional + handlers da fila os-eventos', () => {
+    const outboxDe = (numero: string) => prisma.outbox.findMany({ where: { correlationId: numero }, orderBy: { criadaEm: 'asc' } });
+    const envelope = <T>(type: string, data: T) => criarEnvelope({ type, data, producer: 'execucao-service', correlationId: (data as any).numeroOS });
+
+    it('poller e consumer existem mas ficam parados nos testes (MESSAGING_AUTOSTART=false)', () => {
+      expect(moduleRef.get(OutboxPoller)).toBeDefined();
+      expect(moduleRef.get(SqsConsumer)).toBeDefined();
+    });
+
+    it('abrir a OS grava os.aberta no outbox (PENDENTE) com resumo e CPF mascarado', async () => {
+      const os = await createOs();
+      const rows = await outboxDe(os.numero);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ type: 'os.aberta', status: 'PENDENTE', tentativas: 0 });
+      const env = rows[0].envelope as any;
+      expect(env).toMatchObject({ type: 'os.aberta', producer: 'os-service', correlationId: os.numero, version: 1 });
+      expect(env.data).toMatchObject({
+        numeroOS: os.numero,
+        cliente: { id: clienteId, nome: 'Joao Silva', cpfMascarado: '***.***.***-25' },
+        veiculo: { id: veiculoId, placa: 'TES1T23', modelo: 'Corolla' },
+        descricaoProblema: 'Cliente relata barulho ao frenar',
+      });
+      expect(JSON.stringify(env)).not.toContain(CLIENTE_CPF);
+    });
+
+    it('cancelar, finalizar e entregar geram os.cancelada / os.finalizada / os.entregue; transicoes intermediarias nao', async () => {
+      const cancelada = await createOs();
+      await http().post(`/ordens-servico/${cancelada.id}/cancelar`).set('Authorization', `Bearer ${tokens.admin}`).send({ motivo: MotivoCancelamento.TIMEOUT_APROVACAO });
+      expect((await outboxDe(cancelada.numero)).map((r) => [r.type, (r.envelope as any).data.motivo])).toEqual([['os.aberta', undefined], ['os.cancelada', 'TIMEOUT_APROVACAO']]);
+
+      const os = await createOs();
+      await ateAguardandoAprovacao(os.numero);
+      await moduleRef.get(RegistrarOrcamentoAprovadoUseCase).execute({ numero: os.numero });
+      await moduleRef.get(RegistrarExecucaoIniciadaUseCase).execute({ numero: os.numero });
+      expect((await outboxDe(os.numero)).map((r) => r.type)).toEqual(['os.aberta']);
+      await moduleRef.get(RegistrarExecucaoFinalizadaUseCase).execute({ numero: os.numero });
+      await http().post(`/ordens-servico/${os.id}/entregar`).set('Authorization', `Bearer ${tokens.atendente}`);
+      expect((await outboxDe(os.numero)).map((r) => r.type)).toEqual(['os.aberta', 'os.finalizada', 'os.entregue']);
+    });
+
+    it('handlers traduzem o contrato AsyncAPI para as transicoes (enfileirada -> diagnostico -> orcamento)', async () => {
+      const os = await createOs();
+      await moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: os.numero, posicaoFila: 1 }));
+      await moduleRef.get(ExecucaoDiagnosticoConcluidoHandler).handle(
+        envelope('execucao.diagnostico-concluido', {
+          numeroOS: os.numero, mecanicoId: mecanicoUserId, diagnostico: 'Disco empenado',
+          itens: [
+            { tipo: 'SERVICO' as const, referenciaId: 'srv-9', nome: 'Retifica de disco', quantidade: 2, precoUnitario: '90.00' },
+            { tipo: 'PRODUTO' as const, referenciaId: 'prd-9', nome: 'Disco', quantidade: 2, precoUnitario: '150.00', servicoId: 'srv-9' },
+          ],
+        }),
+      );
+      await moduleRef.get(BillingOrcamentoGeradoHandler).handle(envelope('billing.orcamento-gerado', { numeroOS: os.numero, orcamentoId: 'orc-1', total: '480.00', validoAte: new Date().toISOString() }));
+      const s = (await http().get(`/ordens-servico/numero/${os.numero}/status`)).body;
+      expect(s.status).toBe(StatusOS.AGUARDANDO_APROVACAO);
+      expect(s.servicos[0]).toMatchObject({ nome: 'Retifica de disco', subtotal: 180, produtos: [{ nome: 'Disco', subtotal: 300 }] });
+      expect(s.valorTotal).toBe(480);
+    });
+
+    it('compensacao vinda da Execucao (execucao.recusada) cancela com EXECUCAO_RECUSADA e publica os.cancelada', async () => {
+      const os = await createOs();
+      await moduleRef.get(ExecucaoRecusadaHandler).handle(envelope('execucao.recusada', { numeroOS: os.numero, motivo: 'veiculo ja em execucao' }));
+      const s = (await http().get(`/ordens-servico/numero/${os.numero}/status`)).body;
+      expect(s).toMatchObject({ status: StatusOS.CANCELADA, motivoCancelamento: MotivoCancelamento.EXECUCAO_RECUSADA });
+      expect((await outboxDe(os.numero)).map((r) => r.type)).toEqual(['os.aberta', 'os.cancelada']);
+    });
+
+    it('handler com OS inexistente lanca (mensagem volta para a fila -> DLQ)', async () => {
+      await expect(moduleRef.get(ExecucaoEnfileiradaHandler).handle(envelope('execucao.enfileirada', { numeroOS: 'OS-NAO-EXISTE', posicaoFila: 1 }))).rejects.toThrow();
     });
   });
 });

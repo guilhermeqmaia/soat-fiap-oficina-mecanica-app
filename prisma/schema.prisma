@@ -182,3 +182,30 @@ enum StatusNotificacao {
   ENVIADA
   FALHOU
 }
+
+// ─── Mensageria (ADR-0009) — contratos do PrismaOutboxRepository / PrismaProcessedMessageStore do kit ───
+
+/// Outbox transacional: eventos `os.*` gravados na mesma transacao da OS e entregues ao SNS pelo OutboxPoller.
+model Outbox {
+  id            String    @id
+  type          String
+  correlationId String    @map("correlation_id")
+  envelope      Json
+  status        String    @default("PENDENTE")
+  tentativas    Int       @default(0)
+  criadaEm      DateTime  @default(now()) @map("criada_em")
+  enviadaEm     DateTime? @map("enviada_em")
+  ultimoErro    String?   @map("ultimo_erro")
+
+  @@index([status, criadaEm])
+  @@map("outbox")
+}
+
+/// Deduplicacao do consumidor SQS (fila `os-eventos`): id do envelope ja processado.
+model ProcessedMessage {
+  id           String   @id
+  type         String
+  processadaEm DateTime @default(now()) @map("processada_em")
+
+  @@map("processed_messages")
+}

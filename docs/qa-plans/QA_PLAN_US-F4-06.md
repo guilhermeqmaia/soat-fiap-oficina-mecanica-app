@@ -72,7 +72,23 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 - **Criterio:** >= 80%
 - **Resultado esperado:** gate verde (PR 1: 94% linhas / 82% branches no unitario; 179 testes de integracao/e2e)
 
-### TS-11..TS-13 (PR 2): outbox `os.aberta|cancelada|finalizada|entregue`; handlers SQS para `execucao.*` e `billing.*`; DLQ para evento incompativel — *a preencher no PR 2*
+### TS-11: Outbox transacional dos eventos `os.*`
+- **Tipo:** Automatizado (e2e "mensageria"; `prisma-ordem-de-servico.repository.spec.ts`)
+- **Criterio:** Publica via outbox `os.aberta`, `os.cancelada`, `os.finalizada`, `os.entregue`
+- **Passos:** `POST /ordens-servico`; `POST :id/cancelar`; percorrer ate ENTREGUE; `SELECT type, status, envelope FROM outbox WHERE correlation_id = <numero>`
+- **Resultado esperado:** uma linha PENDENTE por evento, na ordem; `os.aberta` traz cliente (nome, `cpfMascarado`) e veiculo (placa, modelo) e nunca o CPF completo; transicoes intermediarias nao geram `os.*`; `gravar` recebe o mesmo `tx` da OS (unitario)
+
+### TS-12: Handlers da fila `os-eventos`
+- **Tipo:** Automatizado (`eventos.handlers.spec.ts`; e2e "handlers traduzem o contrato")
+- **Criterio:** Consome `execucao.*` e `billing.*` com idempotencia
+- **Passos:** entregar envelopes AsyncAPI aos handlers (`execucao.enfileirada` -> `diagnostico-concluido` -> `billing.orcamento-gerado`; `execucao.recusada`)
+- **Resultado esperado:** status/snapshot da OS seguem o contrato; 12 types cobertos sem duplicata; compensacoes cancelam com o motivo correto (`EXECUCAO_RECUSADA`, `ORCAMENTO_REJEITADO`, `PAGAMENTO_RECUSADO`); OS inexistente/evento incompativel lancam (sem ack -> retry -> DLQ)
+
+### TS-13: Ponta a ponta com LocalStack
+- **Tipo:** Manual
+- **Criterio:** OutboxPoller -> SNS -> SQS -> consumer
+- **Passos:** `docker compose --profile messaging up -d localstack`; `.env` com `AWS_ENDPOINT`/`SNS_TOPIC_ARN`/`SQS_QUEUE_URL`; `npm run start:dev`; `POST /ordens-servico`; `awslocal sqs receive-message --queue-url .../notificacao-eventos.fifo`; publicar `execucao.enfileirada` em `oficina-execucao.fifo` com `awslocal sns publish --message-group-id <numero> --message-deduplication-id <uuid>`
+- **Resultado esperado:** linha do outbox vira ENVIADA; `os.aberta` chega na fila de notificacao; a OS vai para EM_DIAGNOSTICO e o id entra em `processed_messages`; republicar o mesmo envelope nao reprocessa (log `duplicate: true`)
 
 ### TS-14..TS-15 (PR 3): Service NodePort 30080 atras do NLB unico (US-F4-05 TS-06); repositorio renomeado com CI/CD verde — *a preencher no PR 3*
 
@@ -96,5 +112,6 @@ Entregue em 3 PRs: **PR 1** dominio/API/banco (cenarios TS-01..TS-10), **PR 2** 
 
 ## Checklist de Validacao
 - [x] TS-01..TS-10 (20/10/2026, PR 1)
-- [ ] TS-11..TS-13 (PR 2)
+- [x] TS-11, TS-12 (20/10/2026, PR 2)
+- [ ] TS-13 — manual com LocalStack (ou no EKS apos PR 3)
 - [ ] TS-14..TS-15 (PR 3)

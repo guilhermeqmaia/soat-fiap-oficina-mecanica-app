@@ -4,6 +4,7 @@ import { MotivoCancelamento } from './value-objects/motivo-cancelamento';
 import { InvalidDescriptionError } from './errors/invalid-description.error';
 import { InvalidStatusTransitionError } from './errors/invalid-status-transition.error';
 import { ServicoAlreadyAddedError } from './errors/servico-already-added.error';
+import { EventoIntegracao, ResumoAberturaOS, mascararDocumento } from './events/evento-integracao';
 
 export interface CreateOrdemDeServicoProps {
   clienteId: string;
@@ -60,6 +61,8 @@ export class OrdemDeServico {
   private _itensServico: ItemServicoOS[];
   private _createdAt?: Date;
   private _updatedAt?: Date;
+  /** Eventos `os.*` a publicar junto com a proxima persistencia (outbox). */
+  private _eventosIntegracao: EventoIntegracao[] = [];
 
   private constructor(
     props: {
@@ -150,6 +153,23 @@ export class OrdemDeServico {
     }
   }
 
+  /**
+   * Abertura: anuncia `os.aberta` com o resumo de cliente/veiculo que a saga e
+   * a Notificacao precisam — sem o documento completo (cpfMascarado).
+   */
+  registrarAbertura(resumo: ResumoAberturaOS): void {
+    this.exigirStatus(StatusOS.RECEBIDA, 'registrar abertura');
+    this._eventosIntegracao.push({
+      type: 'os.aberta',
+      data: {
+        numeroOS: this._numero,
+        cliente: { id: this._clienteId, nome: resumo.cliente.nome, cpfMascarado: mascararDocumento(resumo.cliente.cpfCnpj) },
+        veiculo: { id: this._veiculoId, placa: resumo.veiculo.placa, modelo: resumo.veiculo.modelo },
+        descricaoProblema: this._descricaoInicial,
+      },
+    });
+  }
+
   /** `execucao.enfileirada`: a OS entrou na fila da oficina e esta em diagnostico. */
   iniciarDiagnostico(): void {
     this.exigirStatus(StatusOS.RECEBIDA, StatusOS.EM_DIAGNOSTICO);
@@ -197,12 +217,14 @@ export class OrdemDeServico {
   finalizar(): void {
     this.exigirStatus(StatusOS.EM_EXECUCAO, StatusOS.FINALIZADA);
     this._status = StatusOSVO.create(StatusOS.FINALIZADA);
+    this._eventosIntegracao.push({ type: 'os.finalizada', data: { numeroOS: this._numero } });
   }
 
   /** Acao do atendente: veiculo entregue, OS encerrada. */
   entregar(): void {
     this.exigirStatus(StatusOS.FINALIZADA, StatusOS.ENTREGUE);
     this._status = StatusOSVO.create(StatusOS.ENTREGUE);
+    this._eventosIntegracao.push({ type: 'os.entregue', data: { numeroOS: this._numero } });
   }
 
   /** Compensacao da saga ou cancelamento manual — so antes da execucao comecar. */
@@ -212,6 +234,19 @@ export class OrdemDeServico {
     }
     this._status = StatusOSVO.create(StatusOS.CANCELADA);
     this._motivoCancelamento = motivo;
+    this._eventosIntegracao.push({ type: 'os.cancelada', data: { numeroOS: this._numero, motivo } });
+  }
+
+  /** Eventos pendentes de publicacao (leitura; o repositorio os consome ao persistir). */
+  get eventosIntegracao(): readonly EventoIntegracao[] {
+    return this._eventosIntegracao;
+  }
+
+  /** Entrega os eventos pendentes e esvazia a lista — chamado pelo repositorio dentro da transacao. */
+  consumirEventosIntegracao(): EventoIntegracao[] {
+    const eventos = this._eventosIntegracao;
+    this._eventosIntegracao = [];
+    return eventos;
   }
 
   podeSerCancelada(): boolean {

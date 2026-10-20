@@ -542,6 +542,32 @@ com as dependências apontando para o domínio (Clean Architecture).
 
 ---
 
+## Mensageria (Fase 4 — US-F4-06)
+
+O OS Service conversa com a Execução e o Billing **só por eventos** (RFC-0006, ADR-0009), usando o
+módulo `messaging` do kit `@guilhermeqmaia/oficina-kit`:
+
+- **Publica** `os.aberta`, `os.cancelada`, `os.finalizada`, `os.entregue` no tópico SNS FIFO
+  `oficina-os.fifo`. O evento é gravado na tabela `outbox` **na mesma transação** da OS
+  (`PrismaOrdemDeServicoRepository`) e entregue pelo `OutboxPoller` — nunca se perde um evento
+  nem se publica sem persistir.
+- **Consome** a fila `os-eventos.fifo` (eventos `execucao.*` e `billing.*`, filtrados por `type`
+  na assinatura). Um handler por `type` em `src/ordem-de-servico/infrastructure/messaging/`
+  chama o caso de uso de transição correspondente; a deduplicação usa `processed_messages`.
+  Reentrega é no-op; evento incompatível com o status atual falha e vai para a DLQ após 5 tentativas.
+- Contratos: [`docs/contratos/asyncapi.yaml`](docs/contratos/asyncapi.yaml).
+
+Sem `SNS_TOPIC_ARN` a aplicação sobe sem broker (o outbox apenas acumula). Localmente:
+
+```bash
+docker compose --profile messaging up -d localstack   # SNS/SQS com a topologia da RFC-0006
+# no .env: AWS_ENDPOINT=http://localhost:4566, SNS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:oficina-os.fifo,
+#          SQS_QUEUE_URL=http://localhost:4566/000000000000/os-eventos.fifo
+awslocal sqs receive-message --queue-url http://localhost:4566/000000000000/notificacao-eventos.fifo  # ver os.aberta
+```
+
+---
+
 ## Observabilidade (Fase 3 — US-F3-10)
 
 A aplicação é instrumentada de forma **agnóstica de fornecedor** (ADR-0004):

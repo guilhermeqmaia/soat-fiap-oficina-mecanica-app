@@ -5,6 +5,8 @@ import { StatusOS } from '../domain/value-objects/status-os.vo';
 import { OrdemDeServico } from '../domain/ordem-de-servico.entity';
 import { ItemServicoOS } from '../domain/value-objects/item-servico-os.vo';
 import { ItemProdutoOS } from '../domain/value-objects/item-produto-os.vo';
+import { MotivoCancelamento } from '../domain/value-objects/motivo-cancelamento';
+import { OUTBOX_REPOSITORY } from '@guilhermeqmaia/oficina-kit/messaging';
 
 const dbRecord = {
   id: 'os-123', numero: 'OS-2026-00001', clienteId: 'cliente-123', veiculoId: 'veiculo-456', usuarioId: null,
@@ -16,9 +18,10 @@ const dbRecordWithItens = {
   itensServico: [{ servicoId: 'serv-abc', nome: 'Troca', quantidade: 2, precoUnitario: '150.00', produtos: [{ produtoId: 'p1', nome: 'Pastilha', quantidade: 1, precoUnitario: '80.00' }] }],
 };
 const tx = {
-  ordemDeServico: { update: jest.fn(), findUnique: jest.fn() },
+  ordemDeServico: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
   itemOrdemDeServicoServico: { deleteMany: jest.fn(), create: jest.fn() },
 };
+const outbox = { gravar: jest.fn(), pendentes: jest.fn(), marcarEnviada: jest.fn(), marcarFalha: jest.fn() };
 const mockPrisma = {
   ordemDeServico: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), delete: jest.fn() },
   $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
@@ -29,18 +32,53 @@ describe('PrismaOrdemDeServicoRepository (unit)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaOrdemDeServicoRepository, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        PrismaOrdemDeServicoRepository,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: OUTBOX_REPOSITORY, useValue: outbox },
+      ],
     }).compile();
     repository = module.get(PrismaOrdemDeServicoRepository);
   });
 
-  it('create persiste cabecalho e devolve a entidade', async () => {
-    mockPrisma.ordemDeServico.create.mockResolvedValue(dbRecord);
+  it('create persiste cabecalho na transacao e grava os.aberta no outbox com o mesmo tx', async () => {
+    tx.ordemDeServico.create.mockResolvedValue(dbRecord);
     const os = OrdemDeServico.create({ clienteId: 'cliente-123', veiculoId: 'veiculo-456', descricaoInicial: 'Cliente relata problemas no freio' });
+    os.registrarAbertura({ cliente: { nome: 'Joao', cpfCnpj: '52998224725' }, veiculo: { placa: 'ABC1D23', modelo: 'Corolla' } });
     const result = await repository.create(os);
     expect(result).toBeInstanceOf(OrdemDeServico);
     expect(result.id).toBe('os-123');
-    expect(mockPrisma.ordemDeServico.create.mock.calls[0][0].data).toMatchObject({ status: 'RECEBIDA', itensServico: { create: [] } });
+    expect(tx.ordemDeServico.create.mock.calls[0][0].data).toMatchObject({ status: 'RECEBIDA', itensServico: { create: [] } });
+    expect(outbox.gravar).toHaveBeenCalledTimes(1);
+    const [envelope, txUsado] = outbox.gravar.mock.calls[0];
+    expect(envelope).toMatchObject({ type: 'os.aberta', producer: 'os-service', correlationId: os.numero, version: 1 });
+    expect(envelope.data.cliente.cpfMascarado).toBe('***.***.***-25');
+    expect(txUsado).toBe(tx);
+    expect(os.eventosIntegracao).toHaveLength(0);
+  });
+
+  it('update grava os eventos pendentes (os.cancelada) no outbox dentro da transacao', async () => {
+    tx.ordemDeServico.findUnique.mockResolvedValue({ ...dbRecord, status: StatusOS.CANCELADA, motivoCancelamento: 'OPERADOR' });
+    const os = OrdemDeServico.reconstitute({
+      id: 'os-123', numero: 'OS-2026-00001', clienteId: 'c', veiculoId: 'v', mecanicoId: null, descricaoInicial: 'Cliente relata', diagnostico: null, status: StatusOS.RECEBIDA,
+      motivoCancelamento: null, createdAt: new Date(), updatedAt: new Date(), itensServico: [],
+    });
+    os.cancelar(MotivoCancelamento.OPERADOR);
+    await repository.update(os);
+    expect(outbox.gravar.mock.calls[0][0]).toMatchObject({ type: 'os.cancelada', correlationId: 'OS-2026-00001', data: { numeroOS: 'OS-2026-00001', motivo: 'OPERADOR' } });
+    expect(outbox.gravar.mock.calls[0][1]).toBe(tx);
+  });
+
+  it('sem outbox configurado (testes/legado) os eventos sao descartados sem erro', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [PrismaOrdemDeServicoRepository, { provide: PrismaService, useValue: mockPrisma }],
+    }).compile();
+    const semOutbox = module.get(PrismaOrdemDeServicoRepository);
+    tx.ordemDeServico.create.mockResolvedValue(dbRecord);
+    const os = OrdemDeServico.create({ clienteId: 'c', veiculoId: 'v', descricaoInicial: 'Cliente relata problemas' });
+    os.registrarAbertura({ cliente: { nome: 'J', cpfCnpj: '52998224725' }, veiculo: { placa: 'A', modelo: 'B' } });
+    await expect(semOutbox.create(os)).resolves.toBeInstanceOf(OrdemDeServico);
+    expect(outbox.gravar).not.toHaveBeenCalled();
   });
 
   it('findById/findByNumero mapeiam snapshot (nome + Decimal -> number) e null quando ausente', async () => {

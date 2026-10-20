@@ -4,7 +4,7 @@
 
 **Prioridade:** Alta
 **Story Points:** 8
-**Status:** Em andamento — PR 1 (domínio/API/banco) entregue; PR 2 (outbox + consumidores SQS) e PR 3 (NodePort, rename do repo) a seguir. QA: [QA_PLAN_US-F4-06](../qa-plans/QA_PLAN_US-F4-06.md)
+**Status:** Em andamento — PR 1 (domínio/API/banco, #87) e PR 2 (outbox + consumidores SQS) entregues; PR 3 (NodePort, rename do repo) a seguir. QA: [QA_PLAN_US-F4-06](../qa-plans/QA_PLAN_US-F4-06.md)
 **DDD Domain:** Atendimento (OrdemDeServico, Cliente, Veiculo) + Notificacao
 **DDD Layer:** Domain + Application + Infrastructure
 **Repositorio:** `soat-fiap-oficina-mecanica-app` -> OS Service
@@ -22,8 +22,8 @@ servico. `@OnEvent` in-process vira publicacao via outbox (ADR-0001 previu isso)
 - [x] Modulos `produto`, `servico` e casos de uso de execucao/orcamento removidos; `architecture.spec.ts` atualizado
 - [x] OS mantem Cliente, Veiculo, historico/auditoria de status, consulta por CPF (posse via claim) e tempo medio por status (metrica Prometheus `oficina_os_tempo_no_status_seconds`; o tempo medio de *execucao* por servico vai com a Execucao)
 - [x] Novo status **`AGUARDANDO_PAGAMENTO`** entre `AGUARDANDO_APROVACAO` e `EM_EXECUCAO`; maquina de estados atualizada e testada (+ `motivoCancelamento` para as compensacoes)
-- [ ] Publica via **outbox**: `os.aberta` (com veiculo/cliente resumidos), `os.cancelada`, `os.finalizada`, `os.entregue`
-- [ ] Consome: `execucao.diagnostico-concluido` (grava snapshot dos itens), `billing.orcamento-gerado`, `billing.pagamento-aprovado`, `execucao.finalizada` — consumidores idempotentes *(PR 1: use cases de transicao idempotentes em `application/use-cases/transicoes/`; PR 2: handlers SQS)*
+- [x] Publica via **outbox**: `os.aberta` (com veiculo/cliente resumidos), `os.cancelada`, `os.finalizada`, `os.entregue` (gravados na transacao da OS; `OutboxPoller` -> `oficina-os.fifo`)
+- [x] Consome: `execucao.diagnostico-concluido` (grava snapshot dos itens), `billing.orcamento-gerado`, `billing.pagamento-aprovado`, `execucao.finalizada` — consumidores idempotentes (fila `os-eventos.fifo`, 12 handlers em `infrastructure/messaging/`, dedup em `processed_messages`; `pagamento-aprovado`/`orcamento-cancelado`/`reservas-liberadas` so logam ate o orquestrador da US-F4-10)
 - [x] Endpoints de mutacao removidos: adicionar servico/produto, aprovar/rejeitar, iniciar/concluir servico (agora nos outros servicos) — Swagger atualizado; novo `POST /ordens-servico/:id/cancelar`
 - [ ] UIs `admin`/`cliente` apontam para os novos servicos *(depende dos endpoints da Execucao/Billing — US-F4-07/08)*
 - [ ] Notificacao ao cliente continua aqui, alimentada pelos eventos ([US-F4-12](f4-12-notificacoes-por-eventos.md))

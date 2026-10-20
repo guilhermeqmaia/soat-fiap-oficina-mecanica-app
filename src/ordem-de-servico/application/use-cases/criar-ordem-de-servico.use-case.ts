@@ -21,8 +21,8 @@ export interface CriarOrdemDeServicoInput {
 /**
  * Abre a OS (RECEBIDA). Servicos/pecas nao entram mais na abertura: sao
  * definidos no diagnostico pelo Execucao Service e chegam por evento
- * (`execucao.diagnostico-concluido`). A publicacao de `os.aberta` para a saga
- * e feita pelo orquestrador (US-F4-10) a partir do evento in-process.
+ * (`execucao.diagnostico-concluido`). A abertura anuncia `os.aberta` (outbox,
+ * mesma transacao) — e esse evento que a saga (US-F4-10) e a Notificacao consomem.
  */
 @Injectable()
 export class CriarOrdemDeServicoUseCase implements UseCase<CriarOrdemDeServicoInput, OrdemDeServico> {
@@ -49,6 +49,10 @@ export class CriarOrdemDeServicoUseCase implements UseCase<CriarOrdemDeServicoIn
       clienteId: input.clienteId,
       veiculoId: input.veiculoId,
       descricaoInicial: input.descricaoInicial,
+    });
+    ordem.registrarAbertura({
+      cliente: { nome: cliente.nome, cpfCnpj: cliente.cpfCnpj.value },
+      veiculo: { placa: veiculo.placa.value, modelo: veiculo.modelo },
     });
     return this.gateway.create(ordem);
   }

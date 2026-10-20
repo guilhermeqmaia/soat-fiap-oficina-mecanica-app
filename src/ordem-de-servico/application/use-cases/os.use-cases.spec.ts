@@ -41,6 +41,12 @@ describe('CriarOrdemDeServicoUseCase', () => {
     const g = gatewayCom(null);
     const os = await new CriarOrdemDeServicoUseCase(g, clienteGw, veiculoGw).execute({ clienteId: 'cli-1', veiculoId: 'vei-1', descricaoInicial: 'Barulho ao frenar' });
     expect(os.status).toBe(StatusOS.RECEBIDA); expect(os.itensServico).toHaveLength(0); expect(g.create).toHaveBeenCalled();
+    // os.aberta pendente no agregado entregue ao gateway (vai para o outbox na mesma transacao)
+    const entregue: OrdemDeServico = g.create.mock.calls[0][0];
+    expect(entregue.eventosIntegracao[0]).toMatchObject({
+      type: 'os.aberta',
+      data: { cliente: { nome: 'Joao', cpfMascarado: '***.***.***-25' }, veiculo: { placa: 'ABC1D23', modelo: 'Corolla' }, descricaoProblema: 'Barulho ao frenar' },
+    });
   });
   it('valida cliente, veiculo e posse do veiculo', async () => {
     const uc = new CriarOrdemDeServicoUseCase(gatewayCom(null), clienteGw, veiculoGw);
