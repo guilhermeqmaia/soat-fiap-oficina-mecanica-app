@@ -144,7 +144,7 @@ describe('SagaOS — maquina de estados pura (RFC-0005)', () => {
 
   describe('cancelamento manual (atendente)', () => {
     it.each([
-      [PassoSaga.ENFILEIRAR_EXECUCAO, []],
+      [PassoSaga.ENFILEIRAR_EXECUCAO, ['execucao.liberar-reservas']],
       [PassoSaga.AGUARDAR_DIAGNOSTICO, ['execucao.liberar-reservas']],
       [PassoSaga.GERAR_ORCAMENTO, ['billing.cancelar-orcamento', 'execucao.liberar-reservas']],
       [PassoSaga.AGUARDAR_APROVACAO, ['billing.cancelar-orcamento', 'execucao.liberar-reservas']],
@@ -170,6 +170,31 @@ describe('SagaOS — maquina de estados pura (RFC-0005)', () => {
     });
   });
 
+  it('diagnostico sem itens (viola o contrato) e ignorado e a saga continua esperando', () => {
+    const s = ate(PassoSaga.AGUARDAR_DIAGNOSTICO);
+    const r = s.aplicar(ev('execucao.diagnostico-concluido', { mecanicoId: 'm', diagnostico: 'x', itens: [] }), em(5), PRAZOS);
+    expect(r.aplicado).toBe(false); expect(r.motivo).toContain('sem itens'); expect(s.passo).toBe(PassoSaga.AGUARDAR_DIAGNOSTICO); expect(s.comandosPendentes).toEqual([]);
+  });
+
+  it('passoDesde acompanha o passo; historico tem teto de 200 entradas', () => {
+    const s = nova(); s.consumirComandos();
+    expect(s.passoDesde).toEqual(T0);
+    s.aplicar(ev('execucao.enfileirada'), em(7), PRAZOS);
+    expect(s.passoDesde).toEqual(em(7));
+    for (let i = 0; i < 250; i++) s.aplicar(ev('execucao.iniciada'), em(8 + i), PRAZOS);
+    expect(s.historico).toHaveLength(200);
+    expect(s.historico[0].resultado).toBe('ignorado');
+  });
+
+  it('timeout num passo sem prazo limpa prazos obsoletos', () => {
+    const s = SagaOS.reconstitute({
+      numero: 'OS-1', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd', passo: PassoSaga.AGUARDAR_FINALIZACAO, status: StatusSaga.EM_ANDAMENTO,
+      historico: [], compensacoes: [], prazoAprovacao: T0, prazoPagamento: T0, version: 0,
+    });
+    expect(s.aplicar(ev('saga.timeout'), em(99), PRAZOS).aplicado).toBe(false);
+    expect(s.prazoAprovacao).toBeNull(); expect(s.prazoPagamento).toBeNull();
+  });
+
   it('saga encerrada ignora tudo', () => {
     const s = ate(PassoSaga.CONCLUIDA);
     expect(s.aplicar(ev('execucao.finalizada'), em(99), PRAZOS)).toMatchObject({ aplicado: false, motivo: 'saga CONCLUIDA' });
@@ -183,6 +208,10 @@ describe('SagaOS — maquina de estados pura (RFC-0005)', () => {
     expect(SagaOS.adotar({ ...base, statusOS: StatusOS.CANCELADA }, T0).status).toBe(StatusSaga.CANCELADA);
     const adotada = SagaOS.adotar({ ...base, statusOS: StatusOS.EM_EXECUCAO }, T0);
     expect(adotada.comandosPendentes).toEqual([]);
+    // EM_DIAGNOSTICO com diagnostico gravado = aguardando orcamento; RECEBIDA reenvia o enfileirar
+    expect(SagaOS.adotar({ ...base, statusOS: StatusOS.EM_DIAGNOSTICO, temDiagnostico: true }, T0).passo).toBe(PassoSaga.GERAR_ORCAMENTO);
+    expect(SagaOS.adotar({ ...base, statusOS: StatusOS.EM_DIAGNOSTICO }, T0).passo).toBe(PassoSaga.AGUARDAR_DIAGNOSTICO);
+    expect(SagaOS.adotar({ ...base, statusOS: StatusOS.RECEBIDA }, T0).comandosPendentes.map((c) => c.type)).toEqual(['execucao.enfileirar']);
     expect(adotada.aplicar(ev('execucao.finalizada', { numeroOS: 'OS-9' }), em(1), PRAZOS).transicaoOS).toEqual({ tipo: 'finalizar' });
   });
 

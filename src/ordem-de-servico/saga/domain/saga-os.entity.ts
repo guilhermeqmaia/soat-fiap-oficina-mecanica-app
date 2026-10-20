@@ -95,6 +95,8 @@ export interface SagaOSProps {
   descricaoProblema: string;
   passo: PassoSaga;
   status: StatusSaga;
+  /** Quando entrou no passo atual. */
+  passoDesde?: Date;
   historico: PassoHistorico[];
   compensacoes: Compensacao[];
   prazoAprovacao: Date | null;
@@ -115,6 +117,7 @@ const ORDEM: PassoSaga[] = [
   PassoSaga.CONCLUIDA,
 ];
 const indice = (p: PassoSaga) => ORDEM.indexOf(p);
+const HISTORICO_MAX = 200;
 
 /** Passo da saga equivalente ao status de uma OS que nasceu antes da saga existir. */
 const PASSO_POR_STATUS: Record<StatusOS, PassoSaga> = {
@@ -148,6 +151,7 @@ export class SagaOS {
   readonly descricaoProblema: string;
   private _passo: PassoSaga;
   private _status: StatusSaga;
+  private _passoDesde: Date;
   private _historico: PassoHistorico[];
   private _compensacoes: Compensacao[];
   private _prazoAprovacao: Date | null;
@@ -165,6 +169,7 @@ export class SagaOS {
     this.descricaoProblema = p.descricaoProblema;
     this._passo = p.passo;
     this._status = p.status;
+    this._passoDesde = p.passoDesde ?? p.createdAt ?? new Date();
     this._historico = [...p.historico];
     this._compensacoes = [...p.compensacoes];
     this._prazoAprovacao = p.prazoAprovacao;
@@ -183,6 +188,7 @@ export class SagaOS {
       ...dados,
       passo: PassoSaga.ENFILEIRAR_EXECUCAO,
       status: StatusSaga.EM_ANDAMENTO,
+      passoDesde: agora,
       historico: [],
       compensacoes: [],
       prazoAprovacao: null,
@@ -197,12 +203,17 @@ export class SagaOS {
     return saga;
   }
 
-  /** OS anterior a saga (ou saga perdida): adota o passo equivalente ao status atual, sem reenviar comandos. */
+  /**
+   * OS anterior a saga (ou saga perdida): adota o passo equivalente ao status
+   * atual. EM_DIAGNOSTICO com diagnostico ja gravado = aguardando o orcamento.
+   * So em RECEBIDA reenvia `execucao.enfileirar` (nenhum comando saiu ainda).
+   */
   static adotar(
-    dados: { numero: string; clienteId: string; veiculoId: string; descricaoProblema: string; statusOS: StatusOS },
+    dados: { numero: string; clienteId: string; veiculoId: string; descricaoProblema: string; statusOS: StatusOS; temDiagnostico?: boolean },
     agora: Date = new Date(),
   ): SagaOS {
-    const passo = PASSO_POR_STATUS[dados.statusOS];
+    const passo =
+      dados.statusOS === StatusOS.EM_DIAGNOSTICO && dados.temDiagnostico ? PassoSaga.GERAR_ORCAMENTO : PASSO_POR_STATUS[dados.statusOS];
     const status =
       dados.statusOS === StatusOS.CANCELADA
         ? StatusSaga.CANCELADA
@@ -216,6 +227,7 @@ export class SagaOS {
       descricaoProblema: dados.descricaoProblema,
       passo,
       status,
+      passoDesde: agora,
       historico: [],
       compensacoes: [],
       prazoAprovacao: null,
@@ -223,6 +235,12 @@ export class SagaOS {
       version: 0,
     });
     saga.registrar(agora, 'saga.adotada', 'avancou', `adotada a partir do status ${dados.statusOS}`);
+    if (dados.statusOS === StatusOS.RECEBIDA) {
+      saga.enviar({
+        type: 'execucao.enfileirar',
+        data: { numeroOS: dados.numero, veiculoId: dados.veiculoId, descricaoProblema: dados.descricaoProblema },
+      });
+    }
     return saga;
   }
 
@@ -243,6 +261,9 @@ export class SagaOS {
   }
   get compensacoes(): readonly Compensacao[] {
     return this._compensacoes;
+  }
+  get passoDesde(): Date {
+    return this._passoDesde;
   }
   get prazoAprovacao(): Date | null {
     return this._prazoAprovacao;
@@ -296,11 +317,15 @@ export class SagaOS {
         }
         return this.ignorar(evento, agora, `nao esperado no passo ${this._passo}`);
       case 'execucao.diagnostico-concluido':
+        if (!Array.isArray(evento.data.itens) || evento.data.itens.length === 0) {
+          // Contrato exige minItems 1; sem itens nao ha orcamento a gerar — espera um diagnostico valido.
+          return this.ignorar(evento, agora, 'diagnostico sem itens (contrato exige ao menos 1)');
+        }
         return this.esperado(evento, PassoSaga.AGUARDAR_DIAGNOSTICO, agora, () => {
           this.avancar(PassoSaga.GERAR_ORCAMENTO, agora, evento);
           this.enviar({
             type: 'billing.gerar-orcamento',
-            data: { numeroOS: this.numero, clienteId: this.clienteId, itens: evento.data.itens ?? [] },
+            data: { numeroOS: this.numero, clienteId: this.clienteId, itens: evento.data.itens },
             causationId: evento.id,
           });
           return { transicaoOS: { tipo: 'registrarDiagnostico' } };
@@ -344,6 +369,7 @@ export class SagaOS {
       case 'execucao.finalizada':
         return this.esperado(evento, PassoSaga.AGUARDAR_FINALIZACAO, agora, () => {
           this._passo = PassoSaga.CONCLUIDA;
+          this._passoDesde = agora;
           this._status = StatusSaga.CONCLUIDA;
           this.registrar(agora, evento.type, 'concluida');
           return { transicaoOS: { tipo: 'finalizar' } };
@@ -380,6 +406,7 @@ export class SagaOS {
   private avancar(proximo: PassoSaga, agora: Date, evento: EventoSaga): void {
     this.registrar(agora, evento.type, 'avancou', `${this._passo} -> ${proximo}`);
     this._passo = proximo;
+    this._passoDesde = agora;
   }
 
   private ignorar(evento: EventoSaga, agora: Date, motivo: string): ResultadoAplicacao {
@@ -393,6 +420,8 @@ export class SagaOS {
 
   private registrar(agora: Date, evento: string, resultado: ResultadoPasso, detalhe?: string): void {
     this._historico.push({ em: agora.toISOString(), passo: this._passo, evento, resultado, detalhe });
+    // Teto do JSON: mantem as entradas mais recentes (duplicados/fora de ordem podem se repetir).
+    if (this._historico.length > HISTORICO_MAX) this._historico.splice(0, this._historico.length - HISTORICO_MAX);
   }
 
   /** Falha de negocio: comandos de compensacao (ordem inversa) + OS cancelada. */
@@ -457,14 +486,24 @@ export class SagaOS {
         'execucao.liberar-reservas',
       ]);
     }
+    // Prazo obsoleto num passo que nao tem timeout: limpa para o relogio parar de reencontrar esta saga.
+    if (this._passo !== PassoSaga.AGUARDAR_APROVACAO) this._prazoAprovacao = null;
+    if (this._passo !== PassoSaga.AGUARDAR_PAGAMENTO) this._prazoPagamento = null;
     return this.ignorar(evento, agora, 'sem prazo vencido neste passo');
   }
 
-  /** Atendente cancela: compensa conforme o passo; depois de a execucao comecar nao da mais. */
+  /**
+   * Atendente cancela: compensa conforme o passo; depois de a execucao comecar
+   * nao da mais. `execucao.enfileirar` ja saiu na abertura, entao desde o
+   * primeiro passo a Execucao recebe `execucao.liberar-reservas` (= tirar da
+   * fila/abortar diagnostico e devolver reservas, ver AsyncAPI). Como comandos
+   * da mesma OS vao para a mesma fila FIFO com o mesmo MessageGroupId, o
+   * cancelamento nunca ultrapassa o comando que o precede.
+   */
   private cancelamentoManual(evento: EventoSaga, agora: Date): ResultadoAplicacao {
     const motivo = (evento.data.motivo as MotivoCancelamento) ?? MotivoCancelamento.OPERADOR;
     const porPasso: Partial<Record<PassoSaga, Array<'billing.cancelar-orcamento' | 'execucao.liberar-reservas'>>> = {
-      [PassoSaga.ENFILEIRAR_EXECUCAO]: [],
+      [PassoSaga.ENFILEIRAR_EXECUCAO]: ['execucao.liberar-reservas'],
       [PassoSaga.AGUARDAR_DIAGNOSTICO]: ['execucao.liberar-reservas'],
       [PassoSaga.GERAR_ORCAMENTO]: ['billing.cancelar-orcamento', 'execucao.liberar-reservas'],
       [PassoSaga.AGUARDAR_APROVACAO]: ['billing.cancelar-orcamento', 'execucao.liberar-reservas'],

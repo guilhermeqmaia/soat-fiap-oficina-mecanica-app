@@ -20,6 +20,7 @@ export interface ItemDiagnosticoInput {
 
 export interface RegistrarDiagnosticoInput {
   numero: string;
+  tx?: unknown;
   mecanicoId: string;
   diagnostico: string;
   itens: ItemDiagnosticoInput[];
@@ -38,15 +39,25 @@ export class RegistrarDiagnosticoUseCase implements UseCase<RegistrarDiagnostico
   ) {}
 
   async execute(input: RegistrarDiagnosticoInput): Promise<OrdemDeServico> {
-    const ordem = await this.gateway.findByNumero(input.numero);
+    const ordem = await this.gateway.findByNumero(input.numero, input.tx);
     if (!ordem) throw new OrdemDeServicoNotFoundError(input.numero);
+
+    // Reentrega do mesmo diagnostico: nada a gravar nem a auditar.
+    if (
+      ordem.diagnostico === input.diagnostico &&
+      ordem.mecanicoId === input.mecanicoId &&
+      ordem.itensServico.length > 0 &&
+      ordem.valorTotal() === RegistrarDiagnosticoUseCase.totalDe(input.itens)
+    ) {
+      return ordem;
+    }
 
     ordem.registrarDiagnostico({
       diagnostico: input.diagnostico,
       mecanicoId: input.mecanicoId,
       itens: RegistrarDiagnosticoUseCase.montarItens(input.itens),
     });
-    const updated = await this.gateway.update(ordem);
+    const updated = await this.gateway.update(ordem, input.tx);
     // Nao muda o status, mas e uma acao rastreavel (quem diagnosticou, quantos itens).
     this.events.publish(
       new OsAcaoEvent(updated.id as string, updated.numero, 'DIAGNOSTICO_REGISTRADO', updated.status, updated.status, input.mecanicoId, {
@@ -55,6 +66,10 @@ export class RegistrarDiagnosticoUseCase implements UseCase<RegistrarDiagnostico
       }),
     );
     return updated;
+  }
+
+  private static totalDe(itens: ItemDiagnosticoInput[]): number {
+    return itens.reduce((acc, i) => acc + i.quantidade * Number(i.precoUnitario), 0);
   }
 
   /** Agrupa os produtos sob o servico pai; produtos sem pai entram num servico "Pecas avulsas". */

@@ -194,6 +194,7 @@ Table saga_os {
   descricao_problema varchar [not null]
   passo varchar [not null, note: 'ENFILEIRAR_EXECUCAO | AGUARDAR_DIAGNOSTICO | GERAR_ORCAMENTO | AGUARDAR_APROVACAO | AGUARDAR_PAGAMENTO | INICIAR_EXECUCAO | AGUARDAR_FINALIZACAO | CONCLUIDA']
   status varchar [not null, note: 'EM_ANDAMENTO | COMPENSANDO | CONCLUIDA | CANCELADA']
+  passo_desde timestamp [not null, note: 'entrada no passo atual']
   historico jsonb [not null, note: '[{em, passo, evento, resultado, detalhe}]']
   compensacoes jsonb [not null, note: '[{comando, enviadaEm, confirmadaEm}]']
   prazo_aprovacao timestamp

@@ -225,7 +225,7 @@ jobs:
           echo "- \`backend_listener_arn\` do gateway deve ficar VAZIO a partir da US-F4-06" >> "$GITHUB_STEP_SUMMARY"
           # Um TG por ambiente pode existir na mesma porta: pega o primeiro do NLB do gateway.
           TG=$(aws elbv2 describe-target-groups \
-                --query "TargetGroups[?Port==\`30080\` && contains(TargetGroupName, 'os')].TargetGroupArn | [0]" \
+                --query "TargetGroups[?Port==\`30080\` && ends_with(TargetGroupName, '-os')].TargetGroupArn | [0]" \
                 --output text 2>/dev/null || true); [ "$TG" = "None" ] && TG=""
           if [ -n "$TG" ]; then
             echo "- Target group: \`$TG\`" >> "$GITHUB_STEP_SUMMARY"

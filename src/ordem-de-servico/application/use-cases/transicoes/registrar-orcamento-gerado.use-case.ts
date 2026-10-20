@@ -8,6 +8,8 @@ import { registrarTransicao } from './registrar-transicao.base';
 
 export interface RegistrarOrcamentoGeradoInput {
   numero: string;
+  /** Unit of work do orquestrador (OS + saga + outbox na mesma transacao). */
+  tx?: unknown;
   /** Total do orcamento calculado pelo Billing (string decimal ou numero). */
   total: string | number;
 }
@@ -27,6 +29,7 @@ export class RegistrarOrcamentoGeradoUseCase implements UseCase<RegistrarOrcamen
       input.numero,
       StatusOS.AGUARDANDO_APROVACAO,
       (os) => os.aguardarAprovacao(),
+      input.tx
     );
     if (aplicada && ordem.id) {
       this.events.publish(

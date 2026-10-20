@@ -39,11 +39,19 @@ video precisa mostrar em "rastreamento dos fluxos distribuidos").
   mesma transacao).
 - **Entrada dos eventos:** todos os handlers da fila `os-eventos` entregam ao orquestrador; o cancelamento manual
   (`POST :id/cancelar`) tambem passa por ele (`os.cancelamento-manual`) e compensa conforme o passo.
-- **Ordem por evento:** carrega saga -> aplica (decide) -> transiciona a OS (transacao propria, idempotente) -> salva saga +
-  comandos (transacao propria). Se a segunda falhar, a reentrega refaz: a OS vira no-op e a saga reaplica.
-- **OS anterior a saga:** adotada no passo equivalente ao status atual, sem reenviar comandos.
+- **Transacao unica (unit of work):** carrega saga -> aplica (decide) -> transiciona a OS -> salva saga + comandos, tudo
+  no mesmo `$transaction` do Postgres (`PrismaUnitOfWork`). A abertura da OS tambem grava OS + `os.aberta` + saga +
+  `execucao.enfileirar` juntos. Conflito de lock otimista: ate 3 tentativas em processo, depois 409/reentrega.
+- **OS anterior a saga:** adotada no passo equivalente ao status (EM_DIAGNOSTICO com diagnostico gravado = GERAR_ORCAMENTO); em RECEBIDA reenvia `execucao.enfileirar`.
+- **Cancelamento manual:** desde o primeiro passo a Execucao recebe `execucao.liberar-reservas` (o `enfileirar` ja saiu);
+  comandos da mesma OS usam o mesmo MessageGroupId, entao o cancelamento nunca ultrapassa o comando anterior na fila.
+  Apos `billing.pagamento-aprovado` (passo INICIAR_EXECUCAO) cancelar ainda e permitido e gera estorno.
+- **Diagnostico sem itens** (viola o contrato): ignorado com registro; a saga espera um diagnostico valido.
+- **Saga parada** (sem evento esperado num passo sem timeout): gauge `oficina_os_sagas_paradas` + warn; o reprocessamento e da US-F4-11.
 - **Matriz de compensacao** (US-F4-11): enfileirar recusado -> nada; orcamento rejeitado -> `execucao.liberar-reservas`;
   pagamento recusado / timeouts / cancelamento manual apos orcamento -> `billing.cancelar-orcamento` + `execucao.liberar-reservas`;
   `execucao.recusada` em `INICIAR_EXECUCAO` (falha apos pagamento) -> estorno via `billing.cancelar-orcamento` + liberar reservas.
   A saga fica `COMPENSANDO` ate `billing.orcamento-cancelado` / `execucao.reservas-liberadas` confirmarem; depois `CANCELADA`.
 - **Fora desta story:** `POST /admin/sagas/:os/reprocessar`, injecao de falhas e retries de comandos ficam na US-F4-11.
+- **Review (21/10):** transacao unica, retry em conflito, `passoDesde`, teto do historico, DTO so aceita `OPERADOR`,
+  deletar OS apaga a saga, historico do cliente inclui OS encerradas.

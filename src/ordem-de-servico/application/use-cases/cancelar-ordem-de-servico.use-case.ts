@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { UseCase } from '@guilhermeqmaia/oficina-kit/core';
 import { OrdemDeServico } from '../../domain/ordem-de-servico.entity';
 import { MotivoCancelamento } from '../../domain/value-objects/motivo-cancelamento';
+import { StatusOS } from '../../domain/value-objects/status-os.vo';
+import { InvalidStatusTransitionError } from '../../domain/errors/invalid-status-transition.error';
 import { ORDEM_DE_SERVICO_GATEWAY, OrdemDeServicoGateway } from '../gateways/ordem-de-servico.gateway';
 import { carregarOrdemOuFalhar } from './carregar-ordem';
 import { OrquestradorSagaService } from '../../saga/application/orquestrador-saga.service';
@@ -26,8 +28,9 @@ export class CancelarOrdemDeServicoUseCase implements UseCase<CancelarOrdemDeSer
 
   async execute(input: CancelarOrdemDeServicoInput): Promise<OrdemDeServico> {
     const ordem = await carregarOrdemOuFalhar(this.gateway, input.id);
-    // A OS valida o status (so antes da execucao comecar) antes de a saga agir.
-    ordem.cancelar(input.motivo ?? MotivoCancelamento.OPERADOR);
+    // 400 cedo quando a OS ja nao pode ser cancelada; a saga decide o resto
+    // (compensacoes + cancelamento da OS) numa unica transacao.
+    if (!ordem.podeSerCancelada()) throw new InvalidStatusTransitionError(ordem.status, StatusOS.CANCELADA);
     await this.orquestrador.processar({
       type: 'os.cancelamento-manual',
       data: { numeroOS: ordem.numero, motivo: input.motivo ?? MotivoCancelamento.OPERADOR },

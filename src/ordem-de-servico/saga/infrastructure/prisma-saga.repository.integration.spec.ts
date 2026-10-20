@@ -30,6 +30,7 @@ describe('PrismaSagaRepository (integration)', () => {
   });
 
   const ev = (type: string, numero: string, data: Record<string, unknown> = {}) => ({ type, id: `env-${type}`, data: { numeroOS: numero, ...data } });
+const ITENS = [{ tipo: 'SERVICO', referenciaId: 's', nome: 'n', quantidade: 1, precoUnitario: '1.00' }];
 
   it('save grava a saga e os comandos no outbox na mesma transacao; reload preserva historico/compensacoes', async () => {
     const saga = SagaOS.iniciar({ numero: 'OS-S1', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' });
@@ -38,9 +39,9 @@ describe('PrismaSagaRepository (integration)', () => {
     expect((await prisma.outbox.findMany({ where: { correlationId: 'OS-S1' } })).map((o) => o.type)).toEqual(['execucao.enfileirar']);
 
     salva.aplicar(ev('execucao.enfileirada', 'OS-S1'));
-    salva.aplicar(ev('execucao.diagnostico-concluido', 'OS-S1', { itens: [] }));
+    salva.aplicar(ev('execucao.diagnostico-concluido', 'OS-S1', { itens: ITENS }));
     const v2 = await repo.save(salva);
-    expect(v2.version).toBe(2 - 1); // create (0) + 1 update
+    expect(v2.version).toBe(1); // create (0) + um update
     const lida = (await repo.findByNumero('OS-S1'))!;
     expect(lida.passo).toBe(PassoSaga.GERAR_ORCAMENTO);
     expect(lida.historico.map((h) => h.resultado)).toEqual(['avancou', 'avancou', 'avancou']);
@@ -61,7 +62,7 @@ describe('PrismaSagaRepository (integration)', () => {
   it('findComPrazoVencido e countPorStatus', async () => {
     const s = SagaOS.iniciar({ numero: 'OS-S3', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' });
     s.aplicar(ev('execucao.enfileirada', 'OS-S3'));
-    s.aplicar(ev('execucao.diagnostico-concluido', 'OS-S3', { itens: [] }));
+    s.aplicar(ev('execucao.diagnostico-concluido', 'OS-S3', { itens: ITENS }));
     const t0 = new Date();
     s.aplicar(ev('billing.orcamento-gerado', 'OS-S3', { total: '1.00' }), t0, { aprovacaoMs: 1000, pagamentoMs: 1000 });
     await repo.save(s);
@@ -69,5 +70,20 @@ describe('PrismaSagaRepository (integration)', () => {
     expect((await repo.findComPrazoVencido(new Date(t0.getTime() + 1500))).map((x) => x.numero)).toContain('OS-S3');
     const porStatus = await repo.countPorStatus();
     expect(porStatus[StatusSaga.EM_ANDAMENTO]).toBeGreaterThanOrEqual(2);
+    // paradas: entrou no passo antes de `desde`
+    expect(await repo.countParadasDesde(new Date(Date.now() + 60_000))).toBeGreaterThanOrEqual(1);
+    expect(await repo.countParadasDesde(new Date(Date.now() - 3_600_000))).toBe(0);
+  });
+
+  it('save dentro de um $transaction externo faz rollback junto', async () => {
+    const saga = SagaOS.iniciar({ numero: 'OS-S4', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' });
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await repo.save(saga, tx);
+        throw new Error('rollback');
+      }),
+    ).rejects.toThrow('rollback');
+    expect(await repo.findByNumero('OS-S4')).toBeNull();
+    expect(await prisma.outbox.count({ where: { correlationId: 'OS-S4' } })).toBe(0);
   });
 });

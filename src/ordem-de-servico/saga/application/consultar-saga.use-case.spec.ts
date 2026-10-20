@@ -1,5 +1,5 @@
 import { ConsultarSagaUseCase } from './consultar-saga.use-case';
-import { OrdemDeServicoNotFoundError } from '../../domain/errors/ordem-de-servico-not-found.error';
+import { SagaNotFoundError } from '../domain/errors/saga-not-found.error';
 import { SagaOS } from '../domain/saga-os.entity';
 import { SagaPresenter } from '../infrastructure/saga.presenter';
 
@@ -8,7 +8,7 @@ describe('ConsultarSagaUseCase + SagaPresenter', () => {
   it('devolve a saga pelo numero e 404 quando nao existe', async () => {
     const repo = { findByNumero: jest.fn(async (n: string) => (n === 'OS-1' ? saga : null)) } as any;
     expect(await new ConsultarSagaUseCase(repo).execute({ numero: 'OS-1' })).toBe(saga);
-    await expect(new ConsultarSagaUseCase(repo).execute({ numero: 'OS-2' })).rejects.toThrow(OrdemDeServicoNotFoundError);
+    await expect(new ConsultarSagaUseCase(repo).execute({ numero: 'OS-2' })).rejects.toThrow(SagaNotFoundError);
   });
   it('presenter expoe passo, status, historico, compensacoes e prazos', () => {
     expect(SagaPresenter.toResponse(saga)).toMatchObject({

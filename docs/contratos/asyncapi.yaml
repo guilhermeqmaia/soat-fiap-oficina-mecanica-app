@@ -200,7 +200,12 @@ components:
         allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
     execucaoLiberarReservas:
       name: execucao.liberar-reservas
-      title: 'Compensação: devolver reservas de estoque'
+      title: 'Compensação: cancelar a OS na Execução (sair da fila, abortar diagnóstico) e devolver reservas de estoque'
+      summary: >-
+        Enviado pelo orquestrador em qualquer passo após `execucao.enfileirar` (inclusive antes do diagnóstico).
+        A Execução deve tratá-lo de forma idempotente e responder sempre com `execucao.reservas-liberadas`,
+        mesmo sem reservas. Como comandos da mesma OS compartilham o MessageGroupId na fila FIFO, ele nunca
+        ultrapassa o comando que o precede.
       payload:
         allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { $ref: '#/components/schemas/NumeroOS' } } } ]
 
@@ -260,6 +265,9 @@ components:
     billingCancelarOrcamento:
       name: billing.cancelar-orcamento
       title: 'Compensação: cancelar orçamento e cobrança (estornar se pago)'
+      summary: >-
+        Idempotente; responder sempre com `billing.orcamento-cancelado` (com `estornado`), inclusive quando o
+        orçamento acabou de ser criado ou já estava cancelado. Mesmo MessageGroupId que `billing.gerar-orcamento`.
       payload:
         allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { data: { type: object, required: [numeroOS, motivo], properties: { numeroOS: {type: string}, motivo: {type: string} } } } } ]
 

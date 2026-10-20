@@ -226,6 +226,8 @@ model SagaOS {
   descricaoProblema String    @map("descricao_problema")
   passo             String
   status            String
+  /// Quando entrou no passo atual (duracao por passo; alerta de saga parada)
+  passoDesde        DateTime  @default(now()) @map("passo_desde")
   historico         Json      @default("[]")
   compensacoes      Json      @default("[]")
   prazoAprovacao    DateTime? @map("prazo_aprovacao")
@@ -236,5 +238,6 @@ model SagaOS {
 
   @@index([status, prazoAprovacao])
   @@index([status, prazoPagamento])
+  @@index([status, passoDesde])
   @@map("saga_os")
 }

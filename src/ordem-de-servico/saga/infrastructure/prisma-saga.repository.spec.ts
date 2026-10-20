@@ -4,11 +4,11 @@ import { SagaOS, StatusSaga } from '../domain/saga-os.entity';
 
 const row = (extra: Partial<Record<string, unknown>> = {}) => ({
   id: 'saga-1', numero: 'OS-1', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd', passo: 'ENFILEIRAR_EXECUCAO', status: 'EM_ANDAMENTO',
-  historico: [], compensacoes: [], prazoAprovacao: null, prazoPagamento: null, version: 2, createdAt: new Date(), updatedAt: new Date(), ...extra,
+  passoDesde: new Date(), historico: [], compensacoes: [], prazoAprovacao: null, prazoPagamento: null, version: 2, createdAt: new Date(), updatedAt: new Date(), ...extra,
 });
-const tx = { sagaOS: { create: jest.fn(), updateMany: jest.fn(), findUniqueOrThrow: jest.fn() } };
+const tx = { sagaOS: { create: jest.fn(), updateMany: jest.fn(), findUniqueOrThrow: jest.fn(), deleteMany: jest.fn() } };
 const prisma = {
-  sagaOS: { findUnique: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() },
+  sagaOS: { findUnique: jest.fn(), findMany: jest.fn(), groupBy: jest.fn(), count: jest.fn(), deleteMany: jest.fn() },
   $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
 } as any;
 const outbox = { gravar: jest.fn() } as any;
@@ -43,6 +43,24 @@ describe('PrismaSagaRepository (unit)', () => {
     expect(tx.sagaOS.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: 'saga-1', version: 2 }, data: { version: { increment: 1 } } });
     tx.sagaOS.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(repo.save(saga)).rejects.toThrow(ConcurrentModificationError);
+  });
+
+  it('save com tx externo nao abre transacao propria; unique(numero) vira ConcurrentModificationError', async () => {
+    tx.sagaOS.create.mockResolvedValue({ id: 'saga-9' }); tx.sagaOS.findUniqueOrThrow.mockResolvedValue(row({ id: 'saga-9' }));
+    await repo.save(SagaOS.iniciar({ numero: 'OS-9', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' }), tx);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(outbox.gravar.mock.calls[0][1]).toBe(tx);
+    tx.sagaOS.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+    await expect(repo.save(SagaOS.iniciar({ numero: 'OS-9', clienteId: 'c', veiculoId: 'v', descricaoProblema: 'd' }), tx)).rejects.toThrow(ConcurrentModificationError);
+  });
+
+  it('deleteByNumero e countParadasDesde delegam ao Prisma', async () => {
+    await repo.deleteByNumero('OS-1');
+    expect(prisma.sagaOS.deleteMany).toHaveBeenCalledWith({ where: { numero: 'OS-1' } });
+    prisma.sagaOS.count.mockResolvedValue(2);
+    const desde = new Date();
+    expect(await repo.countParadasDesde(desde)).toBe(2);
+    expect(prisma.sagaOS.count.mock.calls[0][0].where).toEqual({ status: 'EM_ANDAMENTO', passoDesde: { lte: desde } });
   });
 
   it('findComPrazoVencido e countPorStatus delegam ao Prisma', async () => {

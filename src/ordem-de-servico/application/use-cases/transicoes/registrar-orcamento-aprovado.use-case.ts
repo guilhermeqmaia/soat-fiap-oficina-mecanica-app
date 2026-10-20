@@ -7,6 +7,8 @@ import { registrarTransicao } from './registrar-transicao.base';
 
 export interface RegistrarOrcamentoAprovadoInput {
   numero: string;
+  /** Unit of work do orquestrador (OS + saga + outbox na mesma transacao). */
+  tx?: unknown;
 }
 
 /** `billing.orcamento-aprovado` -> AGUARDANDO_PAGAMENTO (ADR-0012). */
@@ -20,6 +22,7 @@ export class RegistrarOrcamentoAprovadoUseCase implements UseCase<RegistrarOrcam
   async execute(input: RegistrarOrcamentoAprovadoInput): Promise<OrdemDeServico> {
     const { ordem } = await registrarTransicao(this.gateway, this.events, input.numero, StatusOS.AGUARDANDO_PAGAMENTO, (os) =>
       os.aguardarPagamento(),
+      input.tx
     );
     return ordem;
   }

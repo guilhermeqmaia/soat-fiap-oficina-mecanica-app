@@ -24,3 +24,11 @@ de uma arquitetura orquestrada: a notificacao apenas assina fatos.
 ## Dependencias
 
 - [US-F4-06](f4-06-os-service-strangler.md)
+
+## Atencao (review da US-F4-06/10, 21/10)
+
+O OS Service ainda notifica **in-process** (`OrdemDeServicoNotificacaoListener`: `OrcamentoProntoEvent`,
+`OsFinalizadaEvent`, `OsStatusAlteradoEvent`) e a fila `notificacao-eventos` ja assina
+`billing.orcamento-gerado`/`orcamento-aprovado`/`pagamento-aprovado` e `os.*`. Ao ligar o consumidor da fila,
+**remover (ou desligar por flag) as notificacoes in-process** para o cliente nao receber dois e-mails pelo mesmo
+fato — e incluir o `linkPagamento` de `billing.orcamento-aprovado` na mensagem de orcamento.
